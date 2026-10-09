@@ -54,6 +54,11 @@ export {
     canonicalJsonValue,
 } from "./canonical-json.js";
 export {
+    isEmailAllowedForDomain,
+    isValidEmailAddress,
+    normalizeEmailAddress,
+} from "./email.js";
+export {
     buildLeaderboardRows,
     pickBestModel,
     type IBestModelCandidate,

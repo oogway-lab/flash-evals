@@ -114,7 +114,17 @@ between API and web:
   explicitly permits them; allowing one means unrelated people on that domain
   could join the shared team.
 - `MOSAIC_TENANCY_MODE=isolated`: each new account receives a private team.
-  Invitations and sharing with other accounts are not currently supported.
+  Invitations and sharing with other accounts are not currently supported. If
+  `MOSAIC_ALLOWED_EMAIL_DOMAIN` is set, it restricts sign-in in this mode too.
+
+For the Oogway Labs internal pilot, configure
+`MOSAIC_TENANCY_MODE=single-org` and set `MOSAIC_ALLOWED_EMAIL_DOMAIN=oogwaylabs.com`
+in both API and web environments. The app checks the current verified primary
+email at sign-in and on each web session refresh, so a changed or unverified
+address cannot keep an existing account active. MCP OAuth also checks the live
+Clerk identity on every request. Email matching is case-insensitive and requires
+the domain to be exactly `oogwaylabs.com`; subdomains, suffix matches, and
+malformed addresses are rejected.
 
 MCP has separate authentication. See [the MCP guide](mcp-eval-server.md) for
 local tokens, production OAuth, and `MOSAIC_MCP_ALLOWED_ORIGINS`.
