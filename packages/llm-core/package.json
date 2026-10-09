@@ -25,7 +25,7 @@
         "@ai-sdk/openai": "^4.0.83",
         "ai": "^7.0.127",
         "openai": "^7.25.0",
-        "undici": "7.29.1"
+        "undici": "8.11.2"
     },
     "devDependencies": {
         "typescript": "^5.8.3",
