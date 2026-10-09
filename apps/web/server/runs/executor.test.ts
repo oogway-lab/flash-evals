@@ -500,11 +500,11 @@ describe("legacyJudgeRationale", () => {
     it("redacts credentials from a failed judge's provider error", () => {
         const rationale = legacyJudgeRationale({
             ok: false,
-            error: "401 Incorrect API key provided: sk-proj-abcDEF1234567890",
+            error: "401 Incorrect API key provided: sk-proj-aaaaaaaaaaaaaaaa",
         });
 
         expect(rationale).toContain("judge error: 401 Incorrect API key");
-        expect(rationale).not.toContain("sk-proj-abcDEF1234567890");
+        expect(rationale).not.toContain("sk-proj-aaaaaaaaaaaaaaaa");
     });
 });
 
@@ -642,7 +642,7 @@ describe("executeRun STT variants", () => {
             async (input) => {
                 if (input.config?.diarization)
                     throw new Error(
-                        "401 Incorrect API key provided: sk-proj-abcDEF1234567890",
+                        "401 Incorrect API key provided: sk-proj-aaaaaaaaaaaaaaaa",
                     );
                 return transcriptArtifact("plain transcript", "plain-hash");
             },
@@ -655,7 +655,7 @@ describe("executeRun STT variants", () => {
         ) as { status: string; error: string } | undefined;
         expect(failed?.status).toBe("failed");
         expect(failed?.error).toContain("Incorrect API key provided");
-        expect(failed?.error).not.toContain("sk-proj-abcDEF1234567890");
+        expect(failed?.error).not.toContain("sk-proj-aaaaaaaaaaaaaaaa");
     });
 
     it("creates distinct transcripts and invokes the judge for every variant", async () => {

@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify Gitleaks rules and placeholder boundaries
+        run: node scripts/check-gitleaks-config.mjs --docker
+
       - name: Gitleaks
         run: |
           docker run --rm \

@@ -2,14 +2,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type {
     ICreateWorkflowRunRequest,
     ISttRunConfig,
-    IWorkflowLlmRouteConfig,
 } from "@mosaic/api-contract";
-import {
-    createMultiWorkflowSeed,
-    isWorkflowModelBackedNodeType,
-} from "@mosaic/api-contract";
+import { createMultiWorkflowSeed } from "@mosaic/api-contract";
 import { z } from "zod";
-import { ApiBadRequestError } from "../../errors.js";
 import { publishWorkflowRunEnqueue } from "../../workflowRunEnqueue.js";
 import {
     createWorkflowPayload,
@@ -19,13 +14,13 @@ import {
     listWorkflowsPayload,
     saveWorkflowRunCellAnnotationPayload,
     saveWorkflowRunNotePayload,
+    selectWorkflowLlmModelPayload,
     updateWorkflowPayload,
     workflowDetailPayload,
     workflowRunDetailPayload,
     workflowRunProgressPayload,
 } from "../../routes/workflows.js";
 import { assertWorkflowLlmWritesEnabled } from "../../routes/llmRouting.js";
-import { WorkflowLlmRouteConfig } from "../../routes/llmRoutingSchemas.js";
 import { ok } from "../responses.js";
 import {
     ProjectId,
@@ -239,110 +234,14 @@ export function registerWorkflowTools(
         async (input) => {
             assertWorkflowLlmWritesEnabled(runtime.config);
             const projectId = await resolveProjectId(context, input.projectId);
-            const [workflow, routeVersionResult] = await Promise.all([
-                workflowDetailPayload(
-                    runtime.db,
-                    principal.teamId,
-                    projectId,
-                    input.workflowId,
-                ),
-                runtime.db.query<{
-                    id: string;
-                    config: IWorkflowLlmRouteConfig;
-                }>(
-                    `select v.id, v.config
-                    from llm_route_versions v
-                    join llm_routes r
-                      on r.id = v.route_id
-                     and r.team_id = v.team_id
-                     and r.project_id = v.project_id
-                    where v.id = $1 and v.team_id = $2 and v.project_id = $3
-                      and r.disabled_at is null`,
-                    [input.routeVersionId, principal.teamId, projectId],
-                ),
-            ]);
-            const routeVersionRow = routeVersionResult.rows[0];
-            if (!routeVersionRow) {
-                throw new ApiBadRequestError(
-                    "The exact active route version was not found in this project.",
-                );
-            }
-            const routeConfig = WorkflowLlmRouteConfig.parse(
-                routeVersionRow.config,
-            );
-            const node = workflow.nodes.find(
-                (candidate) => candidate.nodeKey === input.nodeKey,
-            );
-            if (!node) {
-                throw new ApiBadRequestError(
-                    `Workflow node ${input.nodeKey} was not found.`,
-                );
-            }
-            if (
-                !node.nodeType ||
-                !isWorkflowModelBackedNodeType(node.nodeType)
-            ) {
-                throw new ApiBadRequestError(
-                    `Workflow node ${input.nodeKey} does not support an LLM model selection.`,
-                );
-            }
-            const nextNode = {
-                ...node,
-                modelId: routeConfig.modelId,
-                reasoningConfig:
-                    routeConfig.generation.reasoningEffort !== undefined
-                        ? {
-                              effort: routeConfig.generation.reasoningEffort,
-                          }
-                        : undefined,
-                llmExecutionSelection: {
-                    mode: "pinned_route" as const,
-                    routeVersionId: routeVersionRow.id,
-                },
-                ...(node.nodeType === "transliterate" &&
-                node.nodeConfig?.type === "transliterate"
-                    ? {
-                          nodeConfig: {
-                              ...node.nodeConfig,
-                              transliteration: {
-                                  ...node.nodeConfig.transliteration,
-                                  modelId: routeConfig.modelId,
-                              },
-                          },
-                      }
-                    : {}),
-            };
-            const nodeIds = new Map(
-                workflow.nodes.map((candidate) => [
-                    candidate.id,
-                    candidate.nodeKey,
-                ]),
-            );
             return ok(
                 "Pinned the exact workflow LLM route version to the requested node.",
-                await updateWorkflowPayload(runtime.db, {
+                await selectWorkflowLlmModelPayload(runtime.db, {
                     teamId: principal.teamId,
                     projectId,
-                    workflowId: workflow.id,
-                    name: workflow.name,
-                    description: workflow.description,
-                    kind: workflow.kind,
-                    ...(workflow.sttConfig
-                        ? { sttConfig: workflow.sttConfig }
-                        : {}),
-                    nodes: workflow.nodes.map((candidate) =>
-                        WorkflowNodeInput.parse(
-                            candidate.nodeKey === input.nodeKey
-                                ? nextNode
-                                : candidate,
-                        ),
-                    ),
-                    edges: workflow.edges.map((edge) => ({
-                        fromNodeKey:
-                            nodeIds.get(edge.fromNodeId) ?? edge.fromNodeId,
-                        toNodeKey: nodeIds.get(edge.toNodeId) ?? edge.toNodeId,
-                        carryOriginalInput: edge.carryOriginalInput,
-                    })),
+                    workflowId: input.workflowId,
+                    nodeKey: input.nodeKey,
+                    routeVersionId: input.routeVersionId,
                 }),
             );
         },

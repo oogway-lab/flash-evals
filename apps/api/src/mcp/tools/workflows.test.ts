@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     listWorkflowsPayload: vi.fn(),
     saveWorkflowRunCellAnnotationPayload: vi.fn(),
     saveWorkflowRunNotePayload: vi.fn(),
+    selectWorkflowLlmModelPayload: vi.fn(),
     updateWorkflowPayload: vi.fn(),
     workflowDetailPayload: vi.fn(),
     workflowRunDetailPayload: vi.fn(),
@@ -156,108 +157,33 @@ describe("MCP workflow tools", () => {
         });
     });
 
-    it("pins an exact immutable route version and changes only the requested node", async () => {
+    it("delegates a scoped single-node edit without reading and replacing the graph", async () => {
         const { tools, runtime } = registerTools();
         const routeVersionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-        const workflow = {
+        mocks.selectWorkflowLlmModelPayload.mockResolvedValue({
             id: WORKFLOW_ID,
-            name: "Multiworkflow",
-            description: "",
-            kind: "multi" as const,
-            nodes: [
-                {
-                    id: "node-1",
-                    workflowId: WORKFLOW_ID,
-                    nodeKey: "llm",
-                    label: "LLM",
-                    nodeType: "llm_text" as const,
-                    nodeConfig: {
-                        type: "llm_text" as const,
-                        promptText: "Summarize",
-                    },
-                    modelId: "old-model",
-                    evalConfig: { type: "none" as const },
-                },
-                {
-                    id: "node-2",
-                    workflowId: WORKFLOW_ID,
-                    nodeKey: "other",
-                    label: "Other",
-                    nodeType: "llm_text" as const,
-                    nodeConfig: {
-                        type: "llm_text" as const,
-                        promptText: "Keep unchanged",
-                    },
-                    modelId: "existing-model",
-                    evalConfig: { type: "none" as const },
-                },
-            ],
-            edges: [],
-        };
-        const routeConfig = {
-            transportConfig: {
-                transport: "openrouter" as const,
-                upstreamPolicy: { mode: "auto" as const },
-                requireParameters: true,
-                responseCache: "allow" as const,
-            },
-            modelId: "google/gemma-3-27b-it",
-            generation: { maxOutputTokens: 512 },
-            structuredOutput: { mode: "text" as const },
-            retry: {
-                owner: "mosaic" as const,
-                maxAttempts: 1,
-                timeoutMs: 60_000,
-                retryableErrorClasses: ["timeout"],
-            },
-            cache: {
-                mosaicReuse: "force_fresh" as const,
-                providerCaching: "allow" as const,
-            },
-        };
-        mocks.workflowDetailPayload.mockResolvedValue(workflow);
-        mocks.updateWorkflowPayload.mockResolvedValue({ id: WORKFLOW_ID });
-        vi.mocked(runtime.db.query)
-            .mockResolvedValueOnce({
-                rows: [{ id: PROJECT_ID }],
-                rowCount: 1,
-            } as never)
-            .mockResolvedValueOnce({
-                rows: [{ id: routeVersionId, config: routeConfig }],
-                rowCount: 1,
-            } as never);
-
+        });
         await tools.get("select_workflow_llm_model")!.handler({
             projectId: PROJECT_ID,
             workflowId: WORKFLOW_ID,
             nodeKey: "llm",
             routeVersionId,
         });
-
-        expect(mocks.updateWorkflowPayload).toHaveBeenCalledWith(
+        expect(mocks.assertWorkflowLlmWritesEnabled).toHaveBeenCalledWith(
+            runtime.config,
+        );
+        expect(mocks.selectWorkflowLlmModelPayload).toHaveBeenCalledWith(
             runtime.db,
-            expect.objectContaining({
+            {
+                teamId: "team-1",
+                projectId: PROJECT_ID,
                 workflowId: WORKFLOW_ID,
-                nodes: [
-                    expect.objectContaining({
-                        modelId: "google/gemma-3-27b-it",
-                        llmExecutionSelection: {
-                            mode: "pinned_route",
-                            routeVersionId,
-                        },
-                    }),
-                    expect.objectContaining({
-                        nodeKey: "other",
-                        modelId: "existing-model",
-                    }),
-                ],
-            }),
+                nodeKey: "llm",
+                routeVersionId,
+            },
         );
-        expect(runtime.db.query).toHaveBeenNthCalledWith(
-            2,
-            expect.stringContaining("where v.id = $1"),
-            [routeVersionId, "team-1", PROJECT_ID],
-        );
+        expect(mocks.workflowDetailPayload).not.toHaveBeenCalled();
+        expect(mocks.updateWorkflowPayload).not.toHaveBeenCalled();
         expect(mocks.listWorkflowLlmRoutesPayload).not.toHaveBeenCalled();
     });
 

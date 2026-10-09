@@ -2,7 +2,7 @@
 
 Thanks for helping improve Flash Evals. This early-stage alpha is changing quickly; focused pull requests and clear reports are especially useful.
 
-Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Do not put credentials, customer data, or personal information in public issues, pull requests, fixtures, or screenshots. Report security concerns using [SECURITY.md](SECURITY.md).
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Do not put credentials, customer data, or personal information in public issues, pull requests, fixtures, or screenshots. For security concerns, read [SECURITY.md](SECURITY.md) before reporting. No private vulnerability-reporting channel is active yet; the planned security@oogwaylabs.com alias is inactive. Do not send reports there or post vulnerability details publicly.
 
 ## Project layout
 
@@ -16,22 +16,14 @@ Package names, environment-variable prefixes, and database identifiers currently
 
 ## Prerequisites and setup
 
-- Node.js 24.21.0 LTS and pnpm 12.6.0 (`.nvmrc` and `packageManager` pin these versions).
-- Docker for the local Postgres database.
-- Git.
+Follow [Getting started](docs/getting-started.md) for the complete fresh-clone
+setup. Use Node.js 24.21.0, pnpm 12.6.0, and a disposable PostgreSQL database.
+Docker Compose is the bundled database option; an existing PostgreSQL instance
+also works. No Clerk, Supabase, or provider account is needed for synthetic data.
 
-```bash
-pnpm install
-pnpm run setup:local
-docker compose up -d postgres
-pnpm run db:migrate
-pnpm run seed
-pnpm run dev
-```
-
-`setup:local` creates local environment files and generated development secrets without overwriting existing files. No Clerk or Supabase account is needed for local development. `pnpm run seed` resets the configured application tables, so use a disposable local database.
-
-To run evaluations, configure a provider credential in `apps/api/.env`. Provider requests may incur charges.
+The seed command resets application tables. Provider requests, including prompt
+validation, may incur charges. Keep all development authentication and local
+storage bypasses off public networks.
 
 ## Development workflow
 
@@ -51,11 +43,44 @@ pnpm run build
 pnpm run test
 pnpm run test:e2e
 pnpm run lint
+pnpm run docs:check
+pnpm run docs:env
 pnpm run quality
 pnpm run security
 ```
 
-`pnpm run test:e2e` uses a local fake API and does not require a database or provider keys. It may skip the optional live API check unless `PLAYWRIGHT_API_BASE_URL` is configured. `pnpm run security` reports if a local scanner is unavailable; GitHub Actions runs the pinned scans in CI.
+Install Chromium for Playwright with `pnpm exec playwright install chromium`
+before running browser tests locally. The current `test:e2e` suite covers basic
+health and page-rendering checks with a fake API. It does not establish full
+click-through coverage of datasets, prompts, runs, or workflows. The optional API
+health check is skipped unless `PLAYWRIGHT_API_BASE_URL` is set. Production Clerk
+sign-in and paid-provider behavior require separate integration testing.
+
+`pnpm run quality` combines type checks, builds, unit tests, lint, architecture,
+and documentation checks; it does not run Playwright or replace the security
+scans. `pnpm run security` reports if a local scanner is unavailable. GitHub
+Actions runs quality and security jobs plus a browser smoke job; none deploy the
+application.
+
+For a documentation-only change, run `docs:check`, `docs:env`, and Prettier on the
+changed files, and check local links and examples. The command checker verifies
+that named pnpm scripts exist; it does not prove the commands ran successfully.
+
+### Real-database workflow concurrency tests
+
+The workflow-editing regression can also run against a disposable, migrated
+PostgreSQL database. It exercises overlapping graph and node-selection writes.
+Create a dedicated test database, apply the migrations, then run:
+
+```bash
+MOSAIC_TEST_DATABASE_URL=postgres://user:password@localhost:5432/flash_evals_test \
+  pnpm --filter @mosaic/api exec vitest run src/routes/workflowEditing.integration.test.ts
+```
+
+Replace the URL with your test database. The test is skipped when the variable is
+unset. It creates synthetic tenant, credential, route, and capability records;
+immutable synthetic history remains until you discard the test database. Never
+point it at a persistent development or production database.
 
 ## Pull requests and issues
 

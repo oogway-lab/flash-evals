@@ -35,7 +35,7 @@ import {
     captureApiException,
     notifyApiAlert,
 } from "./observability/integrations.js";
-import { enqueueRun } from "./runQueue.js";
+import { publishRunEnqueue, startRunEnqueueReplay } from "./runEnqueue.js";
 import {
     publishWorkflowRunEnqueue,
     startWorkflowRunEnqueueReplay,
@@ -163,10 +163,12 @@ export interface IApiRuntime {
 export function createApiServer(config: IApiConfig = getApiConfig()) {
     const runtime = { config, db: createDb(config) };
     const stopEnqueueReplay = startWorkflowRunEnqueueReplay(runtime.db, config);
+    const stopRunReplay = startRunEnqueueReplay(runtime.db, config);
     const server = createServer((req, res) => {
         void handleNodeRequest(req, res, runtime);
     });
     server.on("close", stopEnqueueReplay);
+    server.on("close", stopRunReplay);
     return server;
 }
 
@@ -1310,8 +1312,10 @@ export async function handleRequest(
                     body.projectId,
                 ),
             );
-            await enqueueRun(config, result.runId);
-            return Response.json(result, { headers });
+            return Response.json(
+                await publishRunEnqueue(db, config, result.runId),
+                { headers },
+            );
         }
 
         if (
@@ -1331,8 +1335,10 @@ export async function handleRequest(
                     body.projectId,
                 ),
             );
-            await enqueueRun(config, result.runId);
-            return Response.json(result, { headers });
+            return Response.json(
+                await publishRunEnqueue(db, config, result.runId),
+                { headers },
+            );
         }
 
         if (
@@ -1377,8 +1383,9 @@ export async function handleRequest(
             assertInternalToken(request, config);
             const input = await request.json();
             await retryRunPayload(db, input);
-            await enqueueRun(config, input.runId);
-            return new Response(null, { status: 204, headers });
+            const result = await publishRunEnqueue(db, config, input.runId);
+            // Existing clients accept any successful status and ignore this body.
+            return Response.json(result, { headers });
         }
 
         const runProgressMatch = /^\/api\/runs\/([^/]+)\/progress$/.exec(

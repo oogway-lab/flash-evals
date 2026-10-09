@@ -15,8 +15,8 @@ vi.mock("@/server/api/client", () => ({
 
 import { GET } from "./route";
 
-const LEGACY_KEY = "8f14e45f-ceea-467a-9c1e-a2d43a0f9d1c";
-const DATASET_KEY = "datasets/ds-1/8f14e45f-ceea-467a-9c1e-a2d43a0f9d1c.jpeg";
+const LEGACY_KEY = "00000000-0000-4000-8000-000000000001";
+const DATASET_KEY = "datasets/ds-1/00000000-0000-4000-8000-000000000001.jpeg";
 
 function call(segments: string[]) {
     return GET(new Request("http://localhost/api/images"), {

@@ -1,0 +1,15 @@
+# Historical false positives verified in the initial public release.
+# These exact commit:path:rule:line identities are synthetic test data:
+# - Image/storage tests use UUID object names, not credentials.
+# - Executor/redaction tests use deliberately fake provider-error examples.
+# Current fixtures now use low-entropy fake values. These entries do not ignore
+# any file, rule, or newly introduced occurrence. Do not replace with patterns.
+# scripts/check-gitleaks-config.mjs locks this seven-entry baseline and checks
+# that a fresh occurrence of a historical fake value is still detected.
+48f9644ed975fc9efce8e9b86161cc6ab18250e3:apps/web/app/api/images/[...key]/route.test.ts:generic-api-key:18
+48f9644ed975fc9efce8e9b86161cc6ab18250e3:apps/web/server/runs/executor.test.ts:generic-api-key:503
+48f9644ed975fc9efce8e9b86161cc6ab18250e3:apps/web/server/runs/executor.test.ts:generic-api-key:645
+48f9644ed975fc9efce8e9b86161cc6ab18250e3:apps/web/server/storage/objects.supabase.test.ts:generic-api-key:4
+48f9644ed975fc9efce8e9b86161cc6ab18250e3:apps/web/server/storage/objects.test.ts:generic-api-key:21
+48f9644ed975fc9efce8e9b86161cc6ab18250e3:packages/secrets/src/redact.test.ts:generic-api-key:13
+48f9644ed975fc9efce8e9b86161cc6ab18250e3:packages/secrets/src/redact.test.ts:generic-api-key:17

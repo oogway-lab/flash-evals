@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { getApiConfig } from "../config.js";
 import { createDb } from "../db.js";
+import { startRunEnqueueReplay } from "../runEnqueue.js";
 import { resolveMcpPrincipalForRawToken } from "./auth.js";
 import { registerMosaicMcpCapabilities } from "./registry.js";
 
@@ -28,10 +29,15 @@ export async function startMosaicMcpStdio(): Promise<void> {
         name: "mosaic-evals",
         version: "0.1.0",
     });
-    registerMosaicMcpCapabilities(server, { runtime: { config, db }, principal });
+    registerMosaicMcpCapabilities(server, {
+        runtime: { config, db },
+        principal,
+    });
 
     const transport = new StdioServerTransport();
     await server.connect(transport);
+    const stopRunReplay = startRunEnqueueReplay(db, config);
+    server.server.onclose = stopRunReplay;
     console.error("Flash Evals MCP stdio server running.");
 }
 

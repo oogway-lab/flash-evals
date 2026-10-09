@@ -18,7 +18,7 @@ afterAll(() => {
 
 describe("storage keys", () => {
     it("accepts legacy bare-uuid keys", async () => {
-        const key = "6352ac02-29e9-4149-860b-73fd40f0e972";
+        const key = "00000000-0000-4000-8000-000000000002";
         await putObject(key, Buffer.from("legacy"), "audio/wav");
         expect((await loadObjectBytes(key)).toString()).toBe("legacy");
     });

@@ -1,90 +1,120 @@
 # Flash Evals
 
-**Early-stage alpha:** Flash Evals is self-hosted evaluation software under active development. Expect rough edges and breaking changes; it is not a production-ready managed service.
+Compare models and prompts on the examples that matter to your application.
+Flash Evals is a self-hosted app for evaluating text, image, and speech-to-text
+outputs. It keeps the inputs, outputs, scores, latency, and estimated cost together
+so you can inspect why one approach works better than another.
 
-Flash Evals compares language, image, and speech-to-text models on your own datasets. It records structured-output accuracy, latency, cost, field-level differences against labels, and LLM-as-judge scores. Prompt workflows can compose multiple model and evaluation steps.
+**Early-stage alpha.** Expect rough edges and breaking changes. This source
+release is for local experimentation and development; it is not a managed service
+or a production-ready deployment guide.
 
 [![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL--3.0--only-informational.svg)](LICENSE)
 
-## Quick start
+## What can I do with it?
 
-**Requirements:** Node.js 24.21.0 LTS, pnpm 12.6.0, and Docker for the bundled local Postgres setup.
+- Compare several models on the same text, image, or audio dataset.
+- Check structured answers against reference labels, or use a model to judge
+  outputs against a rubric.
+- Compare transcripts and, where supported, speaker diarization.
+- Build workflows that connect model calls, prompts, and evaluation steps.
+- Review individual results, add notes, and annotate cases that need attention.
+- Let an MCP-compatible agent work with the same datasets, prompts, and runs.
+
+A **dataset** holds your examples. A **prompt** describes the task and expected
+output. A **run** applies selected models to the dataset and records the results.
+A **workflow** connects several steps when a single prompt is not enough.
+
+## Run locally
+
+You need Git, Node.js **24.21.0**, pnpm **12.6.0**, and Docker Compose v2 with
+`--wait` support. Use a disposable database: **the seed command resets application
+tables, including existing datasets and runs.**
+
+Run these commands in a terminal on your development machine:
 
 ```bash
-pnpm install
+git clone https://github.com/oogway-lab/flash-evals.git
+cd flash-evals
+pnpm install --frozen-lockfile
 pnpm run setup:local
-docker compose up -d postgres
+docker compose up -d --wait postgres
+node scripts/build-packages.mjs
 pnpm run db:migrate
 pnpm run seed
 pnpm run dev
 ```
 
-`setup:local` creates local-only environment files and generated development secrets without overwriting existing files. This setup does not require Clerk or Supabase. The development command starts the API on port 3001, web app on port 3000, and worker with the local authentication bypass enabled.
+Open <http://localhost:3000>. You should see the seeded workspace with synthetic
+receipt examples and saved results. The images are placeholders and the stored
+outputs are fixtures, not a benchmark of model quality.
 
-The seed command **resets application tables** in the configured database and loads synthetic example data with placeholder images. It does not call an LLM provider. Use it only with a disposable local database. To run model evaluations, add a provider key such as `OPENROUTER_API_KEY` to `apps/api/.env`.
+No Clerk, Supabase, or provider account is needed to explore those examples.
+`setup:local` creates two local environment files with matching generated secrets;
+`dev` starts the web app, API, and background worker. Keep this development stack
+on a trusted machine, without public exposure: it bypasses web sign-in and allows
+local uploads without authentication.
 
-Open <http://localhost:3000>. For separate processes, use `pnpm run api:dev`, `pnpm run worker`, and `pnpm --filter @mosaic/web dev`.
+To make real model calls, add a provider key to `apps/api/.env` and restart the
+stack. The generated configuration uses `OPENROUTER_API_KEY`. Tests, prompt
+validation, judges, and evaluations can all incur provider charges.
 
-See [configuration](docs/configuration.md) for environment variables and [STT evaluations](docs/stt-evaluations.md) for speech-to-text inputs and metrics.
+See the [getting-started guide](docs/getting-started.md) for the first evaluation,
+a non-Docker database, stopping and restarting, and setup troubleshooting.
 
-## What it does
+## Documentation
 
-- Compare model outputs side by side on text, image, and audio datasets.
-- Score structured output, field-level matches, transcripts, diarization, and custom criteria.
-- Track latency, token use, and estimated provider cost for each run.
-- Compose prompts, model calls, and evaluators into multi-step workflows.
-- Use the Streamable HTTP MCP endpoint to work with datasets, prompts, runs, workflows, and settings.
+| I want to…                                            | Read                                                  |
+| ----------------------------------------------------- | ----------------------------------------------------- |
+| Start from a fresh clone                              | [Getting started](docs/getting-started.md)            |
+| Connect an agent or call the MCP server               | [MCP guide](docs/mcp-eval-server.md)                  |
+| Set provider keys, storage, authentication, or limits | [Configuration](docs/configuration.md)                |
+| Evaluate audio and transcripts                        | [Speech-to-text evaluations](docs/stt-evaluations.md) |
+| Understand runs, workflows, and model routing         | [Concepts](CONCEPTS.md)                               |
+| Change the code and run checks                        | [Contributing](CONTRIBUTING.md)                       |
+| Understand data isolation and security reporting      | [Security policy](SECURITY.md)                        |
 
-## Architecture
+## Before using your own data
 
-Flash Evals is organized as a pnpm workspace:
+- In `single-org` tenancy mode, accounts on the configured verified email domain
+  share the instance's workspaces and data. Projects are organizational boundaries,
+  not private access controls.
+- `isolated` mode gives each new account a private team. Inviting or sharing with
+  other accounts is not currently supported.
+- Inputs, prompts, and outputs may contain sensitive information. Running an
+  evaluation sends the relevant inputs to your selected model providers.
+- Cost figures are estimates. Spending limits use recorded usage, not a prepaid
+  balance or a guarantee against every in-flight charge.
+- MCP can change and delete data. Its `confirm: true` arguments are supplied by
+  the client; they do not create a human approval screen.
 
-| Path                    | Purpose                                                                         |
-| ----------------------- | ------------------------------------------------------------------------------- |
-| `apps/web`              | Next.js web app, local development worker, and database schema/migrations.      |
-| `apps/api`              | Node.js API for Postgres, object storage, provider calls, queued runs, and MCP. |
-| `packages/api-contract` | Shared API types and typed client.                                              |
-| `packages/llm-core`     | Provider transports and cost helpers.                                           |
-| `packages/secrets`      | Helpers for encrypting provider credentials at rest.                            |
+## How it fits together
 
-The web tier calls the API for privileged work. Do not expose provider credentials, database credentials, or the internal API token to browser code.
+The browser talks to a Next.js web app. The API handles database access, uploads,
+provider calls, and MCP. A separate worker consumes queued evaluations from
+PostgreSQL and saves their results.
 
-## Authentication and data access
+| Path                    | Responsibility                                           |
+| ----------------------- | -------------------------------------------------------- |
+| `apps/web`              | Web app, worker, database schema, and migrations         |
+| `apps/api`              | API, MCP server, storage, provider calls, and run queues |
+| `packages/api-contract` | Shared API types and client                              |
+| `packages/llm-core`     | Model-provider transports and cost helpers               |
+| `packages/secrets`      | Provider-credential encryption helpers                   |
 
-Local development uses `AUTH_DEV=true` and `AUTH_DEV_ALLOW_INSECURE=1`; this bypass is rejected in production.
+The product is called Flash Evals. Existing `@mosaic/*` package names,
+`MOSAIC_*` variables, and `mosaic://` resource URIs remain unchanged for
+compatibility. Use those identifiers exactly as documented.
 
-`MOSAIC_TENANCY_MODE` controls account isolation. In `single-org` mode, every verified account on the configured email domain shares the instance's workspaces and data. In `isolated` mode, each signup receives a private team, but inviting or sharing with other accounts is not currently supported. Review [SECURITY.md](SECURITY.md) before exposing an instance to other people.
+## Contributing and license
 
-## Known limitations
+Focused bug reports and pull requests are welcome. Read [Contributing](CONTRIBUTING.md)
+and the [Code of Conduct](CODE_OF_CONDUCT.md), and remove secrets and personal or
+customer data before sharing reports publicly. There is no active private
+vulnerability-reporting channel yet; read the [security policy](SECURITY.md)
+before reporting a security concern, and do not post vulnerability details publicly.
 
-- This is an early-stage alpha and interfaces, schemas, and configuration can change.
-- A single-org instance has no per-project privacy; everyone in its shared team can see everyone else's data.
-- Provider calls and speech-to-text probes may incur charges. Review the selected model and provider terms before running them.
-- Public hosted deployment instructions and a managed service are not part of this source release.
-- The local seed data is synthetic; user-provided datasets and model outputs may contain sensitive information and should be handled accordingly.
-
-## MCP server
-
-The API exposes a Streamable HTTP MCP endpoint at `/mcp` when `MOSAIC_MCP_ENABLED=true`. See [MCP server setup](docs/mcp-eval-server.md) for client configuration. `AUTH_DEV` does not bypass MCP authentication.
-
-## Development and checks
-
-```bash
-pnpm run typecheck
-pnpm run build
-pnpm run test
-pnpm run test:e2e
-pnpm run lint
-pnpm run quality
-pnpm run security
-```
-
-GitHub Actions runs the quality and security gates on pull requests and pushes to `main`. It uses GitHub-hosted `ubuntu-latest` runners and does not deploy the application.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), and [Security Policy](SECURITY.md). Do not include credentials, customer data, or personal information in public issues or pull requests.
-
-## License
-
-Current first-party source and documentation are licensed under [AGPL-3.0-only](LICENSE). Copyright © 2026 Oogway Labs Private Limited. See [LICENSE_HISTORY.md](LICENSE_HISTORY.md) for the note on earlier MIT distributions. Third-party components retain their own notices and license terms.
+First-party source and documentation are licensed under [AGPL-3.0-only](LICENSE).
+Copyright © 2026 Oogway Labs Private Limited. See [License history](LICENSE_HISTORY.md)
+for earlier MIT distributions and [Third-party notices](THIRD_PARTY_NOTICES.md)
+for dependencies with their own terms.

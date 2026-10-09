@@ -6,11 +6,12 @@ import type {
     ReviewVerdict,
     RunStatus,
 } from "@mosaic/api-contract";
-import type { IDb } from "../../db.js";
+import { withTransaction, type IDb } from "../../db.js";
 import { ApiBadRequestError, ApiNotFoundError } from "../../errors.js";
 
 interface IRunRow {
     status: RunStatus;
+    enqueueStatus?: "pending_enqueue" | "queued";
 }
 
 interface IRunTeamForCellRow {
@@ -34,6 +35,7 @@ export async function runProgressPayload(
     if (!run) throw new ApiNotFoundError();
     return {
         status: run.status,
+        ...(run.enqueueStatus ? { enqueueStatus: run.enqueueStatus } : {}),
         ...(await progressPayloadForRun(db, runId)),
     };
 }
@@ -42,7 +44,12 @@ export async function saveRunNotePayload(
     db: IDb,
     input: ISaveRunNoteRequest,
 ): Promise<void> {
-    const run = await getTeamRun(db, input.teamId, input.projectId, input.runId);
+    const run = await getTeamRun(
+        db,
+        input.teamId,
+        input.projectId,
+        input.runId,
+    );
     if (!run) throw new ApiNotFoundError();
     await db.query(
         `insert into run_notes (run_id, body, updated_by, updated_at)
@@ -75,7 +82,8 @@ export async function saveCellAnnotationPayload(
         !row ||
         row.team_id !== input.teamId ||
         row.project_id !== input.projectId
-    ) throw new ApiNotFoundError();
+    )
+        throw new ApiNotFoundError();
 
     await db.query(
         `insert into run_cell_annotations (
@@ -100,7 +108,12 @@ export async function deleteRunPayload(
     db: IDb,
     input: IRunLifecycleRequest,
 ): Promise<void> {
-    const run = await getTeamRun(db, input.teamId, input.projectId, input.runId);
+    const run = await getTeamRun(
+        db,
+        input.teamId,
+        input.projectId,
+        input.runId,
+    );
     if (!run) throw new ApiNotFoundError();
 
     const cells = await db.query<{ id: string }>(
@@ -125,19 +138,58 @@ export async function deleteRunPayload(
     await db.query("delete from run_notes where run_id = $1", [input.runId]);
     await db.query("delete from run_cells where run_id = $1", [input.runId]);
     await db.query("delete from run_models where run_id = $1", [input.runId]);
-    await db.query("delete from runs where id = $1 and team_id = $2 and project_id = $3", [
-        input.runId,
-        input.teamId,
-        input.projectId,
-    ]);
+    await db.query(
+        "delete from runs where id = $1 and team_id = $2 and project_id = $3",
+        [input.runId, input.teamId, input.projectId],
+    );
 }
 
 export async function retryRunPayload(
     db: IDb,
     input: IRunLifecycleRequest,
 ): Promise<void> {
-    const run = await getTeamRun(db, input.teamId, input.projectId, input.runId);
-    if (!run) throw new ApiNotFoundError();
+    await withTransaction(db, async (tx) => {
+        const run = (
+            await tx.query<IRunRow>(
+                "select status from runs where id=$1 and team_id=$2 and project_id=$3 for update",
+                [input.runId, input.teamId, input.projectId],
+            )
+        ).rows[0];
+        if (!run) throw new ApiNotFoundError();
+        if (run.status === "running") return;
+        const publication = (
+            await tx.query<{ status: string; jobId: string }>(
+                `select status, job_id as "jobId" from run_enqueue_outbox where run_id=$1 for update`,
+                [input.runId],
+            )
+        ).rows[0];
+        if (publication?.status === "pending_enqueue") return;
+        if (publication?.status === "queued" && run.status === "pending") {
+            // A worker can fail before setting the run running. Preserve explicit
+            // recovery of that case, but never duplicate work still in the queue.
+            // A queued outbox record implies pg-boss already created its schema.
+            const active = (
+                await tx.query(
+                    `select id from pgboss.job where id=$1 and name='eval-run'
+                 and state in ('created', 'retry', 'active') limit 1`,
+                    [publication.jobId],
+                )
+            ).rows[0];
+            if (active) return;
+        }
+        await tx.query(
+            `insert into run_enqueue_outbox (run_id) values ($1)
+             on conflict (run_id) do update set
+                job_id=gen_random_uuid(), status='pending_enqueue', publish_attempts=0,
+                available_at=now(), queued_at=null, last_error=null, updated_at=now()`,
+            [input.runId],
+        );
+        // Admission and status change are atomic. A second retry after publication
+        // sees pending + a live job instead of admitting another terminal retry.
+        await tx.query(`update runs set status='pending' where id=$1`, [
+            input.runId,
+        ]);
+    });
 }
 
 async function getTeamRun(
@@ -147,7 +199,8 @@ async function getTeamRun(
     runId: string,
 ): Promise<IRunRow | undefined> {
     const result = await db.query<IRunRow>(
-        "select status from runs where id = $1 and team_id = $2 and project_id = $3 limit 1",
+        `select status, (select status from run_enqueue_outbox where run_id=runs.id) as "enqueueStatus"
+         from runs where id = $1 and team_id = $2 and project_id = $3 limit 1`,
         [runId, teamId, projectId],
     );
     return result.rows[0];
@@ -168,9 +221,11 @@ async function progressPayloadForRun(
     let done = 0;
     let failed = 0;
     for (const row of progressResult.rows) {
-        const count = typeof row.count === "number" ? row.count : Number(row.count);
+        const count =
+            typeof row.count === "number" ? row.count : Number(row.count);
         total += count;
-        if (row.status === "succeeded" || row.status === "cached") done += count;
+        if (row.status === "succeeded" || row.status === "cached")
+            done += count;
         else if (row.status === "failed") failed += count;
     }
     return { total, done, failed, pending: total - done - failed };
