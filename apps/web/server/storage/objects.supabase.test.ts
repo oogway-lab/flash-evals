@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadObjectBytes, ObjectStorageError } from "./objects";
 
-const STORAGE_KEY = "8f14e45f-ceea-467a-9c1e-a2d43a0f9d1c";
+const STORAGE_KEY = "00000000-0000-4000-8000-000000000001";
 const UPSTREAM_BODY =
     '{"statusCode":"403","error":"Unauthorized","message":"new row violates row-level security policy"}';
 

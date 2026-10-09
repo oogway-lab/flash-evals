@@ -1518,6 +1518,15 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
           "minLength": 1,
           "type": "string",
         },
+        "transport": {
+          "enum": [
+            "openai",
+            "gateway",
+            "openrouter",
+            "bifrost",
+          ],
+          "type": "string",
+        },
       },
       "required": [
         "projectId",
@@ -1729,6 +1738,15 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
         },
         "targetModelId": {
           "minLength": 1,
+          "type": "string",
+        },
+        "transport": {
+          "enum": [
+            "openai",
+            "gateway",
+            "openrouter",
+            "bifrost",
+          ],
           "type": "string",
         },
       },
@@ -2103,7 +2121,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
   },
   {
     "annotations": undefined,
-    "description": "Create and enqueue an eval run from a dataset, runnable prompt version, model IDs, and scoring setup.",
+    "description": "Create an eval run and durably enqueue it. Supply a stable idempotencyKey when retrying the same request; pending_enqueue means publication will be retried automatically.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -2215,6 +2233,11 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
             ],
           },
           "type": "array",
+        },
+        "idempotencyKey": {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
         },
         "judgeConfigId": {
           "format": "uuid",

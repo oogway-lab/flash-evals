@@ -10,12 +10,12 @@ describe("redactSecrets", () => {
         ['{"apiKey":"plain-secret-value"}', "plain-secret-value"],
         ["api_key=qwertyuiop", "qwertyuiop"],
         [
-            "GET https://generativelanguage.googleapis.com/v1/models?key=AIzaSyA1234567890abcdefghijk",
-            "AIzaSyA1234567890abcdefghijk",
+            "GET https://generativelanguage.googleapis.com/v1/models?key=AIzaSyA111111111111111111111",
+            "AIzaSyA111111111111111111111",
         ],
         [
-            "Incorrect API key provided: sk-proj-abcDEF1234567890",
-            "sk-proj-abcDEF1234567890",
+            "Incorrect API key provided: sk-proj-aaaaaaaaaaaaaaaa",
+            "sk-proj-aaaaaaaaaaaaaaaa",
         ],
         [
             "OpenRouter rejected sk-or-v1-0123456789abcdef",

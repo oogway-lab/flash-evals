@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createRunWithIdempotency } from "../../runIdempotency.js";
 import type {
     ICreateRunRequest,
     ICreateRunResponse,
@@ -16,7 +17,7 @@ import {
     sttModelIdentityForId,
 } from "@mosaic/api-contract";
 import type { IApiConfig } from "../../config.js";
-import { type IDb, withTransaction } from "../../db.js";
+import type { IDb } from "../../db.js";
 import {
     ApiBadRequestError,
     ApiConflictError,
@@ -188,13 +189,15 @@ export async function createRunPayload(
     input: ICreateRunRequest,
     config?: IApiConfig,
 ): Promise<ICreateRunResponse> {
-    const preparedInput = inputWithSttVariantModels(input);
-    validateRunModelTransports(preparedInput.models);
-    validateUniqueModelIds(preparedInput.models.map(({ modelId }) => modelId));
-    await validateTransportKeysWithResolvedKeys(db, preparedInput, config);
-    return withTransaction(db, (tx) =>
-        createRunPayloadInTransaction(tx, preparedInput, config),
-    );
+    return createRunWithIdempotency(db, input, "models", async (tx) => {
+        const preparedInput = inputWithSttVariantModels(input);
+        validateRunModelTransports(preparedInput.models);
+        validateUniqueModelIds(
+            preparedInput.models.map(({ modelId }) => modelId),
+        );
+        await validateTransportKeysWithResolvedKeys(tx, preparedInput, config);
+        return createRunPayloadInTransaction(tx, preparedInput, config);
+    });
 }
 
 function inputWithSttVariantModels(
@@ -320,6 +323,16 @@ function validateRunModelTransports(models: ICreateRunRequest["models"]): void {
 }
 
 export async function createRunFromSelectionPayload(
+    db: IDb,
+    input: ICreateRunFromSelectionRequest,
+    config?: IApiConfig,
+): Promise<ICreateRunResponse> {
+    return createRunWithIdempotency(db, input, "selection", (tx) =>
+        createRunFromSelectionInTransaction(tx, input, config),
+    );
+}
+
+async function createRunFromSelectionInTransaction(
     db: IDb,
     input: ICreateRunFromSelectionRequest,
     config?: IApiConfig,
@@ -1228,7 +1241,10 @@ async function createRunPayloadInTransaction(
     );
     const runModelIds = await insertRunModels(db, runId, input.models);
     await insertRunCells(db, runId, runModelIds, items);
-    return { runId };
+    await db.query(`insert into run_enqueue_outbox (run_id) values ($1)`, [
+        runId,
+    ]);
+    return { runId, enqueueStatus: "pending_enqueue" };
 }
 
 async function configForSttValidation(

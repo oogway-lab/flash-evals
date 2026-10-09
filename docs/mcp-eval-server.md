@@ -1,359 +1,475 @@
-# Flash Evals MCP Eval Server
+# Connect an agent with MCP
 
-Flash Evals exposes a Streamable HTTP MCP endpoint at `/mcp` when `MOSAIC_MCP_ENABLED=true`.
-The deployed endpoint uses Clerk OAuth access tokens: Clerk proves identity, and Flash Evals maps the Clerk subject to `users.clerk_user_id` to recover the `userId` and `teamId` used by the existing eval APIs.
-Raw `mcp_...` bearer tokens are local/dev fallback only and must not be the normal teammate onboarding path.
+[Documentation home](../README.md#documentation) · [Configuration](configuration.md)
 
-## Endpoints
+[Local setup](#local-setup) · [First evaluation](#a-first-evaluation-through-tools) ·
+[Tool reference](#tool-reference) · [OAuth setup](#deployed-oauth-setup) ·
+[Troubleshooting](#troubleshooting)
 
-| Environment                                     | URL                           |
-| ----------------------------------------------- | ----------------------------- |
-| Deployed API                                    | `https://<your-api-host>/mcp` |
-| Local API (`pnpm run dev` / `pnpm run api:dev`) | `http://127.0.0.1:3001/mcp`   |
+MCP (Model Context Protocol) lets an agent discover and call Flash Evals tools.
+It can inspect datasets and results, build prompts and workflows, start runs, and
+save review notes. These operations use the same API logic and data as the web app.
 
-The sections below use `<your-api-host>` for your deployed API host and
-`<your-clerk-host>` for your Clerk frontend API host (for a Clerk production
-instance, usually `clerk.<your-web-host>`).
+The HTTP endpoint is `/mcp` on the **API**, normally
+`http://127.0.0.1:3001/mcp` locally. Enable it with `MOSAIC_MCP_ENABLED=true`.
+The server uses **stateless Streamable HTTP**, not the older standalone SSE
+transport. It creates no persistent MCP session ID. Send authorization on every
+request; reconnecting does not cancel or undo work already created.
 
-## Connect an agent
+There are two authentication paths:
 
-Authentication is standard MCP OAuth discovery, so a compliant client
-negotiates the whole flow from the URL alone — there is no token to paste.
+| Use               | Authentication                                                             |
+| ----------------- | -------------------------------------------------------------------------- |
+| Local development | Explicitly enabled raw bearer-token fallback                               |
+| Deployed instance | Clerk OAuth, with a Flash Evals account linked by signing into the web app |
 
-Claude Code (add `-s user` to make it available in every project, or
-`-s project` to write it into a checked-in `.mcp.json` for teammates):
+**The web app's `AUTH_DEV` bypass never authenticates MCP requests.** Do not
+publish local bearer tokens or put them in checked-in client configuration.
 
-```bash
-claude mcp add --transport http flash-evals https://<your-api-host>/mcp
-```
+## Local setup
 
-Then run `/mcp` in the session and complete the Clerk sign-in in the browser.
+First complete [Getting started](getting-started.md), including migrations and
+the synthetic seed. Keep the API, web app, and worker running with `pnpm run dev`.
 
-Against a local stack, point at the API's own origin and supply a raw token —
-`AUTH_DEV` does **not** apply to this endpoint. `resolveMcpPrincipal` always
-requires a bearer token: it uses Clerk when OAuth is configured, otherwise the
-raw-token fallback, and rejects the request with `MCP OAuth is not configured.`
-when neither is set up. Enable the fallback and mint a token as described in
-[Local Raw Token Fallback](#local-raw-token-fallback), then:
+### Enable and create a development token
 
-```bash
-claude mcp add --transport http flash-evals-local http://127.0.0.1:3001/mcp \
-  --header "Authorization: Bearer mcp_..."
-```
+1. Add these settings to `apps/api/.env`. Generate a random pepper with
+   `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`
+   and use its output in place of the placeholder:
 
-For local Codex work prefer the stdio entrypoint instead (see the same
-section) — it skips localhost networking entirely.
+    ```dotenv
+    MOSAIC_MCP_ENABLED=true
+    MOSAIC_MCP_RAW_TOKEN_FALLBACK_ENABLED=true
+    MOSAIC_MCP_TOKEN_PEPPER=replace-with-your-generated-value
+    ```
 
-Other clients (MCP Inspector, Codex, Cursor) take the same URL with transport
-type `http` and register themselves — see
-[Connecting an MCP client](#connecting-an-mcp-client-claude-connector-codex-cursor-inspector)
-for the server-side requirements.
+2. Stop and restart `pnpm run dev` to load the changes. Leave the OAuth settings
+   unset for this local fallback; a partial OAuth configuration can prevent the
+   API from starting, and a complete OAuth configuration takes precedence over
+   raw tokens on HTTP.
+3. In a second terminal at the repository root, create a token for the seeded
+   development account:
 
-## Connecting an MCP client (Claude connector, Codex, Cursor, Inspector)
+    ```bash
+    pnpm --filter @mosaic/api mcp:token:create -- --email dev@local --name "Local MCP"
+    ```
 
-Flash Evals accepts **any** MCP client that completes Clerk OAuth. Clients register
-themselves through RFC 7591 dynamic client registration, so there is no per-client
-setup: add the URL `https://<your-api-host>/mcp` and sign in.
+    The command prints `tokenId`, `userId`, `teamId`, and the full `token` once.
+    Keep the token private and retain its ID for revocation. For another existing
+    local account, replace `dev@local` with that account's email. The command does
+    not create a user.
 
-```bash
-# Claude Code
-claude mcp add --transport http flash-evals https://<your-api-host>/mcp
+The pepper must stay the same when creating and using tokens. Changing it makes
+existing token hashes unusable. Raw-token fallback is rejected in production.
 
-# Codex CLI
-codex mcp add flash-evals --url https://<your-api-host>/mcp
-codex mcp login flash-evals
-```
+### Check the connection without making model calls
 
-For the Claude desktop/web connector, add it under **Settings → Connectors → Add
-custom connector** with that URL and leave **OAuth Client ID** and **Client
-Secret** empty.
-
-Three things must be true on the server side for that to work. This list exists
-so a new Clerk instance can be set up in one pass rather than discovered one
-failure at a time.
-
-**1. Dynamic client registration enabled, and no client id pinned.**
-
-Enable DCR on the Clerk instance (confirm with `curl -s
-https://<your-clerk-host>/.well-known/oauth-authorization-server | grep
-registration_endpoint`), and on the API service set:
+In a Bash terminal, read the token without putting it into shell history, then
+run the included example:
 
 ```bash
-MOSAIC_MCP_OAUTH_DYNAMIC_CLIENTS=true
-# and leave MOSAIC_MCP_OAUTH_CLIENT_ID unset
+read -r -s -p "Local MCP token: " MOSAIC_MCP_LOCAL_TOKEN
+printf '\n'
+export MOSAIC_MCP_LOCAL_TOKEN
+node docs/examples/mcp-read-only.mjs
 ```
 
-Both halves are required. `resolveMcpOAuthConfig` throws
-`Missing required MCP OAuth env: MOSAIC_MCP_OAUTH_CLIENT_ID or
-MOSAIC_MCP_OAUTH_DYNAMIC_CLIENTS=true` at boot if neither is present, so the API
-would crash-loop. And `MOSAIC_MCP_OAUTH_DYNAMIC_CLIENTS` alone does nothing at
-the auth layer — it only relaxes that startup validation. What actually admits
-dynamic clients is the **absence** of `MOSAIC_MCP_OAUTH_CLIENT_ID`: both client
-guards in `resolveClerkOAuthSubject` are conditional on it, so leaving it unset
-skips them rather than failing them.
+The [example source](examples/mcp-read-only.mjs) negotiates the protocol, lists
+tools, resource templates, and prompts, and reads your user, workspaces, and
+projects. It does not create datasets or run evaluations. It reports **78 tools,
+4 resource templates, and 1 prompt** on this revision. It also gives you the
+workspace and project IDs needed for subsequent calls.
 
-If a client id _is_ pinned, every other client is rejected with
-`OAuth token was not issued for this Flash Evals MCP client.` — even one that
-completed Clerk sign-in successfully, because DCR mints a fresh client id per
-registration. This is the trade-off: pinning supports exactly one client, and
-there is no allowlist of several (the equality check is scalar).
-
-**Security note.** With no pin, any client registered against the Clerk instance
-is accepted once a user consents. The bound on that is
-`routes/auth.ts`, which provisions Flash Evals accounts only for verified
-addresses on `MOSAIC_ALLOWED_EMAIL_DOMAIN`, so an attacker must phish a team member's consent
-screen rather than any internet user. Treat "only approve Flash Evals consent screens
-you initiated" as the operating rule, and revoke authorised applications per user
-in Clerk if anything looks wrong. Note that destructive tools' `confirm: true`
-requirement is a tool argument an agent supplies itself, not a human gate.
-
-**Static client id (only when DCR is unavailable).** Set
-`MOSAIC_MCP_OAUTH_CLIENT_ID` to the Clerk application's id, put the same value
-in the client's _OAuth Client ID_ field, and register that client's redirect URI
-(next section). A client id is a public identifier — it travels in every
-authorize URL — so it is not a secret, but the client _secret_ is; leave it
-empty, since the Clerk application is a public client using PKCE and a supplied
-secret is ignored. Clients with no client-id field at all (Codex) cannot be used
-this way.
-
-**2. Redirect URI registered in Clerk — static client ids only.**
-
-In **Clerk Dashboard → Configure → OAuth Applications → (this app) → Redirect
-URLs**, add exactly:
-
-```text
-https://claude.ai/api/mcp/auth_callback
-```
-
-No trailing slash. Missing it fails at Clerk's authorize endpoint with
-`The 'redirect_uri' parameter does not match any of the OAuth 2.0 Client's
-pre-registered redirect urls.` Dynamically registered clients supply their own
-redirect URI at registration time, so this step does not apply to them — Codex,
-for instance, uses an ephemeral `http://127.0.0.1:<port>/callback/<nonce>` that
-could never be pre-registered.
-
-**3. Scopes enabled on the Clerk application.**
-
-Clients request all six of `openid`, `profile`, `email`, `public_metadata`,
-`private_metadata`, `offline_access`. Every one must be enabled — this applies to
-dynamically registered clients too, which is why it is worth checking on a fresh
-Clerk instance.
-
-This is the failure that looks least like its cause: Clerk's
-`/oauth/authorize` still returns a clean `302`, and the scope is only validated
-one hop later at `/oauth/authorize/continue`, which redirects back to the client
-with `error=invalid_scope`. The connector surfaces that as the generic
-_"Authorization with Flash Evals failed. You can check your credentials and
-permissions."_ — so it reads like a credential problem when nothing is wrong
-with the credentials.
-
-Check which scopes an application actually permits without touching the
-dashboard. `client_id` here is any OAuth application registered on the instance
-together with one of its registered redirect URIs — the pair only has to be valid
-enough to reach scope validation, and neither needs to be the client you are
-debugging:
+An optional first argument selects another local API address:
 
 ```bash
-for s in openid profile email public_metadata private_metadata offline_access; do
-  printf '%s -> ' "$s"
-  curl -s -o /dev/null -D - "https://<your-clerk-host>/oauth/authorize/continue?client_id=<CLERK_OAUTH_CLIENT_ID>&code_challenge=x&code_challenge_method=S256&redirect_uri=https%3A%2F%2Fclaude.ai%2Fapi%2Fmcp%2Fauth_callback&response_type=code&scope=$s&state=p" \
-    | grep -i '^location' | grep -q invalid_scope && echo "NOT ALLOWED" || echo "allowed"
-done
+node docs/examples/mcp-read-only.mjs http://127.0.0.1:3002/mcp
 ```
 
-**4. `MOSAIC_MCP_ALLOWED_ORIGINS` must include the client's origin.**
+Only pass a trusted endpoint: the example sends your bearer token to that URL.
+It is a local raw-token example, not an OAuth login client.
+
+### Configure your MCP client
+
+For an HTTP client, select Streamable HTTP and use:
+
+- URL: `http://127.0.0.1:3001/mcp`
+- Header: `Authorization: Bearer YOUR_LOCAL_TOKEN`
+
+Store the header in the client's private configuration. If it sends an `Origin`
+header, add that exact origin to the comma-separated
+`MOSAIC_MCP_ALLOWED_ORIGINS` in `apps/api/.env`, then restart the API. A client
+without an `Origin` header does not need an origin-list entry. This setting is
+separate from the web app's `CORS_ORIGINS`.
+
+A local client can alternatively launch the stdio entrypoint from the repository
+root. Build shared packages first if this is a fresh checkout:
 
 ```bash
-MOSAIC_MCP_ALLOWED_ORIGINS=https://claude.ai,https://claude.com
+node scripts/build-packages.mjs
+pnpm --silent --filter @mosaic/api mcp:stdio
 ```
 
-`assertMcpOrigin` in `apps/api/src/mcp/http.ts` returns early when a request
-sends no `Origin` header, but rejects any origin not on the list — and an unset
-variable parses to an empty list, so **every** browser-originated request is
-refused with `403 Origin is not allowed for MCP.` before authentication runs.
-A `curl` without an `Origin` header will not reproduce it.
+`--silent` keeps pnpm's command banners off the stdio protocol stream.
+The client process must inherit `MOSAIC_MCP_LOCAL_TOKEN`, and the API environment
+file must enable `MOSAIC_MCP_RAW_TOKEN_FALLBACK_ENABLED=true`. Configure the
+client's working directory as the repository root. The stdio server talks to the
+same database and queue directly; it still needs a running database and worker
+for evaluations. It does not turn the server into an unauthenticated local tool.
 
-### Verifying
+When finished, revoke the token by the ID printed during creation:
 
 ```bash
-# 403 => the origin allowlist is wrong; 401 => allowlist fine, token rejected as expected
-curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<your-api-host>/mcp \
-  -H 'Origin: https://claude.ai' -H 'Authorization: Bearer bogus' \
-  -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+pnpm --filter @mosaic/api mcp:token:revoke -- --token-id YOUR_TOKEN_UUID
+unset MOSAIC_MCP_LOCAL_TOKEN
 ```
 
-A working connection shows `POST /mcp 200` in the API's HTTP request logs. On
-Railway that is `railway logs --http`; plain `railway logs` shows build and
-deploy output only. Finally, ask the agent to call `get_current_user`: a connected
-connector whose Clerk identity has never signed in to the Flash Evals web app returns
-`Flash Evals account is not linked for this Clerk user.`, because the MCP path only
-reads `users.clerk_user_id` and never provisions it.
+## Understand scope and responses
 
-## Deployed Clerk OAuth Setup
+Start with `get_current_user`, `list_workspaces`, and `list_projects`. Most tools
+require an explicit `projectId`; `list_projects` requires `workspaceId`, and
+`list_eval_context` requires both. Use IDs returned by this instance. A project
+outside the authenticated tenant is rejected even when its UUID is valid.
 
-1. Configure a Clerk OAuth application for the MCP client.
-   Register the redirect URI required by the client you are testing, for example MCP Inspector commonly uses:
+The token determines `userId` and `teamId`. Supplying those fields in a tool call
+does not change the caller's identity. Projects organize data within the tenant;
+they do not grant per-project privacy.
 
-```text
-http://localhost:6274/oauth/callback
-http://localhost:6274/oauth/callback/debug
+### A successful HTTP request can contain a failed tool call
+
+For a successful tool call, the JSON-RPC response contains:
+
+```json
+{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+        "content": [
+            { "type": "text", "text": "Human-readable summary and data" }
+        ],
+        "structuredContent": { "data": { "example": "tool-specific result" } }
+    }
+}
 ```
 
-2. Set API service env vars:
+Check all of these before treating an operation as successful:
+
+1. HTTP status: authentication, origin, and transport failures may be non-2xx.
+2. JSON-RPC `error`: the protocol request itself may have failed.
+3. `result.isError`: a tool can return HTTP 200 with `isError: true`.
+4. Tool-specific data: for example, `validate_runnable_prompt` can complete
+   successfully while `result.structuredContent.data.passed` is `false`.
+
+Read successful machine-readable results from `result.structuredContent.data`.
+Do not parse the prose summary to recover IDs. The read-only example checks the
+first three levels; callers must interpret validation and run status themselves.
+
+## A first evaluation through tools
+
+This is a small structured-text example. Use an MCP client to call each named
+tool with the JSON arguments shown. Replace uppercase ID placeholders with
+returned UUIDs and `MODEL_ID` with an available, structured-output-capable model
+from your own `list_eval_context` response.
+
+**Steps 3–5 make provider calls and may cost money.** Prompt creation validates
+samples again; it is not just a database save. This example uses the configured
+default transport throughout. Review the selected provider before proceeding.
+
+For explicit provider selection during draft testing and validation, pass the
+same optional `transport` to `test_prompt_draft`, `validate_runnable_prompt`, and
+`create_runnable_prompt`. Accepted values are `openai`, `gateway`, `openrouter`,
+and `bifrost`. Omitting it keeps the configured default. This selects the provider
+for the sample/validation call; saving a prompt does not pin the provider for
+future runs. Workflow routes provide explicit execution-time routing.
+
+### 1. Discover the project and available models
+
+Call `list_workspaces` with no arguments, then `list_projects` with:
+
+```json
+{ "workspaceId": "WORKSPACE_UUID" }
+```
+
+Call `list_eval_context`:
+
+```json
+{ "workspaceId": "WORKSPACE_UUID", "projectId": "PROJECT_UUID" }
+```
+
+### 2. Create a dataset and one reference answer
+
+Call `create_dataset`:
+
+```json
+{
+    "projectId": "PROJECT_UUID",
+    "name": "Sentiment example",
+    "purpose": "golden",
+    "modality": "text"
+}
+```
+
+Keep the returned `id` as `DATASET_UUID`. Call `add_dataset_item`:
+
+```json
+{
+    "projectId": "PROJECT_UUID",
+    "datasetId": "DATASET_UUID",
+    "inputText": "The delivery was fast and everything worked.",
+    "label": { "sentiment": "positive" }
+}
+```
+
+### 3. Validate the task and output schema
+
+Call `validate_runnable_prompt`:
+
+```json
+{
+    "projectId": "PROJECT_UUID",
+    "prompt": "Classify the sentiment of the input as positive, negative, or neutral. Return the requested JSON object.",
+    "targetModelId": "MODEL_ID",
+    "jsonSchema": {
+        "type": "object",
+        "properties": {
+            "sentiment": {
+                "type": "string",
+                "enum": ["positive", "negative", "neutral"]
+            }
+        },
+        "required": ["sentiment"],
+        "additionalProperties": false
+    },
+    "samples": [
+        {
+            "name": "positive",
+            "inputText": "The delivery was fast and everything worked."
+        }
+    ]
+}
+```
+
+Continue only when `data.passed` is `true`. Otherwise inspect `failureMessage`
+and the validation evidence, change the draft or schema, and validate again.
+
+### 4. Save a runnable prompt
+
+Call `create_runnable_prompt` with the same schema and sample:
+
+```json
+{
+    "projectId": "PROJECT_UUID",
+    "name": "Sentiment classifier",
+    "targetModelId": "MODEL_ID",
+    "content": "Classify the sentiment of the input as positive, negative, or neutral. Return the requested JSON object.",
+    "jsonSchema": {
+        "type": "object",
+        "properties": {
+            "sentiment": {
+                "type": "string",
+                "enum": ["positive", "negative", "neutral"]
+            }
+        },
+        "required": ["sentiment"],
+        "additionalProperties": false
+    },
+    "fieldConfigs": [{ "field": "sentiment", "kind": "factual" }],
+    "samples": [
+        {
+            "name": "positive",
+            "inputText": "The delivery was fast and everything worked."
+        }
+    ]
+}
+```
+
+Keep the returned `promptVersionId` as `PROMPT_VERSION_UUID`. Notice that this
+tool calls the prompt text `content`; the validation tool calls it `prompt`.
+
+### 5. Create a run and inspect its results
+
+Choose an `idempotencyKey` once for this logical run, such as
+`sentiment-example-001`, and retain it with the request. Reuse the same key and
+arguments if you retry after a timeout or error. Choose a new key for a new
+evaluation, including another pass through this walkthrough.
+
+Use a judge-capable model for `judgeModelId`, then call `create_eval_run`:
+
+```json
+{
+    "projectId": "PROJECT_UUID",
+    "datasetId": "DATASET_UUID",
+    "promptVersionId": "PROMPT_VERSION_UUID",
+    "idempotencyKey": "sentiment-example-001",
+    "modelIds": ["MODEL_ID"],
+    "maxTokens": 256,
+    "judgeModelId": "MODEL_ID",
+    "judgeRubric": "Score whether the sentiment classification matches the input.",
+    "fieldConfigs": [{ "field": "sentiment", "kind": "factual" }]
+}
+```
+
+Keep the returned `runId`. The response also contains `enqueueStatus`:
+
+- `queued`: the run has been published to the worker queue.
+- `pending_enqueue`: the run and its publication intent are saved, and the server
+  will retry queue publication. It is safe to keep polling this run.
+
+Call `get_run_progress` every few seconds with:
+
+```json
+{ "projectId": "PROJECT_UUID", "runId": "RUN_UUID" }
+```
+
+When the run reaches a terminal state, call `get_run` with the same arguments.
+Inspect failed cells and individual outputs as well as aggregate scores.
+`save_run_note` accepts `projectId`, `runId`, and `body`; `annotate_run_cell`
+accepts a `runCellId` from the result and review fields shown by `tools/list`.
+
+`create_eval_run` accepts an optional `idempotencyKey` of 1–200 characters after
+trimming, scoped to the authenticated team, project, and creator. Repeating the
+same key with the same original request returns the existing run, including
+after dataset or prompt state changes. Reusing it for different input returns a
+conflict. Omitting it creates a new run on each call, so do not blindly repeat an
+unkeyed request after a timeout; inspect `list_runs` and the API logs first.
+
+`retry_run` retries failed work and also returns `runId` and `enqueueStatus`.
+It may make additional paid provider calls. There is no durable run-cancellation
+tool; disconnecting the MCP client does not stop a queued run.
+
+### Workflows
+
+A workflow connects steps into a graph. Read `get_workflow` before editing it.
+`select_workflow_llm_model` updates one node atomically, preserving concurrent
+selections on other nodes. If the target node was removed, reload the graph
+before trying again. `update_workflow` still replaces the complete graph, so
+refresh your copy before submitting a whole-graph edit.
+
+Use `list_eval_context` and the workflow model tools to choose explicit model
+routing for model-backed nodes. A saved route version pins a provider/model
+configuration; a project default is resolved when the run is created.
+
+`create_workflow_run` requires `projectId`, `workflowId`, `datasetId`,
+`runTarget` (`dataset` or `single_item`), and a non-empty `idempotencyKey`.
+For `single_item`, also supply `itemId`. Choose one stable key for a logical
+request and reuse it with the same input when retrying. A result with
+`enqueueStatus: "pending_enqueue"` identifies a durable run awaiting queue
+publication; preserve its `workflowRunId` rather than creating another run.
+Poll `get_workflow_run_progress` with the project, workflow, and workflow-run IDs.
+
+## Resources and the setup prompt
+
+Discover the four **resource templates** with `resources/templates/list`.
+`resources/list` is not the inventory of these parameterized resources.
+
+| Resource      | URI template                                  |
+| ------------- | --------------------------------------------- |
+| Dataset       | `mosaic://projects/{projectId}/datasets/{id}` |
+| Prompt        | `mosaic://projects/{projectId}/prompts/{id}`  |
+| Eval run      | `mosaic://projects/{projectId}/runs/{id}`     |
+| Model options | `mosaic://projects/{projectId}/models`        |
+
+Replace the braces with actual IDs, then call `resources/read` with a `uri`.
+The content is JSON text. The `mosaic://` prefix is an existing protocol
+identifier and should not be renamed to `flash-evals://`.
+
+`prompts/list` exposes one prompt, `create_eval_happy_path`. Retrieve it with
+`prompts/get` and `{"name":"create_eval_happy_path"}` for a suggested sequence.
+It is guidance for the client, not an operation that creates a run by itself.
+
+## Tool reference
+
+The current catalog contains **78 tools** across six groups. `tools/list` is the
+authoritative source for each tool's input schema, description, and annotations.
+The [registry snapshot test](../apps/api/src/mcp/registry.test.ts) checks the
+catalog; listing a tool does not establish that every provider or execution path
+has been tested.
+
+| Group                               | Tools |
+| ----------------------------------- | ----- |
+| Identity, workspaces, and projects  | 9     |
+| Datasets                            | 21    |
+| Prompts                             | 12    |
+| Runs and review                     | 8     |
+| Provider settings and model routing | 15    |
+| Workflows                           | 13    |
+
+See the [complete tool index](mcp-tool-reference.md) for every name.
+
+Deletion, archive changes, and provider-key removal require `confirm: true` and
+advertise destructive annotations. Inspect the target first. This boolean is a
+client-supplied argument, **not human consent enforced by the server**. Configure
+your agent's own approval controls for deletion, credentials, and paid work.
+
+## Deployed OAuth setup
+
+This section describes the MCP authentication requirements for an instance you
+already operate. It is not a complete hosted-deployment walkthrough.
+
+1. Configure the Flash Evals web app and API for Clerk, and sign into the web app
+   once. MCP looks up the linked Clerk user; it does not provision the account.
+2. Enable MCP and supply the API's OAuth settings:
+
+    ```dotenv
+    MOSAIC_MCP_ENABLED=true
+    MOSAIC_MCP_RESOURCE_URL=https://your-api.example/mcp
+    CLERK_ISSUER=https://your-clerk-host.example
+    CLERK_SECRET_KEY=your-server-secret
+    CLERK_PUBLISHABLE_KEY=your-publishable-key
+    CLERK_JWT_KEY=your-jwt-public-key
+    MOSAIC_MCP_RAW_TOKEN_FALLBACK_ENABLED=false
+    ```
+
+3. Choose a client-registration policy:
+    - **One pinned client:** set `MOSAIC_MCP_OAUTH_CLIENT_ID` to that Clerk OAuth
+      application's client ID and register the client's exact redirect URI in
+      Clerk. Tokens issued for another client are rejected.
+    - **Dynamic clients:** enable dynamic client registration in Clerk, set
+      `MOSAIC_MCP_OAUTH_DYNAMIC_CLIENTS=true`, and leave
+      `MOSAIC_MCP_OAUTH_CLIENT_ID` unset. The Flash Evals setting alone does not
+      enable registration in Clerk. Without a pin, the client-ID equality guard
+      does not restrict access to one application; review that trust decision.
+4. Set `MOSAIC_MCP_ALLOWED_ORIGINS` to the exact origins of browser-based clients
+   you want to allow. Avoid copying another deployment's allowlist. Review
+   `CLERK_AUTHORIZED_PARTIES` if you use additional token restrictions.
+5. In the MCP client, select Streamable HTTP, enter your API's `/mcp` URL, and
+   complete OAuth. Client support for discovery, registration, scopes, and
+   redirects varies; use the client's and Clerk's current instructions.
+
+Production requires an HTTPS resource URL and refuses raw-token fallback.
+Keep the server secret private. The publishable key, client ID, and JWT public
+key have different roles; they are not substitutes for an OAuth access token.
+
+To check discovery without credentials:
 
 ```bash
-MOSAIC_MCP_ENABLED=true
-MOSAIC_MCP_RESOURCE_URL=https://<your-api-host>/mcp
-MOSAIC_MCP_ALLOWED_ORIGINS=https://your-mcp-client.example
-MOSAIC_MCP_OAUTH_CLIENT_ID=<clerk-oauth-client-id>
-CLERK_ISSUER=https://<clerk-instance>.clerk.accounts.dev
-CLERK_SECRET_KEY=<clerk-secret-key>
-CLERK_PUBLISHABLE_KEY=<clerk-publishable-key>
-CLERK_JWT_KEY=<clerk-jwt-public-key>
+curl -i https://your-api.example/.well-known/oauth-protected-resource/mcp
+curl -i https://your-api.example/mcp
 ```
 
-Use `MOSAIC_MCP_OAUTH_DYNAMIC_CLIENTS=true` only if the target MCP client requires dynamic client IDs.
-In production, `MOSAIC_MCP_RESOURCE_URL` must use `https`.
+With OAuth configured, the first response includes `resource`,
+`authorization_servers`, and `bearer_methods_supported`. The unauthenticated
+MCP request returns 401 with a `WWW-Authenticate` header pointing to the metadata.
+These checks do not prove a particular client's sign-in flow works. After signing
+in, call `get_current_user` and verify it returns the intended account.
 
-3. Smoke discovery:
+## Troubleshooting
 
-```bash
-curl -i https://<your-api-host>/.well-known/oauth-protected-resource/mcp
-curl -i https://<your-api-host>/mcp
-```
+| Symptom                                                | Likely next check                                                                                        |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| 404 or “MCP is not enabled”                            | Enable `MOSAIC_MCP_ENABLED` and restart the API; use its port, not the web port.                         |
+| “Missing MCP bearer token”                             | Supply authorization on every request. Web development sign-in does not apply.                           |
+| “MCP OAuth is not configured”                          | Configure OAuth, or explicitly enable the local raw-token fallback.                                      |
+| “Invalid MCP bearer token”                             | Verify the token exists in this database, is not revoked, and uses the same pepper.                      |
+| API refuses to start after enabling MCP                | Check all required OAuth fields and either a pinned client ID or dynamic-client opt-in.                  |
+| 403 “Origin is not allowed for MCP”                    | Allow the client's exact `Origin`; `CORS_ORIGINS` does not configure MCP.                                |
+| OAuth account is not linked                            | Sign into the Flash Evals web app with that Clerk account first.                                         |
+| OAuth token was issued for another client              | Check the configured client-ID pin and whether this client registered dynamically.                       |
+| OAuth redirect or scope error                          | Check the redirect URI and scopes requested by that client against its Clerk application.                |
+| “Project was not found in the authenticated workspace” | Discover IDs using this token's workspace/project tools; do not reuse another tenant's IDs.              |
+| HTTP 200 but no result                                 | Check JSON-RPC `error`, `result.isError`, and tool-specific validation/status fields.                    |
+| Too many requests                                      | Wait for the reported retry interval; LLM and run-creation tools share the API's configured rate limits. |
+| A run never progresses                                 | Inspect the worker and queue/database logs. MCP connectivity does not verify worker health.              |
 
-Expected results:
-
-- The metadata endpoint returns `resource`, `authorization_servers`, and `bearer_methods_supported`.
-- Unauthenticated `/mcp` returns `401` with `WWW-Authenticate: Bearer resource_metadata="..."`.
-- After the MCP client completes Clerk OAuth, `initialize` and `tools/list` succeed.
-
-## Local Raw Token Fallback
-
-Use this only for local development or emergency operator testing.
-Enable it explicitly:
-
-```bash
-MOSAIC_MCP_ENABLED=true
-MOSAIC_MCP_RAW_TOKEN_FALLBACK_ENABLED=true
-MOSAIC_MCP_TOKEN_PEPPER=<secret-pepper>
-```
-
-Create a token:
-
-```bash
-pnpm --filter @mosaic/api mcp:token:create -- --email teammate@example.com --name "Local MCP"
-```
-
-Revoke a token:
-
-```bash
-pnpm --filter @mosaic/api mcp:token:revoke -- --token mcp_...
-```
-
-For local Codex testing, prefer the stdio entrypoint so Codex launches the MCP
-server directly instead of reaching through localhost networking:
-
-```bash
-MOSAIC_MCP_LOCAL_TOKEN=mcp_... pnpm --filter @mosaic/api mcp:stdio
-```
-
-The stdio entrypoint uses the same raw-token principal resolution as local HTTP
-fallback and requires `MOSAIC_MCP_RAW_TOKEN_FALLBACK_ENABLED=true`.
-
-## Tools
-
-The server exposes 62 tools — datasets (21), prompts (12), workflows (12), runs
-(8), context and projects (5), and settings (4) — plus 4 resources and 1 prompt.
-The registry snapshot test is the executable inventory check; a separate
-live smoke script is intentionally not duplicated because HTTP authentication
-and `tools/list` transport behavior are already covered by the MCP HTTP tests.
-
-Context and projects:
-
-- `get_current_user` returns the authenticated Flash Evals user/team.
-- `list_eval_context` returns datasets, runnable prompt versions, judge prompts, and available model options.
-- `list_projects` and `create_project` inspect and create projects in the authenticated workspace.
-- `get_dashboard` returns project statistics and recent runs.
-
-Datasets:
-
-- `list_datasets` and `get_dataset` inspect datasets.
-- `create_dataset` creates a golden or evaluation audio, image, or text dataset.
-- `add_dataset_item` and `update_dataset_item` manage individual items; add accepts base64 image or audio content.
-- `delete_dataset_item` and `delete_dataset_label` remove items or labels.
-- `rename_dataset`, `update_dataset_description`, `set_dataset_archived`, `duplicate_dataset`, and `delete_dataset` manage the dataset lifecycle.
-- `import_dataset_images` uploads base64 image files into an image dataset.
-- `import_dataset_audio` uploads base64 audio files into an audio dataset.
-- `import_dataset_text_items` imports CSV or JSONL text rows.
-- `import_dataset_image_answers` uploads image files plus CSV or JSONL answer rows for freeform golden image datasets.
-- `import_dataset_audio_answers` uploads audio files plus CSV or JSONL golden transcripts.
-- `import_dataset_golden_answers` attaches answers to existing golden dataset items.
-- `import_dataset_paired_items` imports images plus CSV rows where each row names an image file and provides structured golden-answer fields. This is the spreadsheet-plus-image workflow for image datasets with an answer schema.
-
-Prompts and research:
-
-- `list_prompts` and `get_prompt` inspect prompts.
-- `generate_schema_from_prompt` proposes a structured JSON schema from a prompt draft.
-- `test_prompt_draft` runs a draft prompt on samples.
-- `validate_runnable_prompt` validates schema and sample behavior before saving.
-- `create_runnable_prompt` validates the supplied prompt samples server-side, then creates or updates a runnable eval prompt version only when validation passes.
-- `optimize_prompt` researches and proposes a better prompt draft.
-- `test_judge_draft` tests a judge prompt against candidate output.
-- `create_judge_prompt` creates a runnable judge prompt directly.
-- `generate_judge_for_run` creates a run-level judge rubric from a runnable prompt version and dataset.
-- `duplicate_prompt_version` creates a new prompt from an existing structured version.
-- `delete_prompt` permanently removes an unused prompt.
-
-Runs and review:
-
-- `create_eval_run` creates and queues an eval run.
-- `list_runs`, `get_run`, and `get_run_progress` inspect runs and progress.
-- `retry_run` retries failed work and queues the run again.
-- `delete_run` permanently removes a run and its results.
-- `save_run_note` saves the run note.
-- `annotate_run_cell` saves cell-level review verdicts and comments.
-
-Provider settings:
-
-- `list_provider_keys` reports configured/unconfigured status without key material.
-- `set_provider_key` configures a provider secret without returning or logging it.
-- `clear_provider_key` removes a provider secret.
-
-Workflows:
-
-- `list_workflows` and `get_workflow` inspect workflow graphs.
-- `create_workflow`, `update_workflow`, and `delete_workflow` manage validated workflow DAGs.
-- `create_workflow_run` creates and queues a workflow run.
-- `list_workflow_runs`, `get_workflow_run`, and `get_workflow_run_progress` inspect workflow runs.
-
-### Destructive-tool confirmation
-
-Deletion, archive, and provider-key removal tools require an explicit
-`confirm: true` input and advertise MCP `destructiveHint` annotations. Inspect
-the target with its corresponding `get_*` or `list_*` tool before confirming.
-
-## Resources
-
-- `mosaic://datasets/{id}`
-- `mosaic://prompts/{id}`
-- `mosaic://runs/{id}`
-- `mosaic://models`
-
-## MCP Prompt
-
-`create_eval_happy_path` gives MCP clients the intended end-to-end sequence:
-
-1. Call `get_current_user` and `list_eval_context`.
-2. Create or select a dataset.
-3. Import text, images, audio, golden answers/transcripts, or paired image/spreadsheet rows.
-4. Generate or provide a prompt schema.
-5. Test and validate the prompt draft.
-6. Create a runnable prompt.
-7. Create an eval run.
-8. Poll progress and inspect results.
-9. Save notes and annotate cells during review.
-
-For multi-step prompt graphs, create or select a workflow, call
-`create_workflow_run`, then poll `get_workflow_run_progress` and inspect
-`get_workflow_run`. Destructive cleanup requires `confirm: true`.
+Retain the response's `x-request-id` for server-side debugging. Redact tokens,
+provider keys, and private inputs before sharing diagnostics.

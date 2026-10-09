@@ -6,6 +6,7 @@ const scans = [
     {
         name: "gitleaks",
         command: "gitleaks",
+        preflight: "scripts/check-gitleaks-config.mjs",
         args: [
             "detect",
             "--source",
@@ -53,6 +54,16 @@ for (const scan of scans) {
     }
 
     console.log(`\n▶ ${scan.name}`);
+    if (scan.preflight) {
+        const result = spawnSync(process.execPath, [scan.preflight], {
+            stdio: "inherit",
+            shell: false,
+        });
+        if (result.status !== 0) {
+            failures += 1;
+            continue;
+        }
+    }
     const result = spawnSync(scan.command, scan.args, {
         stdio: "inherit",
         shell: false,

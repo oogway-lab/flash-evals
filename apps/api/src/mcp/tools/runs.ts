@@ -11,7 +11,7 @@ import {
     saveCellAnnotationPayload,
     saveRunNotePayload,
 } from "../../routes/runs.js";
-import { enqueueRun } from "../../runQueue.js";
+import { publishRunEnqueue } from "../../runEnqueue.js";
 import { ok } from "../responses.js";
 import {
     FieldConfig,
@@ -31,7 +31,8 @@ export function registerRunTools(
         "list_runs",
         {
             title: "List eval runs",
-            description: "List eval runs for the authenticated Flash Evals team.",
+            description:
+                "List eval runs for the authenticated Flash Evals team.",
             inputSchema: z.object({ projectId: ProjectId }),
         },
         async ({ projectId }) =>
@@ -103,10 +104,11 @@ export function registerRunTools(
         {
             title: "Create eval run",
             description:
-                "Create and enqueue an eval run from a dataset, runnable prompt version, model IDs, and scoring setup.",
+                "Create an eval run and durably enqueue it. Supply a stable idempotencyKey when retrying the same request; pending_enqueue means publication will be retried automatically.",
             inputSchema: z.object({
                 projectId: ProjectId,
                 datasetId: z.string().uuid(),
+                idempotencyKey: z.string().trim().min(1).max(200).optional(),
                 pipelineId: z.string().uuid().optional(),
                 promptVersionId: z.string().uuid(),
                 maxTokens: z.number().int().positive(),
@@ -151,8 +153,17 @@ export function registerRunTools(
                 },
                 runtime.config,
             );
-            await enqueueRun(runtime.config, result.runId);
-            return ok("Created and queued eval run.", result);
+            const publication = await publishRunEnqueue(
+                runtime.db,
+                runtime.config,
+                result.runId,
+            );
+            return ok(
+                publication.enqueueStatus === "queued"
+                    ? "Created and queued eval run."
+                    : "Created eval run; queue publication will be retried automatically.",
+                publication,
+            );
         },
     );
 
@@ -226,8 +237,17 @@ export function registerRunTools(
                 projectId: await resolveProjectId(context, input.projectId),
                 runId: input.runId,
             });
-            await enqueueRun(runtime.config, input.runId);
-            return ok("Retried and queued eval run.", { runId: input.runId });
+            const publication = await publishRunEnqueue(
+                runtime.db,
+                runtime.config,
+                input.runId,
+            );
+            return ok(
+                publication.enqueueStatus === "queued"
+                    ? "Retried and queued eval run."
+                    : "Retry saved; queue publication will be retried automatically.",
+                publication,
+            );
         },
     );
 

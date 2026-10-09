@@ -338,6 +338,8 @@ export function parseSttMetricsModelId(
 }
 
 export interface ICreateRunRequest {
+    /** Stable retry key, scoped to team/project/creator. Omit for a new run each time. */
+    idempotencyKey?: string;
     teamId: string;
     projectId: string;
     datasetId: string;
@@ -363,6 +365,8 @@ export interface ICreateRunRequest {
 
 export interface ICreateRunResponse {
     runId: string;
+    /** A durable run is recoverable even if queue publication is deferred. */
+    enqueueStatus?: "pending_enqueue" | "queued";
 }
 
 export interface IPromptAssignment {
@@ -383,6 +387,8 @@ export interface ITransportAssignment {
 }
 
 export interface ICreateRunFromSelectionRequest {
+    /** Stable retry key, scoped to team/project/creator. Omit for a new run each time. */
+    idempotencyKey?: string;
     teamId: string;
     projectId: string;
     datasetId: string;
@@ -1627,6 +1633,7 @@ export interface IDashboardResponse {
 
 export interface IRunProgressResponse extends IRunProgress {
     status: RunStatus;
+    enqueueStatus?: "pending_enqueue" | "queued";
 }
 
 export interface IMatrixCellScore {

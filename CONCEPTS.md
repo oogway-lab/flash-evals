@@ -1,12 +1,17 @@
 # Concepts
 
-Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Add a term when it gains a project-specific meaning; direct edits are fine. Glossary only, not a spec or catch-all.
+[Documentation home](README.md#documentation)
+
+Start with a dataset of examples, a prompt describing the task, and a run that
+records what the selected models produce. Use a workflow when the task needs
+several connected steps. This glossary explains the more specific terms you will
+see in the app, API, and MCP tools.
 
 ## Workspace and project scope
 
 ### Workspace
 
-A user's top-level Flash Evals ownership boundary for identity, provider credentials, and projects.
+A named group of projects within a team. The authenticated team is the data-access boundary; workspaces and projects organize that team's data.
 
 ### Project
 
@@ -70,7 +75,7 @@ A Prompt Workflow creates Workflow Runs. An audio Workflow Run lazily creates or
 
 ### Provider Credential
 
-A Workspace-owned encrypted secret used to authenticate one provider transport. A credential makes a transport callable; it does not select that transport for a Workflow node.
+A team-owned encrypted secret used to authenticate one provider transport. A credential makes a transport callable; it does not select that transport for a Workflow node.
 
 ### Capability Version
 
