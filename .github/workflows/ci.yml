@@ -1,0 +1,346 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded PR runs only; every push to main gets a full run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # The quality gate is split into parallel jobs; `quality` at the end keeps
+  # the "Quality, build, and tests" check name and fails if any of them fail.
+  typecheck-build:
+    name: Typecheck and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up workspace
+        uses: ./.github/actions/setup-workspace
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Build
+        run: pnpm run build
+
+  web-tests:
+    name: Web unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up workspace
+        uses: ./.github/actions/setup-workspace
+
+      - name: Web unit tests
+        run: pnpm --filter @mosaic/web test
+
+  package-tests:
+    name: Package and API tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up workspace
+        uses: ./.github/actions/setup-workspace
+
+      # Runs the `test` script of every package under apps/ and packages/
+      # except web (its own job) and the API, whose tests run once in the
+      # next step with coverage.
+      - name: Unit tests
+        run: >-
+          pnpm -r --workspace-concurrency=1
+          --filter './apps/**' --filter './packages/**'
+          --filter '!@mosaic/api' --filter '!@mosaic/web'
+          run test
+
+      - name: API unit tests and coverage thresholds
+        run: pnpm --filter @mosaic/api test:coverage
+
+      - name: Upload coverage and reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-reports
+          path: |
+            coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  migrations:
+    name: Database migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mosaic_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up workspace
+        uses: ./.github/actions/setup-workspace
+
+      - name: Verify generated database migrations are current
+        run: |
+          pnpm --filter @mosaic/web db:generate
+          if [ -n "$(git status --porcelain apps/web/server/db/migrations)" ]; then
+            git status --short apps/web/server/db/migrations
+            echo "Database schema or migration snapshots are out of sync."
+            exit 1
+          fi
+
+      # Drizzle applies every pending migration inside ONE transaction, so a
+      # migration that uses an enum value added by an earlier migration fails
+      # only on a fresh database. Incremental production runs never hit it.
+      - name: Apply all migrations to an empty database
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/mosaic_ci
+        run: pnpm run db:migrate
+
+  static-checks:
+    name: Lint and static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up workspace
+        uses: ./.github/actions/setup-workspace
+
+      # Lint, knip and typedoc resolve the shared packages from dist/, which
+      # the Build step produced when everything ran in one job.
+      - name: Build shared packages
+        run: node scripts/build-packages.mjs
+
+      # A newly published high advisory fails every PR until it is handled.
+      # Upgrade the dependency, or if no fix applies yet, record the advisory
+      # with `pnpm audit --ignore GHSA-xxxx-xxxx-xxxx` (it lands under
+      # `auditConfig.ignoreGhsas` in pnpm-workspace.yaml). The weekly Security
+      # workflow runs the same audit, so new advisories often surface there
+      # first.
+      - name: Dependency audit
+        run: pnpm audit --prod --audit-level=high
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Architecture boundaries
+        run: pnpm run lint:boundaries
+
+      - name: Client/server import boundary
+        run: pnpm run check:client-imports
+
+      - name: Design drift
+        run: node scripts/check-design-drift.mjs
+
+      - name: Dead code and dependency hygiene
+        run: pnpm run quality:dead-code
+
+      - name: Duplicate code
+        run: pnpm run quality:duplicates
+
+      - name: Workspace version drift
+        run: pnpm run quality:versions
+
+      - name: Technical debt markers
+        run: pnpm run quality:debt
+
+      - name: Feature flag lifecycle
+        run: pnpm run quality:flags
+
+      - name: Documentation commands
+        run: pnpm run docs:check
+
+      - name: Env var docs check
+        run: pnpm run docs:env
+
+      - name: Generate API docs
+        run: pnpm run docs:api
+
+      - name: Split deployment readiness
+        env:
+          API_ENV: apps/api/.env.example
+          WEB_ENV: apps/web/.env.example
+        run: pnpm run deploy:check
+
+  security-scans:
+    name: Secret and SAST scans
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Gitleaks
+        run: |
+          docker run --rm \
+            -v "$PWD:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854 \
+            detect --source=/repo --config=/repo/.gitleaks.toml --no-git --redact
+
+      - name: Semgrep
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" \
+            -w /src \
+            semgrep/semgrep:1.178.0@sha256:32e459968daabe7ab86968184a29109b9564aa00392401156f9788452b42786b \
+            semgrep scan \
+              --config semgrep.yml \
+              --config p/nodejs \
+              --config p/typescript \
+              --error \
+              --metrics=off
+
+  quality:
+    name: Quality, build, and tests
+    if: always()
+    needs:
+      - typecheck-build
+      - web-tests
+      - package-tests
+      - migrations
+      - static-checks
+      - security-scans
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every quality job to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          failed=$(echo "$RESULTS" | jq -r '[to_entries[] | select(.value.result != "success") | .key] | join(", ")')
+          if [ -n "$failed" ]; then
+            echo "::error::Quality jobs did not pass: $failed"
+            exit 1
+          fi
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Dependency review needs the GitHub dependency graph, and on a private
+      # repository also GitHub Advanced Security. Enforce it only on a public
+      # repository with the graph on; otherwise it stays advisory rather than
+      # failing every PR on a setup error.
+      - name: Detect dependency review support
+        id: graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VISIBILITY: ${{ github.event.repository.visibility }}
+        run: |
+          if [ "$VISIBILITY" != "public" ]; then
+            echo "enforce=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Repository is $VISIBILITY; dependency review needs GitHub Advanced Security there, so it is advisory."
+          elif gh api "repos/$REPO/dependency-graph/sbom" --silent 2>/dev/null; then
+            echo "enforce=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enforce=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Dependency graph is off for this repository; dependency review is advisory."
+          fi
+
+      - name: Dependency review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        continue-on-error: ${{ steps.graph.outputs.enforce != 'true' }}
+        with:
+          fail-on-severity: high
+
+  browser-smoke:
+    name: Browser smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Playwright OS dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Run web smoke tests
+        run: pnpm exec playwright test tests/e2e/health.spec.ts
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14

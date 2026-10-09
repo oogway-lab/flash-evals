@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+        "target": "ES2020",
+        "lib": ["ES2020", "DOM"],
+        // NodeNext (not Bundler) so tsc rejects extensionless relative imports:
+        // this package is loaded by the Railway API as real Node ESM, where
+        // `import "./workflows"` fails at runtime with ERR_MODULE_NOT_FOUND.
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "declaration": true,
+        "outDir": "dist"
+    },
+    "include": ["src"]
+}

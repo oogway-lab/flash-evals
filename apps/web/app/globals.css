@@ -1,0 +1,392 @@
+/* Clerk's CSS sits below utilities so `appearance.elements` classes win. */
+@layer theme, base, clerk, components, utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+    /* Geist palette. Every value is `light-dark(light, dark)`; the pair comes
+       from DESIGN.md's Themes table. `color-scheme: light dark` on :root (below)
+       makes the browser pick the side from `prefers-color-scheme`, so utilities
+       built on these tokens are theme-aware without any `dark:` variant. */
+    --color-geist-background-100: light-dark(oklch(1 0 0), oklch(0 0 0));
+    --color-geist-background-200: light-dark(
+        oklch(0.984 0 0),
+        oklch(0.027 0 0)
+    );
+    --color-geist-gray-100: light-dark(oklch(0.961 0 0), oklch(0.218 0 0));
+    --color-geist-gray-200: light-dark(oklch(0.94 0 0), oklch(0.239 0 0));
+    --color-geist-gray-300: light-dark(oklch(0.925 0 0), oklch(0.281 0 0));
+    --color-geist-gray-500: light-dark(oklch(0.836 0 0), oklch(0.39 0 0));
+    --color-geist-gray-600: light-dark(oklch(0.732 0 0), oklch(0.623 0 0));
+    --color-geist-gray-900: light-dark(oklch(0.42 0 0), oklch(0.706 0 0));
+    --color-geist-gray-1000: light-dark(oklch(0.205 0 0), oklch(0.946 0 0));
+    --color-geist-gray-alpha-200: light-dark(
+        oklch(0 0 0 / 0.081),
+        oklch(1 0 0 / 0.09)
+    );
+    --color-geist-gray-alpha-400: light-dark(
+        oklch(0 0 0 / 0.08),
+        oklch(1 0 0 / 0.14)
+    );
+    --color-geist-gray-alpha-500: light-dark(
+        oklch(0 0 0 / 0.21),
+        oklch(1 0 0 / 0.24)
+    );
+    --color-geist-blue-100: light-dark(
+        oklch(97.32% 0.0141 251.56),
+        oklch(22.17% 0.069 259.89)
+    );
+    --color-geist-blue-700: light-dark(
+        oklch(57.61% 0.2508 258.23),
+        oklch(57.61% 0.2321 258.23)
+    );
+    --color-geist-blue-900: light-dark(
+        oklch(53.18% 0.2399 256.99),
+        oklch(71.7% 0.1648 250.794)
+    );
+    --color-geist-green-100: light-dark(
+        oklch(97.59% 0.0289 145.42),
+        oklch(23.09% 0.0716 149.68)
+    );
+    --color-geist-green-900: light-dark(
+        oklch(51.75% 0.1453 147.65),
+        oklch(73.1% 0.2158 148.29)
+    );
+    --color-geist-amber-100: light-dark(
+        oklch(97.48% 0.0331 85.79),
+        oklch(22.46% 0.0538 76.04)
+    );
+    --color-geist-amber-900: light-dark(
+        oklch(52.79% 0.1496 54.65),
+        oklch(77.21% 0.1991 64.28)
+    );
+    --color-geist-red-100: light-dark(
+        oklch(96.5% 0.0223 13.09),
+        oklch(22.1% 0.0657 15.11)
+    );
+    --color-geist-red-700: light-dark(
+        oklch(62.56% 0.2524 23.03),
+        oklch(62.56% 0.2234 23.03)
+    );
+    --color-geist-red-900: light-dark(
+        oklch(54.99% 0.232 25.29),
+        oklch(69.96% 0.2136 22.03)
+    );
+    /* Purple has no published Geist foundation value (reference model only);
+       these are the DESIGN.md values. */
+    --color-geist-purple-100: light-dark(
+        oklch(97% 0.02 305),
+        oklch(24% 0.07 305)
+    );
+    --color-geist-purple-900: light-dark(
+        oklch(52% 0.22 305),
+        oklch(72% 0.17 305)
+    );
+
+    /* Eval semantics: text/fill color plus its muted surface. */
+    --color-eval-success: var(--color-geist-green-900);
+    --color-eval-success-muted: var(--color-geist-green-100);
+    --color-eval-warning: var(--color-geist-amber-900);
+    --color-eval-warning-muted: var(--color-geist-amber-100);
+    --color-eval-danger: var(--color-geist-red-900);
+    --color-eval-danger-muted: var(--color-geist-red-100);
+    --color-eval-ref: var(--color-geist-purple-900);
+    --color-eval-ref-muted: var(--color-geist-purple-100);
+
+    /* Legacy aliases used in components */
+    --color-success: var(--color-eval-success);
+    --color-success-muted: var(--color-eval-success-muted);
+    --color-warning: var(--color-eval-warning);
+    --color-warning-muted: var(--color-eval-warning-muted);
+    --color-danger: var(--color-eval-danger);
+    --color-danger-muted: var(--color-eval-danger-muted);
+    --color-ref: var(--color-eval-ref);
+    --color-ref-muted: var(--color-eval-ref-muted);
+
+    /* Dialog and sheet backdrop. Black in both themes (foreground flips to
+       near-white in dark mode, so it cannot be the scrim), heavier in dark. */
+    --color-scrim: light-dark(oklch(0 0 0 / 0.4), oklch(0 0 0 / 0.6));
+
+    /* Radius */
+    --radius-none: 0px;
+    --radius-sm: 6px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 16px;
+    --radius-full: 9999px;
+
+    /* Typography roles (DESIGN.md): size / line height / weight, letter
+       spacing always 0. Weight lives in the role, so do not add font-medium
+       or font-semibold next to these. `text-mono-13` and `text-stat-32` are
+       @utility blocks below because they also set family / numerals. */
+    --text-heading-32: 2rem;
+    --text-heading-32--line-height: 2.5rem;
+    --text-heading-32--font-weight: 600;
+    --text-heading-32--letter-spacing: 0px;
+
+    --text-heading-24: 1.5rem;
+    --text-heading-24--line-height: 2rem;
+    --text-heading-24--font-weight: 600;
+    --text-heading-24--letter-spacing: 0px;
+
+    --text-heading-20: 1.25rem;
+    --text-heading-20--line-height: 1.75rem;
+    --text-heading-20--font-weight: 600;
+    --text-heading-20--letter-spacing: 0px;
+
+    --text-heading-16: 1rem;
+    --text-heading-16--line-height: 1.5rem;
+    --text-heading-16--font-weight: 600;
+    --text-heading-16--letter-spacing: 0px;
+
+    --text-copy-16: 1rem;
+    --text-copy-16--line-height: 1.5rem;
+    --text-copy-16--font-weight: 400;
+    --text-copy-16--letter-spacing: 0px;
+
+    --text-copy-14: 0.875rem;
+    --text-copy-14--line-height: 1.25rem;
+    --text-copy-14--font-weight: 400;
+    --text-copy-14--letter-spacing: 0px;
+
+    --text-label-14: 0.875rem;
+    --text-label-14--line-height: 1.25rem;
+    --text-label-14--font-weight: 500;
+    --text-label-14--letter-spacing: 0px;
+
+    --text-label-12: 0.75rem;
+    --text-label-12--line-height: 1rem;
+    --text-label-12--font-weight: 500;
+    --text-label-12--letter-spacing: 0px;
+
+    --font-mono:
+        var(--font-geist-mono), "Geist Mono", "SF Mono", SFMono-Regular,
+        ui-monospace, Menlo, Monaco, Consolas, monospace;
+
+    /* Indeterminate progress bar: a third-width bar sweeping across. */
+    --animate-progress-indeterminate: progress-indeterminate 1.4s ease-in-out
+        infinite;
+
+    @keyframes progress-indeterminate {
+        from {
+            transform: translateX(-100%);
+        }
+        to {
+            transform: translateX(300%);
+        }
+    }
+}
+
+/* `text-mono-13` sets the Geist Mono family as well as size, line height and
+   weight (the DESIGN.md `mono-13` role is a Geist Mono role), so use it alone
+   on the identifier: `<code className="text-mono-13">`, not with `font-mono`. */
+@utility text-mono-13 {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    font-weight: 400;
+    letter-spacing: 0px;
+}
+
+/* `text-stat-32`: single decisive KPI value, tabular numerals. */
+@utility text-stat-32 {
+    font-size: 2rem;
+    line-height: 2.5rem;
+    font-weight: 600;
+    letter-spacing: 0px;
+    font-variant-numeric: tabular-nums;
+}
+
+:root {
+    /* Light and dark follow prefers-color-scheme; there is no switcher. */
+    color-scheme: light dark;
+
+    --background: var(--color-geist-background-100);
+    --foreground: var(--color-geist-gray-1000);
+
+    --card: var(--color-geist-background-100);
+    --card-foreground: var(--color-geist-gray-1000);
+
+    --primary: var(--color-geist-gray-1000);
+    /* Hover steps toward the canvas; active uses the palette's secondary
+       gray. Both flip correctly in dark mode (light button on dark). */
+    --primary-hover: color-mix(
+        in oklab,
+        var(--color-geist-gray-1000) 85%,
+        var(--color-geist-background-100)
+    );
+    --primary-active: var(--color-geist-gray-900);
+    --primary-foreground: var(--color-geist-background-100);
+
+    --secondary: var(--color-geist-background-100);
+    --secondary-foreground: var(--color-geist-gray-1000);
+
+    --muted: var(--color-geist-gray-100);
+    --muted-foreground: var(--color-geist-gray-900);
+
+    /* `accent` is the blue fill (selected state); `accent-text` is the
+       blue-900 text/link color. White text on a fill must reach AA (4.5:1),
+       which blue-700 does not in dark mode (4.49:1), so the fill steps to
+       blue-900 in light (5.3:1) and a deeper blue in dark (5.0:1). */
+    --accent: light-dark(var(--color-geist-blue-900), oklch(55% 0.2321 258.23));
+    --accent-foreground: oklch(1 0 0);
+    --accent-text: var(--color-geist-blue-900);
+
+    /* `destructive` is the red fill; red text uses `error` / `eval-danger`.
+       White on red-700 is only 4.0:1, so the fill is red-900 in light (5.3:1)
+       and a deeper red in dark (5.9:1) to keep 14px button text at AA. */
+    --destructive: light-dark(
+        var(--color-geist-red-900),
+        oklch(52% 0.2234 23.03)
+    );
+    --destructive-foreground: oklch(1 0 0);
+
+    --border: var(--color-geist-gray-alpha-400);
+    --border-strong: var(--color-geist-gray-alpha-500);
+    --input: var(--color-geist-gray-alpha-400);
+    --ring: var(--color-geist-blue-700);
+
+    --neutral: var(--color-geist-background-100);
+    --surface: var(--color-geist-background-200);
+    --on-surface: var(--color-geist-gray-1000);
+    --error: var(--color-geist-red-900);
+}
+
+@theme inline {
+    --font-sans:
+        var(--font-geist-sans), "Geist", "Geist Sans", ui-sans-serif, system-ui,
+        sans-serif;
+
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-primary: var(--primary);
+    --color-primary-hover: var(--primary-hover);
+    --color-primary-active: var(--primary-active);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent-text: var(--accent-text);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-border: var(--border);
+    --color-border-strong: var(--border-strong);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-neutral: var(--neutral);
+    --color-surface: var(--surface);
+    --color-on-surface: var(--on-surface);
+    --color-error: var(--error);
+}
+
+@layer base {
+    body {
+        @apply bg-background text-foreground antialiased;
+    }
+
+    /* Honor reduced-motion: collapse animations/transitions to instant so
+       dialogs, sheets, and skeletons present without movement. */
+    @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+            scroll-behavior: auto !important;
+        }
+    }
+}
+
+/* React Flow (multiworkflow canvas), themed to DESIGN.md. Unlayered like
+   @xyflow/react/dist/style.css, and one class more specific where a rule
+   collides, so these win regardless of stylesheet order. */
+.react-flow {
+    --xy-edge-stroke: var(--color-geist-gray-600);
+    --xy-edge-stroke-selected: var(--ring);
+    --xy-connectionline-stroke: var(--ring);
+    --xy-handle-background-color: var(--background);
+    --xy-handle-border-color: var(--color-geist-gray-600);
+    --xy-controls-box-shadow: none;
+    --xy-controls-button-background-color: var(--background);
+    --xy-controls-button-background-color-hover: var(--muted);
+    --xy-controls-button-color: var(--foreground);
+    --xy-controls-button-color-hover: var(--foreground);
+    --xy-controls-button-border-color: var(--border);
+    --xy-node-boxshadow-hover: none;
+    --xy-node-boxshadow-selected: none;
+    /* React Flow's defaults are light-only literals (white, #eee, ...); point
+       every other surface it can draw at the same theme-aware tokens. */
+    --xy-node-background-color: var(--background);
+    --xy-node-border: 1px solid var(--border);
+    --xy-node-color: var(--foreground);
+    --xy-edge-label-background-color: var(--background);
+    --xy-edge-label-color: var(--foreground);
+    --xy-attribution-background-color: var(--surface);
+    --xy-background-pattern-color: var(--border);
+    --xy-selection-background-color: color-mix(
+        in oklab,
+        var(--ring) 8%,
+        transparent
+    );
+    --xy-selection-border: 1px dotted var(--ring);
+    --xy-resize-background-color: var(--ring);
+}
+
+.react-flow .react-flow__controls {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.react-flow .react-flow__controls-button:last-child {
+    border-bottom: 0;
+}
+
+.react-flow .react-flow__controls-button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+}
+
+.react-flow .react-flow__handle {
+    width: 8px;
+    height: 8px;
+    border-width: 1px;
+}
+
+/* Our node types reuse React Flow's built-in names ("input"), which would
+   draw RF's own 150px box behind our card. The card styles itself, so the
+   wrapper stays bare. */
+.react-flow .react-flow__node-input,
+.react-flow .react-flow__node-default,
+.react-flow .react-flow__node-output {
+    width: auto;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    text-align: left;
+}
+
+/* Nodes take keyboard focus on React Flow's wrapper; ring the card inside. */
+.react-flow .react-flow__node:focus-visible {
+    outline: none;
+}
+
+.react-flow .react-flow__node:focus-visible > [data-slot="flow-node"] {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+/* Keyboard users can't hover for the label hint, so show it in full. */
+.react-flow .react-flow__node:focus-visible [data-slot="flow-node-label"] {
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}

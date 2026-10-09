@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible Flash Evals defect.
+title: "fix: "
+labels:
+  - type:bug
+body:
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - web
+        - api
+        - llm-core
+        - deployment
+        - docs
+        - tooling
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include expected behavior, actual behavior, and user-visible impact.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide exact steps, input data, and environment.
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: "Remove credentials, customer data, and personal information before posting. Use the private reporting route in SECURITY.md for vulnerabilities."
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Logs, screenshots, request IDs, traces, or links.
+  - type: textarea
+    id: verification
+    attributes:
+      label: Done when
+      description: Describe the test or check that proves the fix.
+    validations:
+      required: true

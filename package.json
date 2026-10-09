@@ -1,0 +1,86 @@
+{
+    "name": "mosaic-workspace",
+    "description": "Compare LLM models on image, text, and audio datasets — structured output, latency, cost, field-level diff against labels, and LLM-as-judge scoring.",
+    "license": "AGPL-3.0-only",
+    "private": true,
+    "author": "Oogway Labs and Flash Evals contributors",
+    "homepage": "https://github.com/oogway-lab/flash-evals#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/oogway-lab/flash-evals.git"
+    },
+    "bugs": {
+        "url": "https://github.com/oogway-lab/flash-evals/issues"
+    },
+    "packageManager": "pnpm@12.6.0+sha512.3ef68f951cb111ac204b4a5a16f0b2ddf0da56a96e0413e81d855d9f0b55ef926714709028e1cd00c405c2c5fb7b9e8ec4dc46777c805d0373c2f2ff00fd20ec",
+    "scripts": {
+        "prepare": "husky",
+        "dev": "node scripts/dev.mjs",
+        "setup:local": "node scripts/setup-local.mjs",
+        "build": "pnpm --filter @mosaic/api-contract build && pnpm --filter @mosaic/secrets build && pnpm --filter @mosaic/api build && pnpm --filter @mosaic/web build",
+        "web:build:cloudflare": "pnpm --filter @mosaic/web build:cloudflare",
+        "web:preview:cloudflare": "pnpm --filter @mosaic/web preview:cloudflare",
+        "typecheck": "pnpm --filter @mosaic/api-contract typecheck && pnpm --filter @mosaic/llm-core typecheck && pnpm --filter @mosaic/secrets typecheck && pnpm --filter @mosaic/api typecheck && pnpm --filter @mosaic/web typecheck",
+        "test": "pnpm --filter @mosaic/llm-core test && pnpm --filter @mosaic/secrets test && pnpm --filter @mosaic/api test && pnpm --filter @mosaic/web test",
+        "test:coverage": "pnpm --filter @mosaic/llm-core test:coverage && pnpm --filter @mosaic/secrets test:coverage && pnpm --filter @mosaic/api test:coverage && pnpm --filter @mosaic/web test:coverage",
+        "test:e2e": "playwright test",
+        "lint": "eslint .",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "lint:boundaries": "dependency-cruiser --config dependency-cruiser.config.cjs .",
+        "quality:dead-code": "knip --dependencies --no-config-hints",
+        "quality:duplicates": "jscpd apps packages scripts --config jscpd.config.json",
+        "quality:versions": "syncpack list-mismatches --filter '^(?!@mosaic/)'",
+        "quality:debt": "node scripts/check-technical-debt.mjs",
+        "quality:flags": "node scripts/check-feature-flags.mjs",
+        "quality": "pnpm run typecheck && pnpm run build && pnpm run test && pnpm run lint && pnpm run lint:boundaries && pnpm run check:client-imports && node scripts/check-design-drift.mjs && pnpm run quality:dead-code && pnpm run quality:duplicates && pnpm run quality:versions && pnpm run quality:debt && pnpm run quality:flags && pnpm run docs:check && pnpm run docs:env",
+        "security": "node scripts/run-security-scans.mjs",
+        "docs:check": "node scripts/check-doc-commands.mjs",
+        "docs:env": "node scripts/check-env-docs.mjs",
+        "docs:api": "typedoc --options typedoc.json",
+        "labels:sync": "node scripts/sync-github-labels.mjs",
+        "api:dev": "pnpm --filter @mosaic/api dev",
+        "api:build": "pnpm --filter @mosaic/api build",
+        "api:start": "pnpm --filter @mosaic/api start",
+        "api:start:railway": "pnpm --filter @mosaic/api start:railway",
+        "worker": "pnpm --filter @mosaic/web worker",
+        "api:test": "pnpm --filter @mosaic/api test",
+        "api:typecheck": "pnpm --filter @mosaic/api typecheck",
+        "check:client-imports": "node scripts/check-client-server-imports.mjs",
+        "deploy:check": "scripts/check-split-deployment-readiness.sh",
+        "deploy:check:live": "scripts/check-live-split-deployment-readiness.sh",
+        "smoke:split-health": "scripts/smoke-split-health.sh",
+        "smoke:stt": "node scripts/node-with-supabase-ca.mjs --env-file-if-exists=apps/api/.env scripts/smoke-stt-capabilities.mjs",
+        "seed": "pnpm --filter @mosaic/web seed",
+        "db:migrate": "pnpm --filter @mosaic/web db:migrate"
+    },
+    "engines": {
+        "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+    },
+    "devDependencies": {
+        "@eslint/js": "^9.39.1",
+        "@next/eslint-plugin-next": "^16.3.8",
+        "@playwright/test": "^1.63.0",
+        "@vitest/coverage-v8": "5.0.3",
+        "dependency-cruiser": "^17.3.1",
+        "eslint": "^9.39.1",
+        "eslint-plugin-react": "^7.37.5",
+        "eslint-plugin-react-hooks": "^7.0.1",
+        "husky": "^9.1.7",
+        "jscpd": "^4.0.5",
+        "knip": "^5.72.0",
+        "lint-staged": "^17.6.0",
+        "prettier": "^3.9.9",
+        "syncpack": "^13.0.4",
+        "typedoc": "^0.28.14",
+        "typescript-eslint": "^8.71.0"
+    },
+    "lint-staged": {
+        "*.{ts,tsx}": [
+            "eslint --fix"
+        ],
+        "*.{ts,tsx,js,jsx,mjs,cjs,json,md,yml,yaml,css}": [
+            "prettier --write"
+        ]
+    }
+}

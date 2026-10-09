@@ -1,0 +1,4 @@
+ALTER TABLE "workflow_runs" ADD COLUMN "idempotency_key" text;--> statement-breakpoint
+ALTER TABLE "workflow_runs" ADD COLUMN "idempotency_fingerprint" text;--> statement-breakpoint
+ALTER TABLE "workflow_runs" ADD CONSTRAINT "workflow_runs_project_workflow_idempotency_unique" UNIQUE("project_id","workflow_id","idempotency_key");--> statement-breakpoint
+ALTER TABLE "workflow_runs" ADD CONSTRAINT "workflow_runs_idempotency_pair_check" CHECK (("workflow_runs"."idempotency_key" is null and "workflow_runs"."idempotency_fingerprint" is null) or ("workflow_runs"."idempotency_key" is not null and "workflow_runs"."idempotency_fingerprint" is not null));

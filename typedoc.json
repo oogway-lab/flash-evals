@@ -1,0 +1,20 @@
+{
+    "$schema": "https://typedoc.org/schema.json",
+    "entryPoints": [
+        "packages/api-contract/src/index.ts",
+        "packages/llm-core/src/index.ts"
+    ],
+    "out": "docs/api",
+    "readme": "none",
+    "excludePrivate": true,
+    "excludeInternal": true,
+    "compilerOptions": {
+        "target": "ES2022",
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "typeRoots": ["apps/api/node_modules/@types"],
+        "types": ["node"],
+        "skipLibCheck": true
+    }
+}

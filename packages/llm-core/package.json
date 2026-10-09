@@ -1,0 +1,34 @@
+{
+    "name": "@mosaic/llm-core",
+    "version": "0.0.0",
+    "private": true,
+    "license": "AGPL-3.0-only",
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./src/index.ts",
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "import": "./dist/index.js",
+            "require": "./dist/index.js",
+            "default": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage"
+    },
+    "dependencies": {
+        "@ai-sdk/gateway": "^4.0.103",
+        "@ai-sdk/openai": "^4.0.83",
+        "ai": "^7.0.127",
+        "openai": "^7.25.0",
+        "undici": "7.29.1"
+    },
+    "devDependencies": {
+        "typescript": "^5.8.3",
+        "vitest": "^5.0.3"
+    }
+}

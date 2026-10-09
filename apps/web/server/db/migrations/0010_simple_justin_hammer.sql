@@ -1,0 +1,2 @@
+ALTER TABLE "dataset_items" ADD COLUMN "source_name" text;--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "dataset_items_dataset_source_name_idx" ON "dataset_items" USING btree ("dataset_id","source_name");

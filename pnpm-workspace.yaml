@@ -1,0 +1,22 @@
+packages:
+    - "packages/*"
+    - "apps/*"
+overrides:
+    # Fix production audit advisories in the Next/PostCSS dependency tree.
+    source-map-js: 1.2.2
+    "next>sharp": 0.35.5
+    undici: 7.29.1
+allowBuilds:
+    esbuild: true
+    sharp: true
+    unrs-resolver: true
+    workerd: true
+# Refuse to install when the running Node version does not satisfy
+# `engines.node` in package.json (Vitest 5-supported Node ranges). Without it pnpm only warns.
+engineStrict: true
+# Install missing peer dependencies instead of reporting them. This is pnpm's
+# default; kept explicit so the behaviour survives a default change.
+autoInstallPeers: true
+# No `confirmModulesPurge`: pnpm 12 removed it and refuses to install while it
+# is set. pnpm 12 also recreates node_modules without prompting when there is
+# no TTY, so non-interactive installs by agents and scripts do not hang.

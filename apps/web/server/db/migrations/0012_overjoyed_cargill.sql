@@ -1,0 +1,1 @@
+ALTER TABLE "run_cells" ADD COLUMN "schema_hash" text;

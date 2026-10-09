@@ -1,0 +1,1 @@
+ALTER TABLE "judge_configs" ADD COLUMN "reasoning_config" jsonb;

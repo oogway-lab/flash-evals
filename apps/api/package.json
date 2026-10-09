@@ -1,0 +1,41 @@
+{
+    "name": "@mosaic/api",
+    "version": "0.0.0",
+    "private": true,
+    "license": "AGPL-3.0-only",
+    "type": "module",
+    "scripts": {
+        "dev": "../../scripts/build-packages.mjs && ../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=.env --import tsx src/server.ts",
+        "build": "pnpm --filter @mosaic/api-contract build && pnpm --filter @mosaic/llm-core build && pnpm --filter @mosaic/secrets build && tsc -p tsconfig.json",
+        "start": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=.env dist/server.js",
+        "start:railway": "NODE_ENV=production ../../scripts/node-with-supabase-ca.mjs dist/railway.js",
+        "mcp:stdio": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=.env --import tsx src/mcp/stdio.ts",
+        "mcp:token:create": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=.env --import tsx src/scripts/mcp-token.ts create",
+        "mcp:token:revoke": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=.env --import tsx src/scripts/mcp-token.ts revoke",
+        "typecheck": "tsc --noEmit -p tsconfig.json",
+        "test": "pnpm --filter @mosaic/api-contract build && pnpm --filter @mosaic/llm-core build && pnpm --filter @mosaic/secrets build && vitest run",
+        "test:coverage": "pnpm --filter @mosaic/api-contract build && pnpm --filter @mosaic/llm-core build && pnpm --filter @mosaic/secrets build && vitest run --coverage"
+    },
+    "dependencies": {
+        "@ai-sdk/gateway": "^4.0.103",
+        "@clerk/backend": "^3.22.0",
+        "@modelcontextprotocol/sdk": "^1.32.1",
+        "@mosaic/api-contract": "workspace:*",
+        "@mosaic/llm-core": "workspace:*",
+        "@mosaic/secrets": "workspace:*",
+        "ajv": "^8.20.0",
+        "ajv-formats": "^3.0.1",
+        "papaparse": "^5.7.0",
+        "pg": "^8.23.1",
+        "pg-boss": "^10.1.5",
+        "zod": "^4.6.5"
+    },
+    "devDependencies": {
+        "@types/node": "^22.20.5",
+        "@types/papaparse": "^5.3.16",
+        "@types/pg": "^8.23.1",
+        "tsx": "^4.23.15",
+        "typescript": "^5.8.3",
+        "vitest": "^5.0.3"
+    }
+}

@@ -1,0 +1,12 @@
+Copyright (c) 2026 Oogway Labs Private Limited.
+
+Unless a file-specific notice says otherwise, Flash Evals' first-party source code
+and documentation are licensed under AGPL-3.0-only; see LICENSE.
+Earlier versions of this source were distributed under the MIT License. This
+AGPL-3.0-only notice applies to the current source snapshot and does not revoke
+permissions already granted for earlier MIT-licensed copies; see
+[LICENSE_HISTORY.md](LICENSE_HISTORY.md).
+
+Third-party and vendored materials retain their own copyright and license
+notices. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for attributions
+to assets and data used in the application.

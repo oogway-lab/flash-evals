@@ -1,0 +1,11 @@
+title = "Flash Evals Gitleaks configuration"
+
+[allowlist]
+description = "Known example-only credential placeholders"
+regexes = [
+    '''^sk_test_\.\.\.$''',
+    '''^pk_test_\.\.\.$''',
+    '''^service-role-key$''',
+    '''^change-me$''',
+    '''^https://test-user:example-password@router\.example/v1$''',
+]

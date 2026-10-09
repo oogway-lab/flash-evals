@@ -1,0 +1,33 @@
+{
+    "$schema": "https://unpkg.com/knip@5/schema.json",
+    "entry": ["package.json", "scripts/*.mjs"],
+    "project": [
+        "apps/**/*.ts",
+        "apps/**/*.tsx",
+        "packages/**/*.ts",
+        "scripts/*.mjs"
+    ],
+    "ignore": [
+        "apps/web/next-env.d.ts",
+        "apps/web/globals.d.ts",
+        "apps/web/open-next.config.ts",
+        "apps/web/server/db/migrations/**"
+    ],
+    "ignoreDependencies": [
+        "@mosaic/llm-core",
+        "@types/*",
+        "autoprefixer",
+        "pg-boss",
+        "postcss",
+        "tailwindcss",
+        "tsx",
+        "wrangler"
+    ],
+    "ignoreBinaries": [
+        "gitleaks",
+        "semgrep",
+        "scripts/check-live-split-deployment-readiness.sh",
+        "scripts/check-split-deployment-readiness.sh",
+        "scripts/smoke-split-health.sh"
+    ]
+}

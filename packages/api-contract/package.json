@@ -1,0 +1,24 @@
+{
+    "name": "@mosaic/api-contract",
+    "version": "0.0.0",
+    "private": true,
+    "license": "AGPL-3.0-only",
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./src/index.ts",
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "import": "./dist/index.js",
+            "require": "./dist/index.js",
+            "default": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "typecheck": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "typescript": "^5.8.3"
+    }
+}

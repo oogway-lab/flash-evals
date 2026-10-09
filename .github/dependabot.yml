@@ -1,0 +1,41 @@
+# Weekly dependency updates. Minor and patch bumps are grouped so each
+# ecosystem opens about one PR a week. Major npm bumps are not grouped, so
+# each one gets its own PR: they usually need code changes, and a failure
+# in one should not block the others.
+version: 2
+updates:
+  - package-ecosystem: npm
+    # The root lockfile covers every pnpm workspace package.
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # Wait before proposing a new release, as a buffer against compromised
+    # publishes. Security updates skip the cooldown.
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Node 22 remains the minimum engine line; keep its types while CI pins Node 24 LTS.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      github-actions:
+        patterns:
+          - "*"

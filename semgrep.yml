@@ -1,0 +1,18 @@
+rules:
+    - id: no-direct-process-env-in-client-code
+      message: "Client-facing code must not read unprefixed process.env values."
+      severity: ERROR
+      languages:
+          - typescript
+      paths:
+          include:
+              - /apps/web/app/**/*.tsx
+              - /apps/web/components/**/*.tsx
+              - /apps/web/lib/**/*.ts
+      pattern-regex: "process\\.env\\.(?!NEXT_PUBLIC_|NODE_ENV)"
+    - id: no-console-log-secrets
+      message: "Avoid logging values with secret/key/token names."
+      severity: WARNING
+      languages:
+          - typescript
+      pattern-regex: "console\\.(log|info|warn|error)\\([^\\n]*(secret|token|api[_-]?key|password)"

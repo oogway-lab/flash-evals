@@ -1,0 +1,1 @@
+ALTER TABLE "prompt_workflows" ADD COLUMN "stt_config" jsonb;

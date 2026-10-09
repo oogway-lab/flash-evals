@@ -1,0 +1,8 @@
+.next/
+*.tsbuildinfo
+.env
+.env.local
+.uploads/
+
+# clerk configuration (can include secrets)
+/.clerk/

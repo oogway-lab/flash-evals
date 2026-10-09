@@ -1,0 +1,37 @@
+labels:
+  - name: P0
+    color: "b60205"
+    description: Immediate production or security priority
+  - name: P1
+    color: "d93f0b"
+    description: High priority
+  - name: P2
+    color: "fbca04"
+    description: Normal priority
+  - name: P3
+    color: "c2e0c6"
+    description: Low priority
+  - name: type:bug
+    color: "d73a4a"
+    description: Defect or regression
+  - name: type:feature
+    color: "0e8a16"
+    description: New or expanded capability
+  - name: area:web
+    color: "1d76db"
+    description: Cloudflare web surface
+  - name: area:api
+    color: "0052cc"
+    description: Railway API/runtime
+  - name: area:tooling
+    color: "bfdadc"
+    description: Build, CI, scripts, and developer tooling
+  - name: area:security
+    color: "ee0701"
+    description: Security, secrets, auth, or dependency risk
+  - name: area:docs
+    color: "0075ca"
+    description: Documentation or runbooks
+  - name: status:blocked
+    color: "000000"
+    description: Blocked by external input or platform setup
