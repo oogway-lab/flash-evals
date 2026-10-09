@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const clerkMock = vi.hoisted(() => ({
     authenticateRequest: vi.fn(),
+    getUser: vi.fn(),
 }));
 
 vi.mock("@clerk/backend", () => ({
     createClerkClient: vi.fn(() => ({
         authenticateRequest: clerkMock.authenticateRequest,
+        users: { getUser: clerkMock.getUser },
     })),
 }));
 
@@ -62,6 +64,12 @@ function dbWithLinkedUser(): IDb {
 describe("MCP HTTP OAuth", () => {
     beforeEach(() => {
         clerkMock.authenticateRequest.mockReset();
+        clerkMock.getUser.mockReset().mockResolvedValue({
+            primaryEmailAddress: {
+                emailAddress: "teammate@example.com",
+                verification: { status: "verified" },
+            },
+        });
         // Rejected MCP requests log `mcp.request.failed`; keep test output clean.
         vi.spyOn(console, "warn").mockImplementation(() => undefined);
     });
@@ -250,6 +258,49 @@ describe("MCP HTTP OAuth", () => {
             },
             id: 1,
         });
+    });
+
+    it("denies MCP OAuth when the current verified Clerk email is outside the allowed domain", async () => {
+        clerkMock.authenticateRequest.mockResolvedValue({
+            toAuth: () => ({
+                isAuthenticated: true,
+                tokenType: "oauth_token",
+                clientId: "oauth-client",
+                userId: "clerk-user-1",
+            }),
+        });
+        clerkMock.getUser.mockResolvedValue({
+            primaryEmailAddress: {
+                emailAddress: "teammate@outside.example",
+                verification: { status: "verified" },
+            },
+        });
+
+        const response = await handleMcpRequest(
+            new Request("https://api.example.com/mcp", {
+                method: "POST",
+                headers: {
+                    authorization: "Bearer header.payload.signature",
+                    origin: "https://claude.example.com",
+                    "content-type": "application/json",
+                    accept: "application/json, text/event-stream",
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    id: 1,
+                    method: "initialize",
+                    params: {
+                        protocolVersion: "2025-06-18",
+                        capabilities: {},
+                        clientInfo: { name: "test", version: "0" },
+                    },
+                }),
+            }),
+            { config, db: dbWithLinkedUser() },
+        );
+
+        expect(response.status).toBe(403);
+        expect(clerkMock.getUser).toHaveBeenCalledWith("clerk-user-1");
     });
 
     it("lists tools and executes get_current_user after OAuth", async () => {
