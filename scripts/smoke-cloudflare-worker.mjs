@@ -55,10 +55,14 @@ function reservePort() {
 }
 
 const port = await reservePort();
-const wranglerPath = path.join(repoRoot, "apps/web/node_modules/.bin/wrangler");
+const wranglerPath = path.join(
+    repoRoot,
+    "apps/web/node_modules/wrangler/bin/wrangler.js",
+);
 const wrangler = spawn(
-    wranglerPath,
+    process.execPath,
     [
+        wranglerPath,
         "dev",
         "--local",
         "--config",
@@ -71,7 +75,11 @@ const wrangler = spawn(
     {
         cwd: repoRoot,
         env: {
-            PATH: process.env.PATH,
+            PATH: [
+                path.dirname(process.execPath),
+                path.join(repoRoot, "apps/web/node_modules/.bin"),
+                path.join(repoRoot, "node_modules/.bin"),
+            ].join(path.delimiter),
             CI: "1",
             WRANGLER_WRITE_LOGS: "false",
             WRANGLER_LOG_PATH: tempDir,
