@@ -165,7 +165,15 @@ vi.mock("../db/client", () => ({
                         ]);
                     return query(mocks.runItems);
                 }
-                if (name === "labels") return query([]);
+                if (name === "labels")
+                    return query(
+                        [...mocks.labelsByItemId].map(
+                            ([datasetItemId, labelJson]) => ({
+                                datasetItemId,
+                                labelJson,
+                            }),
+                        ),
+                    );
                 return query([]);
             }),
         })),
@@ -306,6 +314,7 @@ import {
     executeWorkflowRun,
     supportsWorkflowLlmExecutionContract,
 } from "./executor";
+import { loadWorkflowScoringContext } from "./scoring";
 
 describe("executeWorkflowRun", () => {
     it("rejects a snapshot from an unsupported LLM execution contract", () => {
@@ -1344,6 +1353,120 @@ describe("executeWorkflowRun", () => {
             mocks.executeCell.mock.calls.map((call) => call[1].prompt),
         ).toEqual(["Clean\n\nspeaker transcript", "Clean\n\nplain transcript"]);
     });
+
+    it.each([
+        { modality: "image", hasLabel: true },
+        { modality: "image", hasLabel: false },
+        { modality: "text", hasLabel: true },
+        { modality: "text", hasLabel: false },
+    ] as const)(
+        "loads metric references for $modality workflows (label present: $hasLabel)",
+        async ({ modality, hasLabel }) => {
+            const actualScoring = await vi.importActual<{
+                loadWorkflowScoringContext: typeof loadWorkflowScoringContext;
+            }>("./scoring");
+            vi.mocked(loadWorkflowScoringContext).mockImplementationOnce(
+                actualScoring.loadWorkflowScoringContext,
+            );
+            const candidate =
+                modality === "image"
+                    ? "[Image input: image/png]"
+                    : "synthetic text";
+            mocks.snapshot = {
+                workflowId: "workflow-1",
+                name: "Keyless metric workflow",
+                kind: "multi",
+                nodes: [
+                    {
+                        id: "node-input",
+                        nodeKey: "input",
+                        label: "Input",
+                        nodeType: "input",
+                        nodeConfig: { type: "input", modality },
+                        evalConfig: { type: "none" },
+                    },
+                    {
+                        id: "node-metric",
+                        nodeKey: "metric",
+                        label: "Metric",
+                        nodeType: "metric_compare",
+                        nodeConfig: {
+                            type: "metric_compare",
+                            referenceField: "expectedTranscript",
+                        },
+                        evalConfig: { type: "none" },
+                    },
+                ],
+                edges: [
+                    {
+                        id: "edge-1",
+                        fromNodeId: "node-input",
+                        toNodeId: "node-metric",
+                        carryOriginalInput: false,
+                    },
+                ],
+            };
+            mocks.cells = ["input", "metric"].map((nodeKey) => ({
+                id: `cell-${nodeKey}`,
+                datasetItemId: "item-1",
+                nodeKey,
+                status: "pending",
+            }));
+            mocks.items = [
+                {
+                    id: "item-1",
+                    type: modality,
+                    inputText: candidate,
+                    ...(modality === "image"
+                        ? {
+                              storageKey: "synthetic-image",
+                              mimeType: "image/png",
+                          }
+                        : {}),
+                },
+            ];
+            mocks.loadImage.mockResolvedValue({
+                mimeType: "image/png",
+                base64: "c3ludGhldGlj",
+            });
+            if (hasLabel)
+                mocks.labelsByItemId.set("item-1", {
+                    expectedTranscript: candidate,
+                });
+
+            await executeWorkflowRun("run-1");
+
+            expect(mocks.cells.map((cell) => cell.status)).toEqual([
+                "succeeded",
+                "succeeded",
+            ]);
+            expect(mocks.cells[1].inputText).toBe(candidate);
+            expect(mocks.scoreRows).toEqual([
+                expect.objectContaining({
+                    workflowRunCellId: "cell-metric",
+                    scorerType: "transcript_metric",
+                    score: hasLabel ? 1 : null,
+                    detailsJson: expect.objectContaining(
+                        hasLabel
+                            ? {
+                                  referenceField: "expectedTranscript",
+                                  wer: 0,
+                                  cer: 0,
+                              }
+                            : {
+                                  referenceField: "expectedTranscript",
+                                  reason: "missing_reference",
+                              },
+                    ),
+                }),
+            ]);
+            expect(mocks.cells[1].outputJson.text).toBe(hasLabel ? "1" : "");
+            expect(mocks.executeCell).not.toHaveBeenCalled();
+            expect(
+                mocks.getOrCreateAudioTranscriptArtifact,
+            ).not.toHaveBeenCalled();
+        },
+    );
 
     it("scores expectedTranscriptLatin from an upstream text node", async () => {
         mocks.snapshot = metricWorkflowSnapshot();
