@@ -12,8 +12,7 @@ import { registerMosaicMcpCapabilities } from "./registry.js";
 export const MCP_PATH = "/mcp";
 export const MCP_PROTECTED_RESOURCE_METADATA_PATH =
     "/.well-known/oauth-protected-resource";
-export const MCP_PATH_PROTECTED_RESOURCE_METADATA_PATH =
-    `${MCP_PROTECTED_RESOURCE_METADATA_PATH}${MCP_PATH}`;
+export const MCP_PATH_PROTECTED_RESOURCE_METADATA_PATH = `${MCP_PROTECTED_RESOURCE_METADATA_PATH}${MCP_PATH}`;
 
 const MCP_CORS_METHODS = "GET,POST,OPTIONS";
 const MCP_CORS_HEADERS =
@@ -38,7 +37,8 @@ export async function handleMcpRequest(
         const url = new URL(request.url);
         const oauthConfig = resolveMcpOAuthConfig(runtime.config);
         if (isMcpProtectedResourceMetadataPath(url.pathname)) {
-            if (!oauthConfig) throw new ApiNotFoundError("MCP OAuth is not enabled.");
+            if (!oauthConfig)
+                throw new ApiNotFoundError("MCP OAuth is not enabled.");
             if (!origin) headers.set("access-control-allow-origin", "*");
             return Response.json(
                 {
@@ -59,10 +59,22 @@ export async function handleMcpRequest(
 
         let principal;
         try {
-            principal = await resolveMcpPrincipal(runtime.db, runtime.config, request);
+            principal = await resolveMcpPrincipal(
+                runtime.db,
+                runtime.config,
+                request,
+            );
         } catch (err) {
             if (oauthConfig && err instanceof McpAuthenticationError) {
-                return unauthorizedOAuthResponse(oauthConfig.resourceUrl, headers);
+                logApiEvent("warn", "mcp.auth.rejected", {
+                    requestId,
+                    reason: err.reason,
+                    status: 401,
+                });
+                return unauthorizedOAuthResponse(
+                    oauthConfig.resourceUrl,
+                    headers,
+                );
             }
             throw err;
         }
@@ -101,10 +113,15 @@ export async function handleMcpRequest(
 }
 
 export function isMcpPath(pathname: string): boolean {
-    return pathname === MCP_PATH || isMcpProtectedResourceMetadataPath(pathname);
+    return (
+        pathname === MCP_PATH || isMcpProtectedResourceMetadataPath(pathname)
+    );
 }
 
-function unauthorizedOAuthResponse(resourceUrl: string, headers: Headers): Response {
+function unauthorizedOAuthResponse(
+    resourceUrl: string,
+    headers: Headers,
+): Response {
     const metadataUrl = new URL(
         MCP_PATH_PROTECTED_RESOURCE_METADATA_PATH,
         resourceUrl,
@@ -123,7 +140,10 @@ function isMcpProtectedResourceMetadataPath(pathname: string): boolean {
     );
 }
 
-function mcpCorsHeaders(origin: string | null, allowedOrigins: string[]): Headers {
+function mcpCorsHeaders(
+    origin: string | null,
+    allowedOrigins: string[],
+): Headers {
     const headers = new Headers();
     headers.set("access-control-allow-methods", MCP_CORS_METHODS);
     headers.set("access-control-allow-headers", MCP_CORS_HEADERS);

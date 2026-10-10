@@ -13,7 +13,45 @@ import type { IDb } from "../db.js";
 import { ApiForbiddenError } from "../errors.js";
 import type { McpProfile } from "./effects.js";
 
-export class McpAuthenticationError extends ApiForbiddenError {}
+type McpAuthenticationReason =
+    | "missing_bearer"
+    | "sdk_exception"
+    | "sdk_rejected"
+    | "authorized_party_mismatch"
+    | "audience_mismatch"
+    | "invalid_signature"
+    | "expired_token"
+    | "token_type_mismatch"
+    | "missing_subject";
+
+export class McpAuthenticationError extends ApiForbiddenError {
+    constructor(
+        message: string,
+        readonly reason: McpAuthenticationReason = "sdk_rejected",
+    ) {
+        super(message);
+    }
+}
+
+// SDK messages can contain claims or other sensitive values. Classify known
+// failures into fixed codes; never retain or log the SDK message itself.
+function clerkRejectionReason(message: string | null): McpAuthenticationReason {
+    if (message?.startsWith("Invalid JWT Authorized party claim (azp)")) {
+        return "authorized_party_mismatch";
+    }
+    if (
+        message?.startsWith("Invalid JWT audience claim") ||
+        message?.startsWith("Invalid OAuth audience claim") ||
+        message?.startsWith("OAuth audience mismatch.")
+    ) {
+        return "audience_mismatch";
+    }
+    if (message?.startsWith("JWT signature is invalid.")) {
+        return "invalid_signature";
+    }
+    if (message?.startsWith("JWT is expired.")) return "expired_token";
+    return "sdk_rejected";
+}
 
 export interface IMcpPrincipal {
     authMode: "oauth" | "raw-token";
@@ -63,7 +101,12 @@ export async function resolveMcpPrincipal(
     request: Request,
 ): Promise<IMcpPrincipal> {
     const token = bearerToken(request);
-    if (!token) throw new McpAuthenticationError("Missing MCP bearer token.");
+    if (!token) {
+        throw new McpAuthenticationError(
+            "Missing MCP bearer token.",
+            "missing_bearer",
+        );
+    }
     const oauthConfig = resolveMcpOAuthConfig(config);
     if (oauthConfig) {
         const identity = await resolveClerkOAuthIdentity(token, oauthConfig);
@@ -161,6 +204,7 @@ export async function resolveClerkOAuthIdentity(
     });
 
     let authCandidate: MachineAuthObject<"oauth_token">;
+    let rejectionReason: McpAuthenticationReason = "sdk_rejected";
     try {
         const state = await client.authenticateRequest(
             new Request(config.resourceUrl, {
@@ -175,10 +219,12 @@ export async function resolveClerkOAuthIdentity(
                     (config.clientId ? [config.clientId] : undefined),
             },
         );
+        rejectionReason = clerkRejectionReason(state.message);
         authCandidate = state.toAuth();
     } catch {
         throw new McpAuthenticationError(
             "Invalid or expired Clerk OAuth token.",
+            "sdk_exception",
         );
     }
 
@@ -188,6 +234,9 @@ export async function resolveClerkOAuthIdentity(
     ) {
         throw new McpAuthenticationError(
             "Invalid or expired Clerk OAuth token.",
+            authCandidate.tokenType !== "oauth_token"
+                ? "token_type_mismatch"
+                : rejectionReason,
         );
     }
     const auth: ClerkOAuthAuth = authCandidate;
@@ -197,7 +246,10 @@ export async function resolveClerkOAuthIdentity(
         );
     }
     if (!auth.userId) {
-        throw new McpAuthenticationError("OAuth token has no Clerk subject.");
+        throw new McpAuthenticationError(
+            "OAuth token has no Clerk subject.",
+            "missing_subject",
+        );
     }
     return { userId: auth.userId, scopes: auth.scopes ?? [] };
 }
