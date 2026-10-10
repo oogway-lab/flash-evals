@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as ClerkBackend from "@clerk/backend";
 
 const clerkMock = vi.hoisted(() => ({
     authenticateRequest: vi.fn(),
+    verifyToken: vi.fn(),
     getUser: vi.fn(),
 }));
 
 vi.mock("@clerk/backend", () => ({
+    verifyToken: clerkMock.verifyToken,
     createClerkClient: vi.fn(() => ({
         authenticateRequest: clerkMock.authenticateRequest,
         users: { getUser: clerkMock.getUser },
@@ -45,6 +48,9 @@ const config: IApiConfig = {
 describe("MCP auth", () => {
     beforeEach(() => {
         clerkMock.authenticateRequest.mockReset();
+        clerkMock.verifyToken
+            .mockReset()
+            .mockResolvedValue({ iss: "https://clerk.example.com" });
         clerkMock.getUser.mockReset();
     });
 
@@ -213,6 +219,15 @@ describe("MCP auth", () => {
                 authorizedParties: undefined,
             }),
         );
+        expect(clerkMock.verifyToken).toHaveBeenCalledWith(
+            "header.payload.signature",
+            {
+                jwtKey: "jwt-key",
+                audience: "https://api.example.com/mcp",
+                authorizedParties: undefined,
+                headerType: ["at+jwt", "application/at+jwt"],
+            },
+        );
     });
 
     it("rejects Clerk session tokens and wrong OAuth clients", async () => {
@@ -260,6 +275,33 @@ describe("MCP auth", () => {
         ).rejects.toThrow(
             "OAuth token was not issued for this Flash Evals MCP client.",
         );
+    });
+
+    it("rejects opaque OAuth tokens even if Clerk authenticates them", async () => {
+        const actual =
+            await vi.importActual<typeof ClerkBackend>("@clerk/backend");
+        clerkMock.verifyToken.mockImplementation(actual.verifyToken);
+        clerkMock.authenticateRequest.mockResolvedValue({
+            toAuth: () => ({
+                isAuthenticated: true,
+                tokenType: "oauth_token",
+                clientId: "oauth-client",
+                userId: "clerk-user-1",
+                scopes: [],
+            }),
+        });
+
+        await expect(
+            resolveClerkOAuthSubject("oat_synthetic_opaque", {
+                resourceUrl: "https://api.example.com/mcp",
+                issuer: "https://clerk.example.com",
+                secretKey: "sk_test",
+                publishableKey: "pk_test",
+                jwtKey: "jwt-key",
+                clientId: "oauth-client",
+                dynamicClients: false,
+            }),
+        ).rejects.toMatchObject({ reason: "issuer_verification_failed" });
     });
 
     // With MOSAIC_MCP_OAUTH_DYNAMIC_CLIENTS=true and no MOSAIC_MCP_OAUTH_CLIENT_ID,

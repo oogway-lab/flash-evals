@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const clerkMock = vi.hoisted(() => ({
     authenticateRequest: vi.fn(),
+    verifyToken: vi.fn(),
     getUser: vi.fn(),
 }));
 
 vi.mock("@clerk/backend", () => ({
+    verifyToken: clerkMock.verifyToken,
     createClerkClient: vi.fn(() => ({
         authenticateRequest: clerkMock.authenticateRequest,
         users: { getUser: clerkMock.getUser },
@@ -108,6 +110,9 @@ function dbForResourceFailure(
 describe("MCP HTTP OAuth", () => {
     beforeEach(() => {
         clerkMock.authenticateRequest.mockReset();
+        clerkMock.verifyToken
+            .mockReset()
+            .mockResolvedValue({ iss: "https://clerk.example.com" });
         clerkMock.getUser.mockReset().mockResolvedValue({
             primaryEmailAddress: {
                 emailAddress: "teammate@example.com",
@@ -283,6 +288,54 @@ describe("MCP HTTP OAuth", () => {
         expect(logged.reason).toBe("sdk_exception");
         expect(JSON.stringify(logged)).not.toContain("private-");
     });
+
+    it.each([
+        [
+            "wrong issuer",
+            { iss: "https://private-issuer.example" },
+            "issuer_mismatch",
+        ],
+        ["missing issuer", {}, "issuer_mismatch"],
+        ["unverifiable access JWT", null, "issuer_verification_failed"],
+    ])(
+        "rejects %s before account access and logs only a fixed reason",
+        async (_name, claims, reason) => {
+            clerkMock.authenticateRequest.mockResolvedValue({
+                toAuth: () => ({
+                    isAuthenticated: true,
+                    tokenType: "oauth_token",
+                    clientId: "oauth-client",
+                    userId: "clerk-user-1",
+                    scopes: [],
+                }),
+            });
+            if (claims === null) {
+                clerkMock.verifyToken.mockRejectedValue(
+                    new Error("private-token private-claim"),
+                );
+            } else {
+                clerkMock.verifyToken.mockResolvedValue(claims);
+            }
+            const db = dbWithLinkedUser();
+            const response = await handleMcpRequest(
+                new Request("https://api.example.com/mcp", {
+                    method: "POST",
+                    headers: { authorization: "Bearer private-token" },
+                }),
+                { config, db },
+            );
+            expect(response.status).toBe(401);
+            expect(await response.text()).toBe("Unauthorized");
+            expect(response.headers.get("www-authenticate")).toContain(
+                "resource_metadata",
+            );
+            expect(db.query).not.toHaveBeenCalled();
+            expect(clerkMock.getUser).not.toHaveBeenCalled();
+            const logged = JSON.parse(vi.mocked(console.warn).mock.calls[0][0]);
+            expect(logged.reason).toBe(reason);
+            expect(JSON.stringify(logged)).not.toContain("private-");
+        },
+    );
 
     it("returns authorization errors for linked-account failures without restarting OAuth", async () => {
         clerkMock.authenticateRequest.mockResolvedValue({

@@ -1,5 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
-import { createClerkClient, type MachineAuthObject } from "@clerk/backend";
+import {
+    createClerkClient,
+    verifyToken,
+    type MachineAuthObject,
+} from "@clerk/backend";
 import {
     isEmailAllowedForDomain,
     normalizeEmailAddress,
@@ -22,7 +26,9 @@ type McpAuthenticationReason =
     | "invalid_signature"
     | "expired_token"
     | "token_type_mismatch"
-    | "missing_subject";
+    | "missing_subject"
+    | "issuer_mismatch"
+    | "issuer_verification_failed";
 
 export class McpAuthenticationError extends ApiForbiddenError {
     constructor(
@@ -240,6 +246,29 @@ export async function resolveClerkOAuthIdentity(
         );
     }
     const auth: ClerkOAuthAuth = authCandidate;
+    // authenticateRequest verifies the configured signing key and OAuth
+    // audience, but Clerk 3.22 does not check iss. Read the issuer only from
+    // cryptographically verified access-JWT claims, never an unverified decode.
+    let claims: Awaited<ReturnType<typeof verifyToken>>;
+    try {
+        claims = await verifyToken(token, {
+            jwtKey: config.jwtKey,
+            audience: config.resourceUrl,
+            authorizedParties: config.authorizedParties,
+            headerType: ["at+jwt", "application/at+jwt"],
+        });
+    } catch {
+        throw new McpAuthenticationError(
+            "Invalid or expired Clerk OAuth token.",
+            "issuer_verification_failed",
+        );
+    }
+    if (claims.iss !== config.issuer) {
+        throw new McpAuthenticationError(
+            "Invalid or expired Clerk OAuth token.",
+            "issuer_mismatch",
+        );
+    }
     if (config.clientId && auth.clientId !== config.clientId) {
         throw new ApiForbiddenError(
             "OAuth token was not issued for this Flash Evals MCP client.",

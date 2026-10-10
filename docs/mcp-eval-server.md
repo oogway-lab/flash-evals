@@ -439,6 +439,10 @@ already operate. It is not a complete hosted-deployment walkthrough.
    redirects varies; use the client's and Clerk's current instructions.
 
 Production requires an HTTPS resource URL and refuses raw-token fallback.
+MCP OAuth requires JWT access tokens with an `at+jwt` or `application/at+jwt`
+header type and an `iss` claim exactly equal to `CLERK_ISSUER`. Configure Clerk
+to issue JWT OAuth access tokens with the MCP resource as their audience.
+Opaque OAuth access tokens have no verifiable issuer claim and are rejected.
 Keep the server secret private. The publishable key, client ID, and JWT public
 key have different roles; they are not substitutes for an OAuth access token.
 
