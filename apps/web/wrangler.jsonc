@@ -1,14 +1,14 @@
 {
     "$schema": "../../node_modules/wrangler/config-schema.json",
-    "name": "mosaic-web",
+    "name": "flash-evals",
     "main": ".open-next/worker.js",
     "compatibility_date": "2026-07-06",
     "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
     "assets": {
         "directory": ".open-next/assets",
-        "binding": "ASSETS"
+        "binding": "ASSETS",
     },
     "observability": {
-        "enabled": true
-    }
+        "enabled": true,
+    },
 }

@@ -45,6 +45,7 @@
         "api:start:railway": "pnpm --filter @mosaic/api start:railway",
         "worker": "pnpm --filter @mosaic/web worker",
         "worker:status": "pnpm --filter @mosaic/web worker:status",
+        "db:bootstrap-pilot-team": "pnpm --filter @mosaic/web db:bootstrap-pilot-team",
         "api:test": "pnpm --filter @mosaic/api test",
         "api:typecheck": "pnpm --filter @mosaic/api typecheck",
         "check:client-imports": "node scripts/check-client-server-imports.mjs",

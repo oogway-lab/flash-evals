@@ -18,6 +18,7 @@
         "worker:status": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=../api/.env --env-file-if-exists=.env --import tsx scripts/worker-status.ts",
         "db:generate": "drizzle-kit generate",
         "db:migrate": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=../api/.env --env-file-if-exists=.env ./node_modules/drizzle-kit/bin.cjs migrate",
+        "db:bootstrap-pilot-team": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=../api/.env --env-file-if-exists=.env --import tsx scripts/bootstrap-pilot-team.ts",
         "seed": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=../api/.env --env-file-if-exists=.env --import tsx scripts/seed.ts"
     },
     "dependencies": {

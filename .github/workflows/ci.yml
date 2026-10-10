@@ -54,6 +54,27 @@ jobs:
       - name: Web unit tests
         run: pnpm --filter @mosaic/web test
 
+  cloudflare-build:
+    name: Cloudflare Worker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up workspace
+        uses: ./.github/actions/setup-workspace
+
+      - name: Build OpenNext Worker and static assets
+        run: pnpm run web:build:cloudflare
+
+      - name: Verify Cloudflare build output
+        run: |
+          test -s apps/web/.open-next/worker.js
+          test -d apps/web/.open-next/assets
+
   package-tests:
     name: Package and API tests
     runs-on: ubuntu-latest
@@ -239,6 +260,7 @@ jobs:
     needs:
       - typecheck-build
       - web-tests
+      - cloudflare-build
       - package-tests
       - migrations
       - static-checks

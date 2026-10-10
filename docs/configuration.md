@@ -18,14 +18,14 @@ built deployment can require a web rebuild. Never put secrets in those variables
 
 ## How environment files are loaded
 
-| Command                                    | Environment files                                                                 |
-| ------------------------------------------ | --------------------------------------------------------------------------------- |
-| `pnpm run api:dev` or `pnpm run api:start` | `apps/api/.env`                                                                   |
-| `pnpm --filter @mosaic/web dev`            | Next.js environment loading from `apps/web`                                       |
-| `pnpm run worker`                          | `apps/api/.env`, then `apps/web/.env`                                             |
-| `pnpm run db:migrate` or `pnpm run seed`   | `apps/api/.env`, then `apps/web/.env`                                             |
-| `pnpm run dev`                             | The files above, plus explicit local overrides                                    |
-| `pnpm run api:start:railway`               | Process environment; starts API and worker unless `MOSAIC_API_START_WORKER=false` |
+| Command                                                                       | Environment files                                                                 |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `pnpm run api:dev` or `pnpm run api:start`                                    | `apps/api/.env`                                                                   |
+| `pnpm --filter @mosaic/web dev`                                               | Next.js environment loading from `apps/web`                                       |
+| `pnpm run worker`                                                             | `apps/api/.env`, then `apps/web/.env`                                             |
+| `pnpm run db:migrate`, `pnpm run db:bootstrap-pilot-team`, or `pnpm run seed` | `apps/api/.env`, then `apps/web/.env`                                             |
+| `pnpm run dev`                                                                | The files above, plus explicit local overrides                                    |
+| `pnpm run api:start:railway`                                                  | Process environment; starts API and worker unless `MOSAIC_API_START_WORKER=false` |
 
 Existing process environment variables override values read from files. For the
 worker and database commands, later env-file values override earlier file values;
@@ -40,19 +40,61 @@ command for the local walkthrough.
 
 ## Database and service URLs
 
-| Setting                    | Where              | Purpose                                                                |
-| -------------------------- | ------------------ | ---------------------------------------------------------------------- |
-| `DATABASE_URL`             | API and worker     | PostgreSQL connection. The bundled local service uses host port 54322. |
-| `INTERNAL_API_TOKEN`       | API and web server | Shared secret for privileged web-to-API requests. Values must match.   |
-| `API_BASE_URL`             | Web server         | Server-side API origin.                                                |
-| `NEXT_PUBLIC_API_BASE_URL` | Web                | Browser-facing API origin; not a secret.                               |
-| `MOSAIC_API_PUBLIC_URL`    | API                | Public API origin used for absolute local-upload URLs.                 |
-| `CORS_ORIGINS`             | API                | Comma-separated permitted web origins. MCP has a separate allowlist.   |
+| Setting                    | Where              | Purpose                                                                                                                                          |
+| -------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`             | API and worker     | PostgreSQL connection. The bundled local service uses host port 54322.                                                                           |
+| `MOSAIC_WEB_DATABASE_URL`  | Web server         | Web PostgreSQL connection. Local dev may use the same local URL; Cloudflare Workers use the Supabase shared transaction pooler URL on port 6543. |
+| `MOSAIC_DEFAULT_TEAM_ID`   | Pilot bootstrap    | UUID for the single pilot team created by `pnpm run db:bootstrap-pilot-team`.                                                                    |
+| `MOSAIC_DEFAULT_TEAM_NAME` | Pilot bootstrap    | Name for that team; optional, defaults to `Oogway Labs`.                                                                                         |
+| `INTERNAL_API_TOKEN`       | API and web server | Shared secret for privileged web-to-API requests. Values must match.                                                                             |
+| `API_BASE_URL`             | Web server         | Server-side API origin.                                                                                                                          |
+| `NEXT_PUBLIC_API_BASE_URL` | Web                | Browser-facing API origin; not a secret.                                                                                                         |
+| `MOSAIC_API_PUBLIC_URL`    | API                | Public API origin used for absolute local-upload URLs.                                                                                           |
+| `CORS_ORIGINS`             | API                | Comma-separated permitted web origins. MCP has a separate allowlist.                                                                             |
 
 The worker needs database and provider access. It does not execute jobs through
 the web server. An API health response alone does not verify that a worker is
 running or can call a provider. Use the private `pnpm worker:status` command and
 the process supervisor; see the [worker operations runbook](worker-operations.md).
+
+The Cloudflare web Worker reads `MOSAIC_WEB_DATABASE_URL` from its Worker
+environment. Set it as a Cloudflare secret using the shared Supabase transaction
+pooler URI copied from the Supabase Connect dialog (port 6543), including
+`sslmode=require`. This is the only additional web runtime secret needed for
+Postgres. Keep the Railway API and worker on their separate `DATABASE_URL`
+session-pooler URI (port 5432 for this deployment).
+
+This uses direct `pg` connections over Workers' supported `node:net` and
+`node:tls` APIs. The project already enables `nodejs_compat`; its locked `pg`
+version is 8.23.1, above Cloudflare's documented 8.16.3 minimum. OpenNext's
+PostgreSQL guide requires a request-scoped pool with `maxUses: 1`; the web client
+does this and Supabase's transaction pooler provides backend connection
+pooling. A Hyperdrive binding is not required for this supported path. Supabase
+transaction mode disallows named prepared statements; the current Drizzle
+node-postgres adapter sends unnamed queries.
+
+For local `next dev` or `wrangler dev`, set `MOSAIC_WEB_DATABASE_URL` in
+`apps/web/.env`; it may use the same local PostgreSQL URI as `DATABASE_URL`.
+Production uses the Cloudflare Worker secret at runtime. The app fails closed if
+the Worker binding and local web URL are both missing.
+
+Before running `pnpm run db:migrate` against the pilot database, verify that it
+is a newly created empty Supabase project and contains no application data.
+Migration `0037_backfill_personal_workspaces.sql` runs
+`TRUNCATE TABLE "teams" CASCADE`, which removes team-owned application rows. Do
+not apply that migration to an existing or unverified database. The CI migration
+job applies the migration set only to its fresh, disposable PostgreSQL service.
+
+Once the database is confirmed empty and the reviewed migrations have been
+applied, `pnpm run db:bootstrap-pilot-team` creates the configured
+`MOSAIC_DEFAULT_TEAM_ID` team only when the `teams` table is empty. It is
+idempotent for the same team ID and name and refuses a populated table with a
+different team. This command does not run or reset migrations. Do not use
+`pnpm run seed` on a hosted database; that command truncates application tables.
+
+References: [Cloudflare's Worker PostgreSQL guide](https://developers.cloudflare.com/workers/tutorials/postgres/),
+[OpenNext's database guide](https://opennext.js.org/cloudflare/howtos/db), and
+[Supabase's connection-mode guide](https://supabase.com/docs/guides/database/connecting-to-postgres).
 
 For a split Railway topology, configure the API service with
 `pnpm run api:start:railway` and `MOSAIC_API_START_WORKER=false`; configure a

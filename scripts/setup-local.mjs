@@ -39,6 +39,7 @@ writeFileSync(
     webPath,
     `API_BASE_URL=http://localhost:3001
 NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+MOSAIC_WEB_DATABASE_URL=postgres://mosaic:mosaic@localhost:54322/mosaic
 INTERNAL_API_TOKEN=${token}
 `,
     { mode: 0o600, flag: "wx" },
