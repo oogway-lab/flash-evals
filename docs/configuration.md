@@ -98,6 +98,33 @@ The Supabase adapter uses `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
 `MOSAIC_CSP_STORAGE_ORIGIN` on the web build to the relevant storage origin when
 restricting browser uploads. Do not expose the service-role key to browser code.
 
+The `r2` adapter uses Cloudflare R2's S3 API through the AWS SDK for JavaScript
+v3. Set `MOSAIC_STORAGE_ADAPTER=r2` and provide `R2_ACCOUNT_ID`,
+`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET` in the API and web
+server environments. Set the same `R2_STORAGE_PREFIX` in both when using an
+application namespace. The web server and Railway job worker use these settings
+to read/write media; the API uses them to sign uploads, verify objects, serve
+tenant-checked images, and delete media. Do not put R2 credentials in
+`NEXT_PUBLIC_*` variables. Keep the bucket private; the browser receives only a
+10-minute, object-specific upload URL signed for the declared content type.
+
+Browser PUTs also need `MOSAIC_CSP_STORAGE_ORIGIN` set at web build time to the
+exact signed URL origin, `https://<bucket>.<account-id>.r2.cloudflarestorage.com`.
+The R2 bucket's later CORS policy must allow the exact deployed web origin, the
+`PUT` method, and the `Content-Type` and `If-None-Match` request headers. The
+upload URL requires `If-None-Match: *`, which makes the random object key
+create-only while the short-lived bearer URL remains valid. Treat signed URLs
+as credentials and keep them out of logs. The app does not need public bucket
+access for downloads; image reads pass through the API's team/project
+authorization check. `R2_ENDPOINT` is reserved for loopback
+S3-compatible tests and is rejected outside `localhost`, `127.0.0.1`, or `::1`
+and in production.
+
+For object and PostgreSQL backup/restore operations, see
+[storage recovery](storage-backup-restore.md). The documented procedure is an
+operational plan; no hosted backup schedule or restore drill is configured by
+this change.
+
 ## Authentication and tenancy
 
 Local development bypasses web sign-in only when `AUTH_DEV=true` and
@@ -173,6 +200,7 @@ encryption key together. Read the [security policy](../SECURITY.md).
 | `MOSAIC_PACKAGES_BUILT`                   | `scripts/build-packages.mjs`              | Set to `1` by `pnpm run dev` after it builds the shared packages once, so the API, web and worker it starts skip rebuilding them.                                                           |
 | `NODE_EXTRA_CA_CERTS`                     | `scripts/node-with-supabase-ca.mjs`       | Extra CA bundle for Node. Defaults to the bundled Supabase root CA (`apps/web/config/supabase-root-2021-ca.pem`).                                                                           |
 | `MOSAIC_IMAGE_STORAGE_ADAPTER`            | API config, web storage                   | Legacy alias for `MOSAIC_STORAGE_ADAPTER`, used only when the new name is unset.                                                                                                            |
+| `R2_ENDPOINT`                             | shared object-storage package             | Local S3-compatible test endpoint only; rejected when `NODE_ENV=production`.                                                                                                                |
 | `UPLOAD_DIR`                              | API, web storage, worker                  | Directory for the `local` storage adapter (default `.uploads` at the repo root). Local development only: the split-deploy check (`pnpm run deploy:check`) rejects it in deployed env files. |
 | `STT_SMOKE_AUDIO_PATH`                    | `scripts/smoke-stt-capabilities.mjs`      | Audio file for `pnpm run smoke:stt` (default `/tmp/flash-evals-stt-smoke.wav`).                                                                                                             |
 | `STT_SMOKE_PROVIDERS`                     | `scripts/smoke-stt-capabilities.mjs`      | Comma-separated providers to probe (default `openai,gateway,soniox`).                                                                                                                       |

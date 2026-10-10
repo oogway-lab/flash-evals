@@ -20,7 +20,7 @@
         "build": "pnpm --filter @mosaic/api-contract build && pnpm --filter @mosaic/secrets build && pnpm --filter @mosaic/api build && pnpm --filter @mosaic/web build",
         "web:build:cloudflare": "pnpm --filter @mosaic/web build:cloudflare",
         "web:preview:cloudflare": "pnpm --filter @mosaic/web preview:cloudflare",
-        "typecheck": "pnpm --filter @mosaic/api-contract typecheck && pnpm --filter @mosaic/llm-core typecheck && pnpm --filter @mosaic/secrets typecheck && pnpm --filter @mosaic/api typecheck && pnpm --filter @mosaic/web typecheck",
+        "typecheck": "pnpm --filter @mosaic/object-storage typecheck && pnpm --filter @mosaic/api-contract typecheck && pnpm --filter @mosaic/llm-core typecheck && pnpm --filter @mosaic/secrets typecheck && pnpm --filter @mosaic/api typecheck && pnpm --filter @mosaic/web typecheck",
         "test": "pnpm --filter @mosaic/llm-core test && pnpm --filter @mosaic/secrets test && pnpm --filter @mosaic/api test && pnpm --filter @mosaic/web test",
         "test:coverage": "pnpm --filter @mosaic/llm-core test:coverage && pnpm --filter @mosaic/secrets test:coverage && pnpm --filter @mosaic/api test:coverage && pnpm --filter @mosaic/web test:coverage",
         "test:e2e": "playwright test",
