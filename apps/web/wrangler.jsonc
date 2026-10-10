@@ -1,14 +1,20 @@
 {
     "$schema": "../../node_modules/wrangler/config-schema.json",
-    "name": "mosaic-web",
+    "name": "flash-evals",
     "main": ".open-next/worker.js",
     "compatibility_date": "2026-07-06",
     "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
     "assets": {
         "directory": ".open-next/assets",
-        "binding": "ASSETS"
+        "binding": "ASSETS",
     },
+    "hyperdrive": [
+        {
+            "binding": "HYPERDRIVE",
+            "id": "9188f447e0c44054aee09df7465f0f6f",
+        },
+    ],
     "observability": {
-        "enabled": true
-    }
+        "enabled": true,
+    },
 }

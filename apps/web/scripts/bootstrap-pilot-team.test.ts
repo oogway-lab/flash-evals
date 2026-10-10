@@ -1,0 +1,185 @@
+import { spawnSync } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import { bootstrapPilotTeam } from "./bootstrap-pilot-team";
+
+const teamId = "11111111-1111-4111-8111-111111111111";
+const teamName = "Oogway Labs";
+
+function fakeClient(
+    responses: Array<{ rows: Array<Record<string, unknown>> }>,
+) {
+    const query = vi.fn(
+        async (..._args: unknown[]) => responses.shift() ?? { rows: [] },
+    );
+    return { query };
+}
+
+describe("bootstrapPilotTeam", () => {
+    it.each([
+        ["blank", ""],
+        ["conflicting", "22222222-2222-4222-8222-222222222222"],
+    ])(
+        "uses the API team ID when the web .env has a %s value",
+        async (_caseName, webTeamId) => {
+            const packageJson = JSON.parse(
+                await readFile(
+                    path.join(process.cwd(), "package.json"),
+                    "utf8",
+                ),
+            ) as { scripts: Record<string, string> };
+            const envFileArgs =
+                packageJson.scripts["db:bootstrap-pilot-team"]?.match(
+                    /--env-file-if-exists=\S+/g,
+                ) ?? [];
+            expect(envFileArgs).toEqual(["--env-file-if-exists=../api/.env"]);
+
+            const directory = await mkdtemp(
+                path.join(os.tmpdir(), "pilot-bootstrap-env-"),
+            );
+            try {
+                const apiEnv = path.join(directory, "api.env");
+                const webEnv = path.join(directory, "web.env");
+                await writeFile(apiEnv, `MOSAIC_DEFAULT_TEAM_ID=${teamId}\n`);
+                await writeFile(
+                    webEnv,
+                    `MOSAIC_DEFAULT_TEAM_ID=${webTeamId}\n`,
+                );
+
+                const childEnv = { ...process.env };
+                delete childEnv.MOSAIC_DEFAULT_TEAM_ID;
+                const result = spawnSync(
+                    process.execPath,
+                    [
+                        `--env-file-if-exists=${apiEnv}`,
+                        "--input-type=module",
+                        "-e",
+                        "process.stdout.write(process.env.MOSAIC_DEFAULT_TEAM_ID ?? '')",
+                    ],
+                    { cwd: process.cwd(), env: childEnv, encoding: "utf8" },
+                );
+
+                expect(await readFile(webEnv, "utf8")).toContain(
+                    `MOSAIC_DEFAULT_TEAM_ID=${webTeamId}`,
+                );
+                expect(result.error).toBeUndefined();
+                expect(result.status).toBe(0);
+                expect(result.stdout).toBe(teamId);
+            } finally {
+                await rm(directory, { recursive: true, force: true });
+            }
+        },
+    );
+
+    it("creates the configured team only when teams is empty", async () => {
+        const client = fakeClient([
+            { rows: [] },
+            { rows: [{ table_name: "teams" }] },
+            { rows: [] },
+            { rows: [] },
+            { rows: [] },
+            { rows: [] },
+            { rows: [] },
+        ]);
+
+        await expect(
+            bootstrapPilotTeam(client as never, teamId, teamName),
+        ).resolves.toBe("created");
+
+        expect(client.query).toHaveBeenCalledWith(
+            "LOCK TABLE public.teams IN SHARE ROW EXCLUSIVE MODE",
+        );
+        expect(client.query).toHaveBeenCalledWith(
+            "INSERT INTO public.teams (id, name) VALUES ($1, $2)",
+            [teamId, teamName],
+        );
+        expect(client.query).toHaveBeenLastCalledWith("COMMIT");
+        expect(
+            client.query.mock.calls.some(([statement]) =>
+                String(statement).includes("TRUNCATE"),
+            ),
+        ).toBe(false);
+    });
+
+    it("is idempotent when the configured team already exists", async () => {
+        const client = fakeClient([
+            { rows: [] },
+            { rows: [{ table_name: "teams" }] },
+            { rows: [] },
+            { rows: [{ id: teamId, name: teamName }] },
+            { rows: [] },
+            { rows: [] },
+        ]);
+
+        await expect(
+            bootstrapPilotTeam(client as never, teamId, teamName),
+        ).resolves.toBe("already-exists");
+        expect(client.query).toHaveBeenLastCalledWith("COMMIT");
+        expect(client.query).not.toHaveBeenCalledWith(
+            "INSERT INTO public.teams (id, name) VALUES ($1, $2)",
+            [teamId, teamName],
+        );
+    });
+
+    it("rolls back when the table contains another team's data", async () => {
+        const client = fakeClient([
+            { rows: [] },
+            { rows: [{ table_name: "teams" }] },
+            { rows: [] },
+            { rows: [] },
+            { rows: [{ id: "22222222-2222-4222-8222-222222222222" }] },
+            { rows: [] },
+        ]);
+
+        await expect(
+            bootstrapPilotTeam(client as never, teamId, teamName),
+        ).rejects.toThrow("contains another team");
+        expect(client.query).toHaveBeenLastCalledWith("ROLLBACK");
+    });
+
+    it("rejects another team even when the configured team also exists", async () => {
+        const client = fakeClient([
+            { rows: [] },
+            { rows: [{ table_name: "teams" }] },
+            { rows: [] },
+            { rows: [{ id: teamId, name: teamName }] },
+            { rows: [{ id: "22222222-2222-4222-8222-222222222222" }] },
+            { rows: [] },
+        ]);
+
+        await expect(
+            bootstrapPilotTeam(client as never, teamId, teamName),
+        ).rejects.toThrow("contains another team");
+        expect(client.query).toHaveBeenLastCalledWith("ROLLBACK");
+        expect(client.query).not.toHaveBeenCalledWith(
+            "INSERT INTO public.teams (id, name) VALUES ($1, $2)",
+            [teamId, teamName],
+        );
+    });
+
+    it("does not overwrite a team name or run if migrations are missing", async () => {
+        const conflict = fakeClient([
+            { rows: [] },
+            { rows: [{ table_name: "teams" }] },
+            { rows: [] },
+            { rows: [{ id: teamId, name: "Existing name" }] },
+            { rows: [] },
+        ]);
+        await expect(
+            bootstrapPilotTeam(conflict as never, teamId, teamName),
+        ).rejects.toThrow("different name");
+        expect(conflict.query).toHaveBeenLastCalledWith("ROLLBACK");
+
+        const noTable = fakeClient([
+            { rows: [] },
+            { rows: [{ table_name: null }] },
+            { rows: [] },
+        ]);
+        await expect(
+            bootstrapPilotTeam(noTable as never, teamId, teamName),
+        ).rejects.toThrow("run the reviewed migrations first");
+        expect(noTable.query).toHaveBeenLastCalledWith("ROLLBACK");
+    });
+});

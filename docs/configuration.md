@@ -24,6 +24,7 @@ built deployment can require a web rebuild. Never put secrets in those variables
 | `pnpm --filter @mosaic/web dev`            | Next.js environment loading from `apps/web`                                       |
 | `pnpm run worker`                          | `apps/api/.env`, then `apps/web/.env`                                             |
 | `pnpm run db:migrate` or `pnpm run seed`   | `apps/api/.env`, then `apps/web/.env`                                             |
+| `pnpm run db:bootstrap-pilot-team`         | `apps/api/.env` only                                                              |
 | `pnpm run dev`                             | The files above, plus explicit local overrides                                    |
 | `pnpm run api:start:railway`               | Process environment; starts API and worker unless `MOSAIC_API_START_WORKER=false` |
 
@@ -31,6 +32,12 @@ Existing process environment variables override values read from files. For the
 worker and database commands, later env-file values override earlier file values;
 avoid duplicating API settings in the web file. Next.js also recognizes its own
 `.env.local` and environment-specific files, which can override `.env` values.
+
+The pilot team bootstrap deliberately loads only `apps/api/.env`, so
+`MOSAIC_DEFAULT_TEAM_ID` and `MOSAIC_DEFAULT_TEAM_NAME` come from the API
+environment and cannot be shadowed by blank or conflicting values in
+`apps/web/.env`. Values already present in the process environment still take
+precedence over the API env file.
 
 The combined development command supplies local API URLs, web CORS, and the
 seeded user/team IDs. It enables `MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS` on the API
@@ -40,19 +47,107 @@ command for the local walkthrough.
 
 ## Database and service URLs
 
-| Setting                    | Where              | Purpose                                                                |
-| -------------------------- | ------------------ | ---------------------------------------------------------------------- |
-| `DATABASE_URL`             | API and worker     | PostgreSQL connection. The bundled local service uses host port 54322. |
-| `INTERNAL_API_TOKEN`       | API and web server | Shared secret for privileged web-to-API requests. Values must match.   |
-| `API_BASE_URL`             | Web server         | Server-side API origin.                                                |
-| `NEXT_PUBLIC_API_BASE_URL` | Web                | Browser-facing API origin; not a secret.                               |
-| `MOSAIC_API_PUBLIC_URL`    | API                | Public API origin used for absolute local-upload URLs.                 |
-| `CORS_ORIGINS`             | API                | Comma-separated permitted web origins. MCP has a separate allowlist.   |
+| Setting                    | Where              | Purpose                                                                                                                                                      |
+| -------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`             | API and worker     | PostgreSQL connection. The bundled local service uses host port 54322.                                                                                       |
+| `MOSAIC_WEB_DATABASE_URL`  | Local web server   | PostgreSQL connection for local Next.js development; may use the same local URL as `DATABASE_URL`. Deployed Cloudflare Workers use the `HYPERDRIVE` binding. |
+| `MOSAIC_DEFAULT_TEAM_ID`   | Pilot bootstrap    | UUID for the single pilot team created by `pnpm run db:bootstrap-pilot-team`.                                                                                |
+| `MOSAIC_DEFAULT_TEAM_NAME` | Pilot bootstrap    | Name for that team; optional, defaults to `Oogway Labs`.                                                                                                     |
+| `INTERNAL_API_TOKEN`       | API and web server | Shared secret for privileged web-to-API requests. Values must match.                                                                                         |
+| `API_BASE_URL`             | Web server         | Server-side API origin.                                                                                                                                      |
+| `NEXT_PUBLIC_API_BASE_URL` | Web                | Browser-facing API origin; not a secret.                                                                                                                     |
+| `MOSAIC_API_PUBLIC_URL`    | API                | Public API origin used for absolute local-upload URLs.                                                                                                       |
+| `CORS_ORIGINS`             | API                | Comma-separated permitted web origins. MCP has a separate allowlist.                                                                                         |
 
 The worker needs database and provider access. It does not execute jobs through
 the web server. An API health response alone does not verify that a worker is
 running or can call a provider. Use the private `pnpm worker:status` command and
 the process supervisor; see the [worker operations runbook](worker-operations.md).
+
+The deployed Cloudflare web Worker requires a `HYPERDRIVE` binding. Cloudflare's
+Supabase guide recommends Hyperdrive's direct database endpoint because
+Hyperdrive supplies the connection pool; do not stack Supabase's transaction
+pooler behind it. For this project, use host
+`db.lafifzbgsqtqbftyexyh.supabase.co`, port `5432`, database `postgres`, and the
+Supabase database user. Use Hyperdrive TLS mode `verify-full` with the
+region-specific CA in
+[`apps/web/config/supabase-root-2021-ca.pem`](../apps/web/config/supabase-root-2021-ca.pem),
+and disable Hyperdrive query caching because this application depends on fresh
+authorization, settings, and read-after-write results. The Worker connects to
+Hyperdrive's `connectionString`; Hyperdrive validates the origin certificate.
+The Worker does not attempt to configure TLS on its local socket to Hyperdrive.
+
+The repository CA file contains one certificate, subject/issuer
+`Supabase Root 2021 CA`, SHA-256 fingerprint
+`80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA`.
+A credential-free PostgreSQL STARTTLS check to the project's direct endpoint
+verified this CA and the endpoint hostname. Cloudflare's Hyperdrive TLS guide
+requires a region-specific CA certificate and offers `verify-full`; upload this
+file as a CA certificate, then select it when creating the Hyperdrive config.
+Never put the Supabase password in Wrangler config or source control. The
+Hyperdrive configuration is a Cloudflare resource and its ID is needed for the
+Worker binding.
+
+For the first setup, upload the public CA certificate from the repository while
+in `apps/web`:
+
+```sh
+pnpm exec wrangler cert upload certificate-authority \
+  --ca-cert config/supabase-root-2021-ca.pem \
+  --name flash-evals-supabase-ca
+```
+
+In the Cloudflare dashboard, create a cache-disabled Hyperdrive config named
+`flash-evals-web` for the Supabase direct endpoint. Enter the database
+credentials there, select the uploaded CA, set TLS mode to `verify-full`, and
+disable query caching. The resource is bound only to the `flash-evals` Worker in
+`apps/web/wrangler.jsonc`:
+
+```jsonc
+"hyperdrive": [
+    { "binding": "HYPERDRIVE", "id": "9188f447e0c44054aee09df7465f0f6f" }
+]
+```
+
+The Worker creates a request-scoped `pg` pool (`max: 1`, `maxUses: 1`);
+Hyperdrive manages and pools upstream database connections. The pinned `pg`
+version is 8.23.1, above Cloudflare's 8.16.3 minimum. The Node runtime keeps its
+existing bounded pool and `MOSAIC_WEB_DATABASE_URL`/`DATABASE_URL` selection.
+For local `next dev`, set `MOSAIC_WEB_DATABASE_URL` in `apps/web/.env`; it may
+use the same local PostgreSQL URI as `DATABASE_URL`. In a Worker request,
+missing `HYPERDRIVE` fails closed even if a legacy database URL remains in the
+environment.
+
+Hyperdrive is included in Cloudflare Workers Free and Paid plans. The Free plan
+allows 100,000 database statements per day; the allowance resets daily at
+00:00 UTC and requests over the limit fail. Paid Workers plans list unlimited
+queries, with Hyperdrive pooling and caching included. This pilot disables
+caching, but statements still count against the query allowance.
+
+Keep the Railway API and worker on their separate `DATABASE_URL` session-pooler
+URI (port 5432 for that deployment).
+
+Before running `pnpm run db:migrate` against the pilot database, verify that it
+is a newly created empty Supabase project and contains no application data.
+Migration `0037_backfill_personal_workspaces.sql` runs
+`TRUNCATE TABLE "teams" CASCADE`, which removes team-owned application rows. Do
+not apply that migration to an existing or unverified database. The CI migration
+job applies the migration set only to its fresh, disposable PostgreSQL service.
+
+Once the database is confirmed empty and the reviewed migrations have been
+applied, `pnpm run db:bootstrap-pilot-team` creates the configured
+`MOSAIC_DEFAULT_TEAM_ID` team only when the `teams` table is empty. It is
+idempotent for the same team ID and name and refuses a populated table with a
+different team. This command does not run or reset migrations. Do not use
+`pnpm run seed` on a hosted database; that command truncates application tables.
+
+References: [Cloudflare's Hyperdrive Supabase guide](https://developers.cloudflare.com/hyperdrive/examples/connect-to-postgres/postgres-database-providers/supabase/),
+[Hyperdrive TLS certificate guide](https://developers.cloudflare.com/hyperdrive/configuration/tls-ssl-certificates-for-hyperdrive/),
+[Hyperdrive query caching](https://developers.cloudflare.com/hyperdrive/concepts/query-caching/),
+[Hyperdrive pricing](https://developers.cloudflare.com/hyperdrive/platform/pricing/),
+[Cloudflare's `pg` guide](https://developers.cloudflare.com/hyperdrive/examples/connect-to-postgres/postgres-drivers-and-libraries/node-postgres/),
+[OpenNext's database guide](https://opennext.js.org/cloudflare/howtos/db), and
+[Supabase's connection and SSL guide](https://supabase.com/docs/guides/database/connecting-to-postgres#ssl).
 
 For a split Railway topology, configure the API service with
 `pnpm run api:start:railway` and `MOSAIC_API_START_WORKER=false`; configure a
