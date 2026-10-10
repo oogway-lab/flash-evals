@@ -344,7 +344,7 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
 
     it("creates and reads tenant-owned workspaces, projects, and datasets through tools/call", async () => {
         const tools = await rpc("tools/list", {});
-        expect(tools.result?.tools).toHaveLength(84);
+        expect(tools.result?.tools).toHaveLength(88);
 
         const workspace = data(
             await tool("create_workspace", { name: "Acceptance workspace" }),
@@ -483,6 +483,23 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
         expect(listed.map((entry: { id: string }) => entry.id)).toContain(
             datasetId,
         );
+        const datasetSummaries = data(
+            await tool("list_dataset_summaries_page", {
+                projectId: fixture.projectId,
+                limit: 100,
+            }),
+        );
+        expect(datasetSummaries.datasets).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: datasetId,
+                    name: "Acceptance text dataset",
+                    itemCount: 2,
+                    modality: "text",
+                }),
+            ]),
+        );
+        expect(datasetSummaries.complete).toBe(true);
         const projects = data(
             await tool("list_projects", { workspaceId: fixture.workspaceId }),
         );
@@ -633,6 +650,23 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
             kind: "multi",
             nodes: [expect.objectContaining({ nodeKey: "input-1" })],
         });
+        const workflowSummaries = data(
+            await tool("list_workflow_summaries_page", {
+                projectId,
+                limit: 100,
+            }),
+        );
+        expect(workflowSummaries.workflows).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: fixture.workflowId,
+                    projectId,
+                    name: "Acceptance multi workflow",
+                    nodeCount: 1,
+                }),
+            ]),
+        );
+        expect(workflowSummaries.complete).toBe(true);
 
         const multi = data(
             await tool("create_multiworkflow", {
@@ -740,6 +774,24 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
             }),
         ) as Array<{ id: string }>;
         expect(runs.map((run) => run.id)).toContain(fixture.workflowRunId);
+        const workflowRunSummaries = data(
+            await tool("list_workflow_run_summaries_page", {
+                projectId,
+                workflowId: fixture.workflowId,
+                limit: 100,
+            }),
+        );
+        expect(workflowRunSummaries.workflowRuns).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: fixture.workflowRunId,
+                    workflowId: fixture.workflowId,
+                    datasetId,
+                    total: 1,
+                }),
+            ]),
+        );
+        expect(workflowRunSummaries.complete).toBe(true);
         const detail = data(
             await tool("get_workflow_run", {
                 projectId,
@@ -1791,6 +1843,20 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
             await tool("list_runs", { projectId }),
         ) as Array<{ id: string }>;
         expect(listedRuns.map((run) => run.id)).toContain(fixtureRunId);
+        const runSummaries = data(
+            await tool("list_run_summaries_page", { projectId, limit: 100 }),
+        );
+        expect(runSummaries.runs).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: fixtureRunId,
+                    status: "completed",
+                    datasetId,
+                    datasetName: "Acceptance image dataset",
+                }),
+            ]),
+        );
+        expect(runSummaries.complete).toBe(true);
         const runDetail = data(
             await tool("get_run", { projectId, runId: fixtureRunId }),
         );
