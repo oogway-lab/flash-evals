@@ -5,6 +5,7 @@ import {
     createRunFromSelectionPayload,
     deleteRunPayload,
     listRunsPayload,
+    listRunSummariesPagePayload,
     listRunCellsPagePayload,
     retryRunPayload,
     runDetailPayload,
@@ -20,6 +21,7 @@ import {
     ProjectId,
     ReasoningConfig,
     ReasoningEffort,
+    ReviewVerdict,
 } from "../schemas.js";
 import { resolveProjectId, type IMcpContext } from "./context.js";
 import {
@@ -51,6 +53,78 @@ export function registerRunTools(
                     await resolveProjectId(context, projectId),
                 ),
             ),
+    );
+
+    server.registerTool(
+        "list_run_summaries_page",
+        {
+            title: "List eval run summaries page",
+            description:
+                "Read a bounded, stable page of eval run summaries. Use list_runs for its complete legacy result; the cursor is bound to the project.",
+            inputSchema: z.object({
+                projectId: ProjectId,
+                limit: z.number().int().min(1).max(100).optional(),
+                cursor: z.string().optional(),
+            }),
+            outputSchema: {
+                data: z.object({
+                    runs: z.array(
+                        z.object({
+                            id: z.string().uuid(),
+                            status: z.string(),
+                            createdAt: z.string(),
+                            datasetId: z.string().uuid(),
+                            datasetName: z.string(),
+                            models: z.array(z.string()),
+                            progress: z.object({
+                                total: z.number().int(),
+                                done: z.number().int(),
+                                failed: z.number().int(),
+                                pending: z.number().int(),
+                            }),
+                            noteTitle: z.string().optional(),
+                            best: z
+                                .object({
+                                    modelId: z.string(),
+                                    score: z.number(),
+                                    metric: z.enum(["judge", "transcript"]),
+                                    scored: z.number().int(),
+                                    total: z.number().int(),
+                                    tiedCount: z.number().int(),
+                                })
+                                .optional(),
+                        }),
+                    ),
+                    complete: z.boolean(),
+                    nextCursor: z.string().optional(),
+                }),
+            },
+        },
+        async (input) => {
+            const projectId = await resolveProjectId(context, input.projectId);
+            const scope = JSON.stringify([projectId]);
+            const page = await listRunSummariesPagePayload(
+                runtime.db,
+                principal.teamId,
+                projectId,
+                {
+                    limit: boundedMcpPageSize(input.limit),
+                    cursor: decodeMcpPageCursor(input.cursor, scope),
+                },
+            );
+            return ok("Loaded eval run summary page.", {
+                runs: page.runs,
+                complete: page.complete,
+                ...(page.nextCursor
+                    ? {
+                          nextCursor: encodeMcpPageCursor(
+                              scope,
+                              page.nextCursor,
+                          ),
+                      }
+                    : {}),
+            });
+        },
     );
 
     server.registerTool(
@@ -151,7 +225,7 @@ export function registerRunTools(
         {
             title: "List eval run cells",
             description:
-                "Read a stable, bounded page of eval cells, optionally filtered by item, model, or status. Input text and outputs are omitted unless requested.",
+                "Read a stable, bounded page of eval cells, optionally filtered by item, model, status, or review verdict and ordered oldest-first or newest-first. Input text, outputs, review annotations, and scores are opt-in.",
             inputSchema: z.object({
                 projectId: ProjectId,
                 runId: z.string().uuid(),
@@ -168,8 +242,12 @@ export function registerRunTools(
                         "cached",
                     ])
                     .optional(),
+                reviewVerdict: ReviewVerdict.optional(),
+                order: z.enum(["oldest_first", "newest_first"]).optional(),
                 includeInputText: z.boolean().optional(),
                 includeOutput: z.boolean().optional(),
+                includeReview: z.boolean().optional(),
+                includeScores: z.boolean().optional(),
             }),
             outputSchema: {
                 data: z.object({
@@ -186,6 +264,21 @@ export function registerRunTools(
                             error: z.string().nullable(),
                             inputText: z.string().nullable().optional(),
                             output: z.unknown().optional(),
+                            review: z
+                                .object({
+                                    verdict: ReviewVerdict,
+                                    comment: z.string(),
+                                })
+                                .nullable()
+                                .optional(),
+                            scores: z
+                                .array(
+                                    z.object({
+                                        scorerType: z.string(),
+                                        score: z.number().nullable(),
+                                    }),
+                                )
+                                .optional(),
                         }),
                     ),
                     complete: z.boolean(),
@@ -201,6 +294,8 @@ export function registerRunTools(
                 input.itemId ?? null,
                 input.modelId ?? null,
                 input.status ?? null,
+                input.reviewVerdict ?? null,
+                input.order ?? "oldest_first",
             ]);
             const page = await listRunCellsPagePayload(runtime.db, {
                 teamId: principal.teamId,
@@ -211,8 +306,12 @@ export function registerRunTools(
                 itemId: input.itemId,
                 modelId: input.modelId,
                 status: input.status,
+                reviewVerdict: input.reviewVerdict,
+                order: input.order,
                 includeInputText: input.includeInputText,
                 includeOutput: input.includeOutput,
+                includeReview: input.includeReview,
+                includeScores: input.includeScores,
             });
             return ok("Loaded eval run cell page.", {
                 cells: page.cells,
@@ -234,7 +333,7 @@ export function registerRunTools(
         {
             title: "Create eval run",
             description:
-                "Create an eval run and durably enqueue it. Choose a stable idempotencyKey before the first request and reuse it for retries of the same intent; pending_enqueue means publication will be retried automatically.",
+                "Create an eval run and durably enqueue it. The optional idempotencyKey makes retries safe; when supplied, choose it before the first request and reuse it for the same intent. pending_enqueue means publication will be retried automatically.",
             inputSchema: z.object({
                 projectId: ProjectId,
                 datasetId: z.string().uuid(),

@@ -138,7 +138,7 @@ describe("MCP run lifecycle tools", () => {
         expect(summaryResult.structuredContent.data).toEqual(summary);
 
         const nextCursor = {
-            createdAt: "2026-10-10T00:00:00.000Z",
+            createdAt: "2026-10-10T00:00:00.123456Z",
             id: "44444444-4444-4444-8444-444444444444",
         };
         mocks.listRunCellsPagePayload.mockResolvedValue({
@@ -172,7 +172,14 @@ describe("MCP run lifecycle tools", () => {
         expect(
             decodeMcpPageCursor(
                 pageResult.structuredContent.data.nextCursor as string,
-                JSON.stringify([RUN_ID, null, "model-a", "succeeded"]),
+                JSON.stringify([
+                    RUN_ID,
+                    null,
+                    "model-a",
+                    "succeeded",
+                    null,
+                    "oldest_first",
+                ]),
             ),
         ).toEqual(nextCursor);
         expect(mocks.listRunCellsPagePayload).toHaveBeenCalledWith(
@@ -188,7 +195,14 @@ describe("MCP run lifecycle tools", () => {
             }),
         );
         const wrongFilterCursor = encodeMcpPageCursor(
-            JSON.stringify([RUN_ID, null, "model-b", "succeeded"]),
+            JSON.stringify([
+                RUN_ID,
+                null,
+                "model-b",
+                "succeeded",
+                null,
+                "oldest_first",
+            ]),
             nextCursor,
         );
         await expect(

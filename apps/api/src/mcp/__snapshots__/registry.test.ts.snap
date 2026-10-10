@@ -289,6 +289,44 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": false,
       "readOnlyHint": true,
     },
+    "description": "Read a bounded, stable page of dataset summaries. Use list_datasets for its complete legacy result; the cursor is bound to the project and archived filter.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+        },
+        "includeArchived": {
+          "type": "boolean",
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "projectId": {
+          "description": "Project to operate in.",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+      },
+      "required": [
+        "projectId",
+      ],
+      "type": "object",
+    },
+    "name": "list_dataset_summaries_page",
+    "title": "List dataset summaries page",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "Return dataset metadata, items, labels, and schema context.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1295,7 +1333,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": false,
       "readOnlyHint": false,
     },
-    "description": "Duplicate a dataset, including its schema, items, and labels. For safe retries, choose an idempotencyKey before the first request and reuse it for this same copy.",
+    "description": "Duplicate a dataset, including its schema, items, and labels. The optional idempotencyKey makes retries safe; when supplied, choose it before the first request and reuse it for this same copy.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -1813,7 +1851,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": false,
     },
     "description": "Validate and create or update a runnable eval prompt version.",
@@ -2275,7 +2313,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": false,
       "readOnlyHint": false,
     },
-    "description": "Create a new prompt from an existing structured prompt version. For safe retries, choose an idempotencyKey before the first request and reuse it for this same copy.",
+    "description": "Create a new prompt from an existing structured prompt version. The optional idempotencyKey makes retries safe; when supplied, choose it before the first request and reuse it for this same copy.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -2370,6 +2408,41 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     },
     "name": "list_runs",
     "title": "List eval runs",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Read a bounded, stable page of eval run summaries. Use list_runs for its complete legacy result; the cursor is bound to the project.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "projectId": {
+          "description": "Project to operate in.",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+      },
+      "required": [
+        "projectId",
+      ],
+      "type": "object",
+    },
+    "name": "list_run_summaries_page",
+    "title": "List eval run summaries page",
   },
   {
     "annotations": {
@@ -2482,7 +2555,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": false,
       "readOnlyHint": true,
     },
-    "description": "Read a stable, bounded page of eval cells, optionally filtered by item, model, or status. Input text and outputs are omitted unless requested.",
+    "description": "Read a stable, bounded page of eval cells, optionally filtered by item, model, status, or review verdict and ordered oldest-first or newest-first. Input text, outputs, review annotations, and scores are opt-in.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -2494,6 +2567,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
           "type": "boolean",
         },
         "includeOutput": {
+          "type": "boolean",
+        },
+        "includeReview": {
+          "type": "boolean",
+        },
+        "includeScores": {
           "type": "boolean",
         },
         "itemId": {
@@ -2510,10 +2589,26 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
           "minLength": 1,
           "type": "string",
         },
+        "order": {
+          "enum": [
+            "oldest_first",
+            "newest_first",
+          ],
+          "type": "string",
+        },
         "projectId": {
           "description": "Project to operate in.",
           "format": "uuid",
           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "reviewVerdict": {
+          "enum": [
+            "unreviewed",
+            "approved",
+            "needs_review",
+            "issue",
+          ],
           "type": "string",
         },
         "runId": {
@@ -2548,7 +2643,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": true,
       "readOnlyHint": false,
     },
-    "description": "Create an eval run and durably enqueue it. Choose a stable idempotencyKey before the first request and reuse it for retries of the same intent; pending_enqueue means publication will be retried automatically.",
+    "description": "Create an eval run and durably enqueue it. The optional idempotencyKey makes retries safe; when supplied, choose it before the first request and reuse it for the same intent. pending_enqueue means publication will be retried automatically.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -2892,8 +2987,8 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
   {
     "annotations": {
       "destructiveHint": false,
-      "idempotentHint": true,
-      "openWorldHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
       "readOnlyHint": false,
     },
     "description": "Retry failed work for an eval run and enqueue it again.",
@@ -3924,6 +4019,49 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     },
     "name": "list_workflows",
     "title": "List workflows",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Read a bounded, stable page of workflow summaries. Use list_workflows for its complete legacy result; the cursor is bound to project and kind.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+        },
+        "kind": {
+          "enum": [
+            "prompt",
+            "stt",
+            "multi",
+          ],
+          "type": "string",
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "projectId": {
+          "description": "Project to operate in.",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+      },
+      "required": [
+        "projectId",
+      ],
+      "type": "object",
+    },
+    "name": "list_workflow_summaries_page",
+    "title": "List workflow summaries page",
   },
   {
     "annotations": {
@@ -8868,7 +9006,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": true,
       "readOnlyHint": false,
     },
-    "description": "Create and enqueue a workflow run for a dataset or one item. Choose a stable idempotencyKey before the first request and reuse it for retries of the same intent.",
+    "description": "Create and enqueue a workflow run for a dataset or one item. The optional idempotencyKey makes retries safe; when supplied, choose it before the first request and reuse it for the same intent.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -9037,7 +9175,6 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
         "workflowId",
         "datasetId",
         "runTarget",
-        "idempotencyKey",
       ],
       "type": "object",
     },
@@ -9076,6 +9213,47 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     },
     "name": "list_workflow_runs",
     "title": "List workflow runs",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Read a bounded, stable page of workflow run summaries. Use list_workflow_runs for its complete legacy result; the cursor is bound to the workflow.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "projectId": {
+          "description": "Project to operate in.",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "workflowId": {
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+      },
+      "required": [
+        "projectId",
+        "workflowId",
+      ],
+      "type": "object",
+    },
+    "name": "list_workflow_run_summaries_page",
+    "title": "List workflow run summaries page",
   },
   {
     "annotations": {
@@ -9162,7 +9340,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": false,
       "readOnlyHint": true,
     },
-    "description": "Read a stable, bounded page of workflow cells, optionally filtered by item, node, or status. Input text and outputs are omitted unless requested.",
+    "description": "Read a stable, bounded page of workflow cells, optionally filtered by item, node, status, or review verdict and ordered oldest or newest first. Input text, outputs, review annotations, and scores are included only when requested.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -9174,6 +9352,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
           "type": "boolean",
         },
         "includeOutput": {
+          "type": "boolean",
+        },
+        "includeReview": {
+          "type": "boolean",
+        },
+        "includeScores": {
           "type": "boolean",
         },
         "itemId": {
@@ -9190,10 +9374,26 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
           "minLength": 1,
           "type": "string",
         },
+        "order": {
+          "enum": [
+            "oldest_first",
+            "newest_first",
+          ],
+          "type": "string",
+        },
         "projectId": {
           "description": "Project to operate in.",
           "format": "uuid",
           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "reviewVerdict": {
+          "enum": [
+            "unreviewed",
+            "approved",
+            "needs_review",
+            "issue",
+          ],
           "type": "string",
         },
         "status": {

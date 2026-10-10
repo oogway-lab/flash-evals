@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { isKnownMcpToolEffect } from "./effects.js";
+import { isKnownMcpToolEffect, mcpToolEffect } from "./effects.js";
 
 const promptMocks = vi.hoisted(() => ({
     testPromptDraftPayload: vi.fn(),
@@ -358,6 +358,30 @@ describe("MCP prompt tools", () => {
     it("describes every registered tool effect and denies direct admin-only calls to eval", async () => {
         const { tools, runtime } = registerTools("eval");
         expect([...tools.keys()].every(isKnownMcpToolEffect)).toBe(true);
+        expect(mcpToolEffect("create_runnable_prompt")).toMatchObject({
+            kind: "costly_external",
+            idempotent: false,
+            openWorld: true,
+            minimumProfile: "eval",
+        });
+        expect(mcpToolEffect("retry_run")).toMatchObject({
+            kind: "costly_external",
+            idempotent: false,
+            openWorld: true,
+            minimumProfile: "eval",
+        });
+        expect(
+            tools.get("create_runnable_prompt")?.config.annotations,
+        ).toMatchObject({
+            readOnlyHint: false,
+            idempotentHint: false,
+            openWorldHint: true,
+        });
+        expect(tools.get("retry_run")?.config.annotations).toMatchObject({
+            readOnlyHint: false,
+            idempotentHint: false,
+            openWorldHint: true,
+        });
         expect(
             tools.get("get_dataset_summary")?.config.annotations,
         ).toMatchObject({

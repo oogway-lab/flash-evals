@@ -46,6 +46,12 @@ export const ReasoningEffort = z.enum([
     "xhigh",
 ]);
 export const ReasoningConfig = z.object({ effort: ReasoningEffort });
+export const ReviewVerdict = z.enum([
+    "unreviewed",
+    "approved",
+    "needs_review",
+    "issue",
+]);
 export const ProviderTransport = z.enum([
     "openai",
     "gateway",

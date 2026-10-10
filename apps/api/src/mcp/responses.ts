@@ -1,14 +1,10 @@
 export function ok(message: string, data: unknown) {
     const serialized = JSON.stringify(data) ?? "null";
-    const text =
-        serialized.length <= 24_000
-            ? `${message}\n\n${serialized}`
-            : `${message}\n\nThe ${serialized.length}-character result is available in structuredContent.data.`;
     return {
         content: [
             {
                 type: "text" as const,
-                text,
+                text: `${message}\n\n${serialized}`,
             },
         ],
         structuredContent: { data },

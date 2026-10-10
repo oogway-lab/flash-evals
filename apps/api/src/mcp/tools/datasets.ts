@@ -19,6 +19,7 @@ import {
     importPairedItemsPayload,
     importTextItemsPayload,
     listDatasetsPayload,
+    listDatasetSummariesPagePayload,
     listDatasetItemsPagePayload,
     previewGoldenAnswersPayload,
     setDatasetArchivedPayload,
@@ -142,6 +143,69 @@ export function registerDatasetTools(
                     { includeArchived: input.includeArchived },
                 ),
             ),
+    );
+
+    server.registerTool(
+        "list_dataset_summaries_page",
+        {
+            title: "List dataset summaries page",
+            description:
+                "Read a bounded, stable page of dataset summaries. Use list_datasets for its complete legacy result; the cursor is bound to the project and archived filter.",
+            inputSchema: z.object({
+                projectId: ProjectId,
+                limit: z.number().int().min(1).max(100).optional(),
+                cursor: z.string().optional(),
+                includeArchived: z.boolean().optional(),
+            }),
+            outputSchema: {
+                data: z.object({
+                    datasets: z.array(
+                        z.object({
+                            id: z.string().uuid(),
+                            name: z.string(),
+                            purpose: z.enum(["golden", "evaluation"]),
+                            modality: z.enum(["audio", "image", "text"]),
+                            createdAt: z.string(),
+                            itemCount: z.number().int(),
+                            labeledItemCount: z.number().int(),
+                            isRunnable: z.boolean(),
+                            archived: z.boolean(),
+                        }),
+                    ),
+                    complete: z.boolean(),
+                    nextCursor: z.string().optional(),
+                }),
+            },
+        },
+        async (input) => {
+            const projectId = await resolveProjectId(context, input.projectId);
+            const scope = JSON.stringify([
+                projectId,
+                input.includeArchived ?? false,
+            ]);
+            const page = await listDatasetSummariesPagePayload(
+                runtime.db,
+                principal.teamId,
+                projectId,
+                {
+                    limit: boundedMcpPageSize(input.limit),
+                    includeArchived: input.includeArchived,
+                    cursor: decodeMcpPageCursor(input.cursor, scope),
+                },
+            );
+            return ok("Loaded dataset summary page.", {
+                datasets: page.datasets,
+                complete: page.complete,
+                ...(page.nextCursor
+                    ? {
+                          nextCursor: encodeMcpPageCursor(
+                              scope,
+                              page.nextCursor,
+                          ),
+                      }
+                    : {}),
+            });
+        },
     );
 
     server.registerTool(
@@ -687,12 +751,19 @@ export function registerDatasetTools(
         {
             title: "Duplicate dataset",
             description:
-                "Duplicate a dataset, including its schema, items, and labels. For safe retries, choose an idempotencyKey before the first request and reuse it for this same copy.",
+                "Duplicate a dataset, including its schema, items, and labels. The optional idempotencyKey makes retries safe; when supplied, choose it before the first request and reuse it for this same copy.",
             inputSchema: z.object({
                 projectId: ProjectId,
                 datasetId: z.string().uuid(),
                 idempotencyKey: z.string().trim().min(1).max(200).optional(),
             }),
+            outputSchema: {
+                data: z.object({
+                    datasetId: z.string().uuid(),
+                    sourceDatasetId: z.string().uuid(),
+                    createdDatasetId: z.string().uuid(),
+                }),
+            },
         },
         async (input) => {
             const request = {

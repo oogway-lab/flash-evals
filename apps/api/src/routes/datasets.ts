@@ -234,28 +234,75 @@ export async function listDatasetsPayload(
         ],
     );
 
-    return result.rows.map((row) => {
-        const itemCount = countValue(row.item_count);
-        const labeledItemCount = countValue(row.labeled_item_count);
-        return {
-            id: row.id,
-            name: row.name,
-            purpose: row.purpose,
-            modality: row.modality,
-            createdAt:
-                row.created_at instanceof Date
-                    ? row.created_at.toISOString()
-                    : new Date(row.created_at).toISOString(),
-            itemCount,
-            labeledItemCount,
-            isRunnable: isDatasetRunnable(
-                row.purpose,
-                itemCount,
-                labeledItemCount,
-            ),
-            archived: row.archived_at != null,
-        };
-    });
+    return result.rows.map(datasetListPayloadRow);
+}
+
+export async function listDatasetSummariesPagePayload(
+    db: IDb,
+    teamId: string,
+    projectId: string,
+    input: {
+        limit: number;
+        includeArchived?: boolean;
+        cursor?: { createdAt: string; id: string };
+    },
+) {
+    const result = await db.query<IDatasetRow & { cursor_created_at: string }>(
+        `select d.id,d.name,d.purpose,d.modality,d.created_at,d.archived_at,
+                count(di.id)::int as item_count,
+                count(l.id)::int as labeled_item_count,
+                to_char(d.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_created_at
+         from datasets d
+         left join dataset_items di on di.dataset_id=d.id
+         left join labels l on l.dataset_item_id=di.id
+         where d.team_id=$1 and d.project_id=$2
+           and ($3::boolean or d.archived_at is null)
+           and ($4::timestamptz is null or (d.created_at,d.id)<($4::timestamptz,$5::uuid))
+         group by d.id,d.name,d.purpose,d.modality,d.created_at,d.archived_at
+         order by d.created_at desc,d.id desc
+         limit $6`,
+        [
+            teamId,
+            projectId,
+            Boolean(input.includeArchived),
+            input.cursor?.createdAt ?? null,
+            input.cursor?.id ?? null,
+            input.limit + 1,
+        ],
+    );
+    const complete = result.rows.length <= input.limit;
+    const rows = result.rows.slice(0, input.limit);
+    return {
+        datasets: rows.map(datasetListPayloadRow),
+        complete,
+        ...(complete || rows.length === 0
+            ? {}
+            : {
+                  nextCursor: {
+                      createdAt: rows.at(-1)!.cursor_created_at,
+                      id: rows.at(-1)!.id,
+                  },
+              }),
+    };
+}
+
+function datasetListPayloadRow(row: IDatasetRow): IDatasetListRow {
+    const itemCount = countValue(row.item_count);
+    const labeledItemCount = countValue(row.labeled_item_count);
+    return {
+        id: row.id,
+        name: row.name,
+        purpose: row.purpose,
+        modality: row.modality,
+        createdAt:
+            row.created_at instanceof Date
+                ? row.created_at.toISOString()
+                : new Date(row.created_at).toISOString(),
+        itemCount,
+        labeledItemCount,
+        isRunnable: isDatasetRunnable(row.purpose, itemCount, labeledItemCount),
+        archived: row.archived_at != null,
+    };
 }
 
 export async function datasetDetailPayload(
@@ -461,11 +508,12 @@ export async function listDatasetItemsPagePayload(
         storage_key: string | null;
         mime_type: string | null;
         label_json: LabelJson | null;
-        created_at: Date | string;
+        cursor_created_at: string;
     }>(
         `select i.id,i.type,${inputTextSelect} as input_text,i.source_name,
                 ${storageKeySelect} as storage_key,i.mime_type,
-                ${labelSelect} as label_json,i.created_at
+                ${labelSelect} as label_json,
+                to_char(i.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_created_at
          from dataset_items i
          inner join datasets d on d.id=i.dataset_id
          left join labels l on l.dataset_item_id=i.id
@@ -503,10 +551,7 @@ export async function listDatasetItemsPagePayload(
             ? {}
             : {
                   nextCursor: {
-                      createdAt:
-                          rows.at(-1)!.created_at instanceof Date
-                              ? (rows.at(-1)!.created_at as Date).toISOString()
-                              : new Date(rows.at(-1)!.created_at).toISOString(),
+                      createdAt: rows.at(-1)!.cursor_created_at,
                       id: rows.at(-1)!.id,
                   },
               }),

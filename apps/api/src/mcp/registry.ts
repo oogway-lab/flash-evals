@@ -2,6 +2,7 @@ import {
     ResourceTemplate,
     type McpServer,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID } from "node:crypto";
 import {
     ApiError,
@@ -60,6 +61,7 @@ export function registerMosaicMcpCapabilities(
 }
 
 type IAnyHandler = (...args: unknown[]) => unknown;
+type McpHandlerKind = "tool" | "resource";
 
 // The SDK returns handler error messages verbatim to MCP clients; ApiError
 // messages are written for users, anything else may carry internals.
@@ -68,7 +70,11 @@ function withSanitizedHandlerErrors(
     context: IMcpContext,
 ): McpServer {
     const wrapHandler =
-        (handler: IAnyHandler, toolName?: string): IAnyHandler =>
+        (
+            handler: IAnyHandler,
+            kind: McpHandlerKind,
+            toolName?: string,
+        ): IAnyHandler =>
         async (...handlerArgs: unknown[]) => {
             try {
                 if (toolName) {
@@ -97,6 +103,21 @@ function withSanitizedHandlerErrors(
                 return await handler(...handlerArgs);
             } catch (err) {
                 const requestId = randomUUID();
+                if (kind === "resource") {
+                    const protocolError = resourceProtocolError(err, requestId);
+                    if (!(err instanceof ApiError)) {
+                        logApiEvent("error", "mcp.resource.failed", {
+                            teamId: context.principal.teamId,
+                            userId: context.principal.userId,
+                            requestId,
+                            errorName:
+                                err instanceof Error
+                                    ? err.name
+                                    : "UnknownError",
+                        });
+                    }
+                    throw protocolError;
+                }
                 if (err instanceof ApiError) {
                     return recoverableError(
                         {
@@ -174,6 +195,7 @@ function withSanitizedHandlerErrors(
                 if (typeof args[last] === "function") {
                     args[last] = wrapHandler(
                         args[last] as IAnyHandler,
+                        prop === "registerResource" ? "resource" : "tool",
                         prop === "registerTool" && typeof args[0] === "string"
                             ? args[0]
                             : undefined,
@@ -198,6 +220,36 @@ function withSanitizedHandlerErrors(
             };
         },
     });
+}
+
+function resourceProtocolError(err: unknown, requestId: string): McpError {
+    if (err instanceof ApiError) {
+        const code =
+            err.status === 400 || err.status === 404
+                ? ErrorCode.InvalidParams
+                : err.status === 403
+                  ? -32003
+                  : ErrorCode.InternalError;
+        return new McpError(code, err.message, {
+            code: err.code,
+            status: err.status,
+            retryable: err.status === 429 || err.status >= 500,
+            ...(err instanceof ApiRateLimitedError
+                ? { retryAfterSeconds: err.retryAfterSeconds }
+                : {}),
+            requestId,
+        });
+    }
+    return new McpError(
+        ErrorCode.InternalError,
+        "Internal server error. Check the request ID before retrying.",
+        {
+            code: "internal_error",
+            status: 500,
+            retryable: true,
+            requestId,
+        },
+    );
 }
 
 function registerResources(server: McpServer, context: IMcpContext): void {
@@ -502,7 +554,7 @@ function registerPrompts(server: McpServer): void {
                     role: "user",
                     content: {
                         type: "text",
-                        text: "Create a complete Flash Evals eval. First call get_current_user and list_eval_context. Create or select a dataset, then import text, image, audio, golden-answer, or paired items as appropriate. Generate or provide a prompt schema, then call create_runnable_prompt once with representative samples; it validates and saves the version on success. Use test_prompt_draft or validate_runnable_prompt only for a separate exploratory check, since create_runnable_prompt validates again when saving. Create_eval_run, poll get_run_progress, inspect get_run, then save_run_note and annotate_run_cell for review findings. For multi-step prompt graphs, use list_eval_context to choose explicit llmExecutionSelection values for every model-backed node. Pass a stable idempotencyKey to create_workflow_run before the first request and reuse that same key on every retry, then poll get_workflow_run_progress. Destructive delete and archive tools require confirm: true; inspect the target before confirming.",
+                        text: "Create a complete Flash Evals eval. First call get_current_user and list_eval_context. Create or select a dataset, then import text, image, audio, golden-answer, or paired items as appropriate. Generate or provide a prompt schema, then call create_runnable_prompt once with representative samples; it validates and saves the version on success. Use test_prompt_draft or validate_runnable_prompt only for a separate exploratory check, since create_runnable_prompt validates again when saving. Create_eval_run, poll get_run_progress until the run is terminal, then inspect get_run and summarize review findings. Save a run note or cell annotations only when the user asks to persist those findings. For multi-step prompt graphs, use list_eval_context to choose explicit llmExecutionSelection values for every model-backed node. An optional idempotencyKey makes run retries safe; choose it before the first request and reuse it for the same intent. Poll get_workflow_run_progress until the workflow run is terminal. Destructive delete and archive tools require confirm: true; inspect the target before confirming.",
                     },
                 },
             ],

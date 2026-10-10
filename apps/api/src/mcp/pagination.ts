@@ -3,6 +3,8 @@ import { ApiBadRequestError } from "../errors.js";
 export const DEFAULT_MCP_PAGE_SIZE = 50;
 export const MAX_MCP_PAGE_SIZE = 100;
 
+const CURSOR_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/;
+
 export interface IMcpPageCursor {
     createdAt: string;
     id: string;
@@ -44,6 +46,7 @@ export function decodeMcpPageCursor(
             parsed.version !== 1 ||
             parsed.scope !== expectedScope ||
             typeof parsed.createdAt !== "string" ||
+            !CURSOR_TIMESTAMP.test(parsed.createdAt) ||
             Number.isNaN(Date.parse(parsed.createdAt)) ||
             typeof parsed.id !== "string" ||
             !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -53,7 +56,9 @@ export function decodeMcpPageCursor(
             throw new Error("invalid cursor envelope");
         }
         return {
-            createdAt: new Date(parsed.createdAt).toISOString(),
+            // Preserve PostgreSQL's microseconds. Date.toISOString() rounds
+            // timestamptz values to milliseconds and can repeat a page cursor.
+            createdAt: parsed.createdAt,
             id: parsed.id,
         };
     } catch {
@@ -65,13 +70,10 @@ export function decodeMcpPageCursor(
 
 export function pageCursorFromRow(
     scope: string,
-    row: { createdAt: Date | string; id: string },
+    row: { createdAt: string; id: string },
 ): string {
     return encodeMcpPageCursor(scope, {
-        createdAt:
-            row.createdAt instanceof Date
-                ? row.createdAt.toISOString()
-                : new Date(row.createdAt).toISOString(),
+        createdAt: row.createdAt,
         id: row.id,
     });
 }

@@ -2,9 +2,9 @@
 
 ## Catalog under test
 
-The MCP server reports `mosaic-evals` version `0.1.0`. The complete current catalog contains 84 tools, 8 resource templates, and the `create_eval_happy_path` prompt. The original catalog had 78 tools; the six additional tools are bounded summary and page readers for datasets, eval runs, and workflow runs. The full tool names, descriptions, input schemas, and effect annotations are snapshotted in `apps/api/src/mcp/__snapshots__/registry.test.ts.snap`.
+The MCP server reports `mosaic-evals` version `0.1.0`. The complete current catalog contains 88 tools, 8 resource templates, and the `create_eval_happy_path` prompt. The original catalog had 78 tools; ten additional tools provide bounded summary and page readers for dataset items, datasets, eval runs, workflow runs, and workflow summaries. The full tool names, descriptions, input schemas, and effect annotations are snapshotted in `apps/api/src/mcp/__snapshots__/registry.test.ts.snap`.
 
-The transport matrix in `apps/api/src/mcp/toolCoverage.test.ts` registers every tool through the production registry and calls it through the MCP SDK's actual stdio and streamable HTTP transports. Domain payloads and paid-provider boundaries are mocked in this broad matrix so destructive calls only touch synthetic fixtures and provider calls never incur charges. It verifies a successful handler result for all 84 tools; malformed arguments are rejected for every tool with an input schema. The three no-input-schema tools (`list_workspaces`, `get_current_user`, `list_provider_keys`) have no meaningful schema-invalid case.
+The transport matrix in `apps/api/src/mcp/toolCoverage.test.ts` registers every tool through the production registry and calls it through the MCP SDK's actual stdio and streamable HTTP transports. Domain payloads and paid-provider boundaries are mocked in this broad matrix so destructive calls only touch synthetic fixtures and provider calls never incur charges. It verifies a successful handler result for all 88 tools; malformed arguments are rejected for every tool with an input schema. The three no-input-schema tools (`list_workspaces`, `get_current_user`, `list_provider_keys`) have no meaningful schema-invalid case.
 
 That matrix verifies transport, registration, input decoding, output-schema validation, and profile guards. It does not substitute for business-logic or persistence coverage. Those paths are separately tested against real Postgres or at route level, below.
 
@@ -18,15 +18,16 @@ That matrix verifies transport, registration, input decoding, output-schema vali
 | `create_workspace`                    | HTTP+stdio    | Invalid         | Read denied  |
 | `rename_workspace`                    | HTTP+stdio    | Invalid         | Read denied  |
 | `get_current_user`                    | HTTP+stdio    | No input schema | Read allowed |
-| `list_eval_context`                   | HTTP+stdio    | Invalid         | Read denied  |
-| `list_projects`                       | HTTP+stdio    | Invalid         | Read denied  |
+| `list_eval_context`                   | HTTP+stdio    | Invalid         | Read allowed |
+| `list_projects`                       | HTTP+stdio    | Invalid         | Read allowed |
 | `create_project`                      | HTTP+stdio    | Invalid         | Read denied  |
 | `update_project`                      | HTTP+stdio    | Invalid         | Read denied  |
-| `get_dashboard`                       | HTTP+stdio    | Invalid         | Read denied  |
+| `get_dashboard`                       | HTTP+stdio    | Invalid         | Read allowed |
 | `list_datasets`                       | HTTP+stdio    | Invalid         | Read allowed |
 | `get_dataset`                         | HTTP+stdio    | Invalid         | Read allowed |
 | `get_dataset_summary`                 | HTTP+stdio    | Invalid         | Read allowed |
 | `list_dataset_items`                  | HTTP+stdio    | Invalid         | Read allowed |
+| `list_dataset_summaries_page`         | HTTP+stdio    | Invalid         | Read allowed |
 | `create_dataset`                      | HTTP+stdio    | Invalid         | Read denied  |
 | `import_dataset_images`               | HTTP+stdio    | Invalid         | Read denied  |
 | `import_dataset_text_items`           | HTTP+stdio    | Invalid         | Read denied  |
@@ -63,6 +64,7 @@ That matrix verifies transport, registration, input decoding, output-schema vali
 | `get_run_progress`                    | HTTP+stdio    | Invalid         | Read allowed |
 | `get_run_summary`                     | HTTP+stdio    | Invalid         | Read allowed |
 | `list_run_cells`                      | HTTP+stdio    | Invalid         | Read allowed |
+| `list_run_summaries_page`             | HTTP+stdio    | Invalid         | Read allowed |
 | `create_eval_run`                     | HTTP+stdio    | Invalid         | Read denied  |
 | `save_run_note`                       | HTTP+stdio    | Invalid         | Read denied  |
 | `annotate_run_cell`                   | HTTP+stdio    | Invalid         | Read denied  |
@@ -92,6 +94,8 @@ That matrix verifies transport, registration, input decoding, output-schema vali
 | `select_workflow_llm_model`           | HTTP+stdio    | Invalid         | Read denied  |
 | `create_workflow_run`                 | HTTP+stdio    | Invalid         | Read denied  |
 | `list_workflow_runs`                  | HTTP+stdio    | Invalid         | Read allowed |
+| `list_workflow_run_summaries_page`    | HTTP+stdio    | Invalid         | Read allowed |
+| `list_workflow_summaries_page`        | HTTP+stdio    | Invalid         | Read allowed |
 | `get_workflow_run`                    | HTTP+stdio    | Invalid         | Read allowed |
 | `get_workflow_run_summary`            | HTTP+stdio    | Invalid         | Read allowed |
 | `list_workflow_run_cells`             | HTTP+stdio    | Invalid         | Read allowed |
@@ -113,19 +117,19 @@ That matrix verifies transport, registration, input decoding, output-schema vali
 | `mosaic-run-cells`       | Read success | Read success | Bounded first page and completion metadata |
 | `create_eval_happy_path` | Get success  | Get success  | Prompt content returned by both transports |
 
-Read-profile resource access is also exercised through stdio. Resource handlers use the authenticated project resolver; route tests cover team/project ownership.
+Read-profile calls now positively exercise every independently listed read tool through both HTTP and stdio, alongside direct denials for every restricted tool. Eval-profile coverage checks a successful read and write plus an admin-only denial over both transports. Read-profile resource access is also exercised through stdio. Resource handlers use the authenticated project resolver; HTTP and stdio tests cover cross-tenant reads, protocol errors, and team/project ownership.
 
 ## Persistence and route evidence
 
-| Concern                                                   | Test evidence                                                                                            | Boundary                                                                                                                                                          |
-| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dataset/run/workflow summary and stable keyset pages      | `apps/api/src/routes/mcpReaders.integration.test.ts`                                                     | Real disposable Postgres with 125 dataset items, 250 run cells, and 125 workflow cells; asserts stable page order, filters, compact summaries, and opt-in details |
-| Duplicate IDs, concurrency, and lost-response replay      | `apps/api/src/mcp/idempotency.integration.test.ts`                                                       | Real disposable Postgres; synthetic dataset/prompt fixtures; concurrent requests and same-key replay create one copy                                              |
-| Input constraints, profile effects, and handler semantics | `apps/api/src/mcp/tools/*.test.ts`, `apps/api/src/mcp/registry.test.ts`, `apps/api/src/mcp/auth.test.ts` | Route payloads mocked in MCP unit tests; provider-payload tests mock paid boundaries                                                                              |
-| HTTP auth, compatibility, errors, and protocol            | `apps/api/src/mcp/http.test.ts`, plus the HTTP matrix above                                              | Real streamable HTTP transport; OAuth resolution is stubbed only in the exhaustive fixture matrix                                                                 |
-| stdio registration and protocol                           | `apps/api/src/mcp/stdio.test.ts`, plus the stdio matrix above                                            | Real MCP `StdioServerTransport` and SDK client connected through in-memory byte streams                                                                           |
+| Concern                                                   | Test evidence                                                                                            | Boundary                                                                                                                                                                                                                |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dataset/run/workflow summary and stable keyset pages      | `apps/api/src/routes/mcpReaders.integration.test.ts`                                                     | Real disposable Postgres with 129 dataset items (including microsecond cursor rows), 258 run cells, 129 workflow cells, and 125 rows per summary list; asserts stable traversal, filters, summaries, and opt-in details |
+| Duplicate IDs, concurrency, and lost-response replay      | `apps/api/src/mcp/idempotency.integration.test.ts`                                                       | Real disposable Postgres; synthetic dataset/prompt fixtures; concurrent requests and same-key replay create one copy                                                                                                    |
+| Input constraints, profile effects, and handler semantics | `apps/api/src/mcp/tools/*.test.ts`, `apps/api/src/mcp/registry.test.ts`, `apps/api/src/mcp/auth.test.ts` | Route payloads mocked in MCP unit tests; provider-payload tests mock paid boundaries                                                                                                                                    |
+| HTTP auth, compatibility, errors, and protocol            | `apps/api/src/mcp/http.test.ts`, plus the HTTP matrix above                                              | Real streamable HTTP transport; OAuth resolution is stubbed only in the exhaustive fixture matrix                                                                                                                       |
+| stdio registration and protocol                           | `apps/api/src/mcp/stdio.test.ts`, plus the stdio matrix above                                            | Real MCP `StdioServerTransport` and SDK client connected through in-memory byte streams                                                                                                                                 |
 
-The complete workspace suite passed on the rebased head against the isolated disposable Postgres database: llm-core 42, secrets 24, API 729 (2 skipped), and web 1,256 tests passed; 2,051 passed and 2 were skipped overall. Test enumeration or the fixture-only transport matrix alone is not a full business-logic pass.
+Test enumeration or the fixture-only transport matrix alone is not a full business-logic pass. The full workspace run and disposable-Postgres results will be recorded after reconciliation with the current main branch.
 
 ## Catalog-size note
 

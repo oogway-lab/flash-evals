@@ -9,6 +9,7 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IApiRuntime } from "../server.js";
+import { ApiForbiddenError } from "../errors.js";
 import { registerMosaicMcpCapabilities } from "./registry.js";
 
 function resourceText(contents: { text?: string; blob?: string }[]): string {
@@ -157,7 +158,7 @@ function datasetPageQuery(
             storage_key: null,
             mime_type: null,
             label_json: null,
-            created_at: new Date("2026-10-10T00:00:00.000Z"),
+            cursor_created_at: "2026-10-10T00:00:00.000000Z",
         }));
         return { rows, rowCount: rows.length };
     }
@@ -215,7 +216,7 @@ function runPageQuery(
             prompt_tokens: null,
             completion_tokens: null,
             error: null,
-            created_at: new Date("2026-10-10T00:00:00.000Z"),
+            cursor_created_at: "2026-10-10T00:00:00.000000Z",
         }));
         return { rows, rowCount: rows.length };
     }
@@ -275,7 +276,7 @@ function workflowPageQuery(
             latency_ms: 2,
             cost_usd: null,
             error: null,
-            created_at: new Date("2026-10-10T00:00:00.000Z"),
+            cursor_created_at: "2026-10-10T00:00:00.000000Z",
         }));
         return { rows, rowCount: rows.length };
     }
@@ -519,4 +520,124 @@ describe("MCP stdio transport", () => {
         });
         expect(query).toHaveBeenCalled();
     });
+
+    it.each([
+        {
+            name: "cross tenant",
+            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            query: vi.fn(async (sql: string) =>
+                sql.includes("from projects")
+                    ? { rows: [], rowCount: 0 }
+                    : { rows: [], rowCount: 0 },
+            ),
+            code: -32602,
+            message: "Project was not found in the authenticated workspace.",
+            dataCode: "not_found",
+        },
+        {
+            name: "not found",
+            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            query: vi.fn(async (sql: string) => {
+                if (sql.includes("from projects")) {
+                    return {
+                        rows: [{ id: "11111111-1111-4111-8111-111111111111" }],
+                        rowCount: 1,
+                    };
+                }
+                if (sql.includes("from datasets")) {
+                    return { rows: [], rowCount: 0 };
+                }
+                return { rows: [], rowCount: 0 };
+            }),
+            code: -32602,
+            message: "Not found",
+            dataCode: "not_found",
+        },
+        {
+            name: "forbidden",
+            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            query: vi.fn(async (sql: string) => {
+                if (sql.includes("from projects")) {
+                    return {
+                        rows: [{ id: "11111111-1111-4111-8111-111111111111" }],
+                        rowCount: 1,
+                    };
+                }
+                if (sql.includes("from datasets")) {
+                    throw new ApiForbiddenError("Dataset access denied.");
+                }
+                return { rows: [], rowCount: 0 };
+            }),
+            code: -32003,
+            message: "Dataset access denied.",
+            dataCode: "forbidden",
+        },
+        {
+            name: "malformed cursor",
+            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222/items/10/not-a-cursor",
+            query: vi.fn(async (sql: string) =>
+                sql.includes("from projects")
+                    ? {
+                          rows: [
+                              {
+                                  id: "11111111-1111-4111-8111-111111111111",
+                              },
+                          ],
+                          rowCount: 1,
+                      }
+                    : { rows: [], rowCount: 0 },
+            ),
+            code: -32602,
+            message:
+                "Invalid page cursor. Restart pagination without a cursor.",
+            dataCode: "bad_request",
+        },
+        {
+            name: "internal failure",
+            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            query: vi.fn(async (sql: string) => {
+                if (sql.includes("from projects")) {
+                    return {
+                        rows: [{ id: "11111111-1111-4111-8111-111111111111" }],
+                        rowCount: 1,
+                    };
+                }
+                if (sql.includes("from datasets")) {
+                    throw new Error("private database diagnostic");
+                }
+                return { rows: [], rowCount: 0 };
+            }),
+            code: -32603,
+            message:
+                "Internal server error. Check the request ID before retrying.",
+            dataCode: "internal_error",
+        },
+    ])(
+        "returns a sanitized MCP resource protocol error for $name",
+        async (testCase) => {
+            const query = testCase.query as unknown as Parameters<
+                typeof createRuntime
+            >[0];
+            const harness = await connectStdioClient(createRuntime(query));
+            close = harness.close;
+
+            let caught: unknown;
+            try {
+                await harness.client.readResource({ uri: testCase.uri });
+            } catch (error) {
+                caught = error;
+            }
+
+            expect(caught).toMatchObject({
+                code: testCase.code,
+                message: expect.stringContaining(testCase.message),
+                data: {
+                    code: testCase.dataCode,
+                    requestId: expect.any(String),
+                },
+            });
+            expect(String(caught)).not.toContain("private database diagnostic");
+            expect(caught).not.toHaveProperty("contents");
+        },
+    );
 });

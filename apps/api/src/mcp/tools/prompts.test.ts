@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
     createJudgePromptPayload: vi.fn(),
     deletePromptPayload: vi.fn(),
     duplicatePromptVersionPayload: vi.fn(),
+    saveRunnablePromptPayload: vi.fn(),
+    validateRunnablePromptPayload: vi.fn(),
 }));
 
 vi.mock("../../routes/prompts.js", () => ({
@@ -12,10 +14,8 @@ vi.mock("../../routes/prompts.js", () => ({
     listPromptsPayload: vi.fn(),
     optimizePromptPayload: vi.fn(),
     promptDetailPayload: vi.fn(),
-    saveRunnablePromptPayload: vi.fn(),
     testJudgeDraftPayload: vi.fn(),
     testPromptDraftPayload: vi.fn(),
-    validateRunnablePromptPayload: vi.fn(),
 }));
 vi.mock("../../routes/runs.js", () => ({
     generateJudgeForRunPayload: vi.fn(),
@@ -31,6 +31,15 @@ import {
 const PROJECT_ID = TEST_PROJECT_ID;
 const PROMPT_ID = "22222222-2222-4222-8222-222222222222";
 const VERSION_ID = "33333333-3333-4333-8333-333333333333";
+const runnablePromptInput = {
+    projectId: PROJECT_ID,
+    name: "Runnable prompt",
+    content: "Answer the question.",
+    jsonSchema: { type: "object" },
+    fieldConfigs: [],
+    targetModelId: "gpt-4o",
+    samples: [{ name: "Question", inputText: "What is 2+2?" }],
+};
 
 describe("MCP prompt management tools", () => {
     beforeEach(() => vi.clearAllMocks());
@@ -108,6 +117,39 @@ describe("MCP prompt management tools", () => {
             },
         );
     });
+
+    it.each([
+        ["saved", [{ sampleName: "Question", status: "passed" }]],
+        ["validation_failed", [{ sampleName: "Question", status: "failed" }]],
+        [
+            "provider_error",
+            [{ sampleName: "Question", status: "provider_error" }],
+        ],
+    ] as const)(
+        "reports the %s outcome when creating a runnable prompt",
+        async (outcome, sampleResults) => {
+            const { tools } = registerTools();
+            const validation = {
+                passed: outcome === "saved",
+                evidence: { sampleResults },
+            };
+            mocks.validateRunnablePromptPayload.mockResolvedValueOnce(
+                validation,
+            );
+            mocks.saveRunnablePromptPayload.mockResolvedValueOnce({
+                promptId: PROMPT_ID,
+                promptVersionId: VERSION_ID,
+            });
+
+            const result = (await tools
+                .get("create_runnable_prompt")!
+                .handler(runnablePromptInput)) as {
+                structuredContent: { data: Record<string, unknown> };
+            };
+
+            expect(result.structuredContent.data.outcome).toBe(outcome);
+        },
+    );
 
     it("requires confirmation and destructive annotations for prompt deletion", () => {
         const tool = registerTools().tools.get("delete_prompt")!;

@@ -1268,6 +1268,79 @@ export async function workflowRunSummaryPayload(
     };
 }
 
+interface IWorkflowRunCellPageRow {
+    id: string;
+    dataset_item_id: string;
+    node_key: string;
+    status: CellStatus;
+    input_text: string | null;
+    output_json: unknown;
+    latency_ms: number | null;
+    cost_usd: number | null;
+    error: string | null;
+    cursor_created_at: string;
+    annotation_verdict: ReviewVerdict | null;
+    annotation_comment: string | null;
+    scores: Array<{ scorerType: string; score: number | null }> | null;
+}
+
+type IWorkflowRunCellPageOptions = Pick<
+    Parameters<typeof listWorkflowRunCellsPagePayload>[1],
+    "includeInputText" | "includeOutput" | "includeReview" | "includeScores"
+>;
+
+function workflowRunCellPageProjection(options: IWorkflowRunCellPageOptions) {
+    return {
+        inputText: options.includeInputText ? "c.input_text" : "null::text",
+        output: options.includeOutput ? "c.output_json" : "null::jsonb",
+        reviewVerdict: options.includeReview
+            ? "a.verdict"
+            : "null::review_verdict",
+        reviewComment: options.includeReview ? "a.comment" : "null::text",
+        scores: options.includeScores
+            ? "(select coalesce(json_agg(json_build_object('scorerType',s.scorer_type,'score',s.score) order by s.scorer_type),'[]'::json) from workflow_cell_scores s where s.workflow_run_cell_id=c.id)"
+            : "null::json",
+    };
+}
+
+function workflowRunCellPageOrder(
+    order: "oldest_first" | "newest_first" | undefined,
+) {
+    const newestFirst = order === "newest_first";
+    return {
+        cursorOperator: newestFirst ? "<" : ">",
+        direction: newestFirst ? "desc" : "asc",
+    };
+}
+
+function workflowRunCellPageItem(
+    row: IWorkflowRunCellPageRow,
+    options: IWorkflowRunCellPageOptions,
+) {
+    return {
+        id: row.id,
+        itemId: row.dataset_item_id,
+        nodeKey: row.node_key,
+        status: row.status,
+        latencyMs: row.latency_ms,
+        costUsd: row.cost_usd,
+        error: row.error,
+        ...(options.includeInputText ? { inputText: row.input_text } : {}),
+        ...(options.includeOutput ? { output: row.output_json } : {}),
+        ...(options.includeReview
+            ? {
+                  review: row.annotation_verdict
+                      ? {
+                            verdict: row.annotation_verdict,
+                            comment: row.annotation_comment ?? "",
+                        }
+                      : null,
+              }
+            : {}),
+        ...(options.includeScores ? { scores: row.scores ?? [] } : {}),
+    };
+}
+
 export async function listWorkflowRunCellsPagePayload(
     db: IDb,
     input: {
@@ -1280,8 +1353,12 @@ export async function listWorkflowRunCellsPagePayload(
         itemId?: string;
         nodeKey?: string;
         status?: CellStatus;
+        reviewVerdict?: ReviewVerdict;
+        order?: "oldest_first" | "newest_first";
         includeInputText?: boolean;
         includeOutput?: boolean;
+        includeReview?: boolean;
+        includeScores?: boolean;
     },
 ) {
     const run = await db.query<{ id: string }>(
@@ -1290,38 +1367,32 @@ export async function listWorkflowRunCellsPagePayload(
         [input.runId, input.workflowId, input.teamId, input.projectId],
     );
     if (!run.rows[0]) throw new ApiNotFoundError("Workflow run not found.");
-    const inputTextSelect = input.includeInputText
-        ? "c.input_text"
-        : "null::text";
-    const outputSelect = input.includeOutput ? "c.output_json" : "null::jsonb";
-    const result = await db.query<{
-        id: string;
-        dataset_item_id: string;
-        node_key: string;
-        status: CellStatus;
-        input_text: string | null;
-        output_json: unknown;
-        latency_ms: number | null;
-        cost_usd: number | null;
-        error: string | null;
-        created_at: Date | string;
-    }>(
+    const projection = workflowRunCellPageProjection(input);
+    const sort = workflowRunCellPageOrder(input.order);
+    const result = await db.query<IWorkflowRunCellPageRow>(
         `select c.id,c.dataset_item_id,c.node_key,c.status,
-                ${inputTextSelect} as input_text,${outputSelect} as output_json,
-                c.latency_ms,c.cost_usd,c.error,c.created_at
+                ${projection.inputText} as input_text,${projection.output} as output_json,
+                c.latency_ms,c.cost_usd,c.error,
+                ${projection.reviewVerdict} as annotation_verdict,
+                ${projection.reviewComment} as annotation_comment,
+                ${projection.scores} as scores,
+                to_char(c.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_created_at
          from workflow_run_cells c
+         left join workflow_run_cell_annotations a on a.workflow_run_cell_id=c.id
          where c.workflow_run_id=$1
            and ($2::uuid is null or c.dataset_item_id=$2)
            and ($3::text is null or c.node_key=$3)
            and ($4::cell_status is null or c.status=$4::cell_status)
-           and ($5::timestamptz is null or (c.created_at,c.id)>($5::timestamptz,$6::uuid))
-         order by c.created_at asc,c.id asc
-         limit $7`,
+           and ($5::review_verdict is null or coalesce(a.verdict,'unreviewed'::review_verdict)=$5::review_verdict)
+           and ($6::timestamptz is null or (c.created_at,c.id)${sort.cursorOperator}($6::timestamptz,$7::uuid))
+         order by c.created_at ${sort.direction},c.id ${sort.direction}
+         limit $8`,
         [
             input.runId,
             input.itemId ?? null,
             input.nodeKey ?? null,
             input.status ?? null,
+            input.reviewVerdict ?? null,
             input.cursor?.createdAt ?? null,
             input.cursor?.id ?? null,
             input.limit + 1,
@@ -1330,26 +1401,13 @@ export async function listWorkflowRunCellsPagePayload(
     const complete = result.rows.length <= input.limit;
     const rows = result.rows.slice(0, input.limit);
     return {
-        cells: rows.map((row) => ({
-            id: row.id,
-            itemId: row.dataset_item_id,
-            nodeKey: row.node_key,
-            status: row.status,
-            latencyMs: row.latency_ms,
-            costUsd: row.cost_usd,
-            error: row.error,
-            ...(input.includeInputText ? { inputText: row.input_text } : {}),
-            ...(input.includeOutput ? { output: row.output_json } : {}),
-        })),
+        cells: rows.map((row) => workflowRunCellPageItem(row, input)),
         complete,
         ...(complete || rows.length === 0
             ? {}
             : {
                   nextCursor: {
-                      createdAt:
-                          rows.at(-1)!.created_at instanceof Date
-                              ? (rows.at(-1)!.created_at as Date).toISOString()
-                              : new Date(rows.at(-1)!.created_at).toISOString(),
+                      createdAt: rows.at(-1)!.cursor_created_at,
                       id: rows.at(-1)!.id,
                   },
               }),
@@ -1385,6 +1443,59 @@ export async function listWorkflowRunsPayload(
         ...row,
         createdAt: iso(row.createdAt),
     }));
+}
+
+export async function listWorkflowRunSummariesPagePayload(
+    db: IDb,
+    teamId: string,
+    projectId: string,
+    workflowId: string,
+    input: { limit: number; cursor?: { createdAt: string; id: string } },
+) {
+    const result = await db.query<
+        IWorkflowRunSummary & { cursor_created_at: string }
+    >(
+        `select r.id,r.workflow_id as "workflowId",r.dataset_id as "datasetId",
+                d.name as "datasetName",r.status,r.run_target as "runTarget",
+                count(c.*)::int as total,
+                count(*) filter (where c.status in ('succeeded','cached'))::int as done,
+                count(*) filter (where c.status='failed')::int as failed,
+                r.created_at as "createdAt",
+                to_char(r.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_created_at
+         from workflow_runs r
+         join datasets d on d.id=r.dataset_id
+         left join workflow_run_cells c on c.workflow_run_id=r.id
+         where r.workflow_id=$1 and r.team_id=$2 and r.project_id=$3
+           and ($4::timestamptz is null or (r.created_at,r.id)<($4::timestamptz,$5::uuid))
+         group by r.id,d.name
+         order by r.created_at desc,r.id desc
+         limit $6`,
+        [
+            workflowId,
+            teamId,
+            projectId,
+            input.cursor?.createdAt ?? null,
+            input.cursor?.id ?? null,
+            input.limit + 1,
+        ],
+    );
+    const complete = result.rows.length <= input.limit;
+    const rows = result.rows.slice(0, input.limit);
+    return {
+        workflowRuns: rows.map((row) => ({
+            ...row,
+            createdAt: iso(row.createdAt),
+        })),
+        complete,
+        ...(complete || rows.length === 0
+            ? {}
+            : {
+                  nextCursor: {
+                      createdAt: rows.at(-1)!.cursor_created_at,
+                      id: rows.at(-1)!.id,
+                  },
+              }),
+    };
 }
 
 export async function workflowRunDetailPayload(

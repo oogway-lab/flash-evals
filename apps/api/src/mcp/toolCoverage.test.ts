@@ -44,6 +44,7 @@ const routeMocks = vi.hoisted(() => {
                 "importTextItemsPayload",
                 "listDatasetsPayload",
                 "listDatasetItemsPagePayload",
+                "listDatasetSummariesPagePayload",
                 "previewGoldenAnswersPayload",
                 "setDatasetArchivedPayload",
                 "updateDatasetDescriptionPayload",
@@ -71,22 +72,48 @@ const routeMocks = vi.hoisted(() => {
                     items: [],
                     complete: true,
                 }),
+                listDatasetSummariesPagePayload: async () => ({
+                    datasets: [],
+                    complete: true,
+                }),
+                duplicateDatasetPayload: async () => ({
+                    sourceDatasetId: "22222222-2222-4222-8222-222222222222",
+                    createdDatasetId: "33333333-3333-4333-8333-333333333333",
+                }),
             },
         ),
-        prompts: createModule([
-            "createJudgePromptPayload",
-            "deletePromptPayload",
-            "duplicatePromptVersionPayload",
-            "generatePromptSchemaPayload",
-            "listPromptsPayload",
-            "optimizePromptPayload",
-            "promptDetailPayload",
-            "promptWorkbenchSetupPayload",
-            "saveRunnablePromptPayload",
-            "testJudgeDraftPayload",
-            "testPromptDraftPayload",
-            "validateRunnablePromptPayload",
-        ]),
+        prompts: createModule(
+            [
+                "createJudgePromptPayload",
+                "deletePromptPayload",
+                "duplicatePromptVersionPayload",
+                "generatePromptSchemaPayload",
+                "listPromptsPayload",
+                "optimizePromptPayload",
+                "promptDetailPayload",
+                "promptWorkbenchSetupPayload",
+                "saveRunnablePromptPayload",
+                "testJudgeDraftPayload",
+                "testPromptDraftPayload",
+                "validateRunnablePromptPayload",
+            ],
+            {
+                saveRunnablePromptPayload: async () => ({
+                    promptId: "33333333-3333-4333-8333-333333333333",
+                    promptVersionId: "55555555-5555-4555-8555-555555555555",
+                }),
+                duplicatePromptVersionPayload: async () => ({
+                    sourcePromptVersionId:
+                        "44444444-4444-4444-8444-444444444444",
+                    promptId: "33333333-3333-4333-8333-333333333333",
+                    promptVersionId: "55555555-5555-4555-8555-555555555555",
+                }),
+                validateRunnablePromptPayload: async () => ({
+                    passed: true,
+                    evidence: { sampleResults: [] },
+                }),
+            },
+        ),
         runs: createModule(
             [
                 "createRunFromSelectionPayload",
@@ -94,6 +121,7 @@ const routeMocks = vi.hoisted(() => {
                 "generateJudgeForRunPayload",
                 "listRunCellsPagePayload",
                 "listRunsPayload",
+                "listRunSummariesPagePayload",
                 "runDetailPayload",
                 "runProgressPayload",
                 "runSummaryPayload",
@@ -122,6 +150,10 @@ const routeMocks = vi.hoisted(() => {
                     cells: [],
                     complete: true,
                 }),
+                listRunSummariesPagePayload: async () => ({
+                    runs: [],
+                    complete: true,
+                }),
                 createRunFromSelectionPayload: async () => ({
                     runId: "22222222-2222-4222-8222-222222222222",
                     enqueueStatus: "queued",
@@ -134,7 +166,9 @@ const routeMocks = vi.hoisted(() => {
                 "createWorkflowRunPayload",
                 "deleteWorkflowPayload",
                 "listWorkflowRunCellsPagePayload",
+                "listWorkflowRunSummariesPagePayload",
                 "listWorkflowRunsPayload",
+                "listWorkflowSummariesPagePayload",
                 "listWorkflowsPayload",
                 "saveWorkflowRunCellAnnotationPayload",
                 "saveWorkflowRunNotePayload",
@@ -165,6 +199,14 @@ const routeMocks = vi.hoisted(() => {
                 }),
                 listWorkflowRunCellsPagePayload: async () => ({
                     cells: [],
+                    complete: true,
+                }),
+                listWorkflowRunSummariesPagePayload: async () => ({
+                    workflowRuns: [],
+                    complete: true,
+                }),
+                listWorkflowSummariesPagePayload: async () => ({
+                    workflows: [],
                     complete: true,
                 }),
                 createWorkflowRunPayload: async () => ({
@@ -280,6 +322,41 @@ const projectId = "11111111-1111-4111-8111-111111111111";
 const datasetId = "22222222-2222-4222-8222-222222222222";
 const promptId = "33333333-3333-4333-8333-333333333333";
 const runId = "44444444-4444-4444-8444-444444444444";
+const expectedReadTools = [
+    "get_current_user",
+    "get_dashboard",
+    "get_dataset",
+    "get_dataset_summary",
+    "get_prompt",
+    "get_run",
+    "get_run_progress",
+    "get_run_summary",
+    "get_workflow",
+    "get_workflow_llm_default",
+    "get_workflow_run",
+    "get_workflow_run_progress",
+    "get_workflow_run_summary",
+    "list_dataset_items",
+    "list_dataset_summaries_page",
+    "list_datasets",
+    "list_eval_context",
+    "list_projects",
+    "list_prompts",
+    "list_provider_keys",
+    "list_run_cells",
+    "list_run_summaries_page",
+    "list_runs",
+    "list_workflow_llm_capabilities",
+    "list_workflow_llm_provider_models",
+    "list_workflow_llm_route_history",
+    "list_workflow_llm_routes",
+    "list_workflow_run_cells",
+    "list_workflow_run_summaries_page",
+    "list_workflow_runs",
+    "list_workflow_summaries_page",
+    "list_workflows",
+    "list_workspaces",
+];
 
 class StdioStreamClientTransport implements Transport {
     onclose?: () => void;
@@ -518,7 +595,7 @@ describe("MCP complete tool call coverage over stdio", () => {
         const harness = await connect();
         close = harness.close;
         const { tools } = await harness.client.listTools();
-        expect(tools).toHaveLength(84);
+        expect(tools).toHaveLength(88);
 
         const outcomes: Array<{ name: string; result: string }> = [];
         const invalidOutcomes: string[] = [];
@@ -604,6 +681,22 @@ describe("MCP complete tool call coverage over stdio", () => {
         expect(
             tools.every((tool) => tool.annotations?.readOnlyHint === true),
         ).toBe(true);
+        expect(tools.map((tool) => tool.name).sort()).toEqual(
+            [...expectedReadTools].sort(),
+        );
+
+        const positiveCalls: string[] = [];
+        for (const tool of tools) {
+            const args = specimen(
+                tool.inputSchema as Record<string, unknown>,
+            ) as Record<string, unknown> | undefined;
+            const result = await harness.client.callTool({
+                name: tool.name,
+                arguments: args ?? {},
+            });
+            if (!result.isError) positiveCalls.push(tool.name);
+        }
+        expect(positiveCalls.sort()).toEqual([...expectedReadTools].sort());
 
         const catalog = await connect();
         let allTools: Array<{
@@ -682,6 +775,28 @@ describe("MCP complete tool call coverage over stdio", () => {
         });
         expect(prompt.messages).toHaveLength(1);
     });
+
+    it("allows eval-profile reads and writes while blocking admin actions", async () => {
+        const harness = await connect("eval");
+        close = harness.close;
+        const readable = await harness.client.callTool({
+            name: "list_projects",
+            arguments: { workspaceId: projectId },
+        });
+        expect(readable.isError).toBeFalsy();
+
+        const writable = await harness.client.callTool({
+            name: "create_project",
+            arguments: { workspaceId: projectId, name: "Eval fixture project" },
+        });
+        expect(writable.isError).toBeFalsy();
+
+        const adminOnly = await harness.client.callTool({
+            name: "set_provider_key",
+            arguments: { provider: "openai", key: "synthetic-fixture" },
+        });
+        expect(adminOnly.isError).toBe(true);
+    });
 });
 
 describe("MCP complete tool call coverage over HTTP", () => {
@@ -695,7 +810,7 @@ describe("MCP complete tool call coverage over HTTP", () => {
             name: string;
             inputSchema?: Record<string, unknown>;
         }>;
-        expect(tools).toHaveLength(84);
+        expect(tools).toHaveLength(88);
 
         const invalidNames = new Set<string>();
         const failedPositive: string[] = [];
@@ -800,6 +915,92 @@ describe("MCP complete tool call coverage over HTTP", () => {
             },
         });
         expect(denied.error || denied.result?.isError).toBeTruthy();
+    });
+
+    it("allows read-profile calls for every annotated read tool over HTTP", async () => {
+        const runtime = runtimeFixture();
+        const catalog = await callHttp(runtime, {
+            method: "tools/list",
+            params: {},
+        });
+        const allTools = catalog.result.tools as Array<{
+            name: string;
+            inputSchema?: Record<string, unknown>;
+        }>;
+        vi.mocked(routeMocks.resolveMcpPrincipal).mockResolvedValue({
+            authMode: "oauth",
+            profile: "read",
+            userId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            teamId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            email: "coverage@example.invalid",
+        });
+        const readCatalog = await callHttp(runtime, {
+            method: "tools/list",
+            params: {},
+        });
+        const readable = readCatalog.result.tools as Array<{
+            name: string;
+            inputSchema?: Record<string, unknown>;
+        }>;
+        expect(readable.map((tool) => tool.name).sort()).toEqual(
+            [...expectedReadTools].sort(),
+        );
+        for (const name of expectedReadTools) {
+            const tool = allTools.find((candidate) => candidate.name === name)!;
+            const args = specimen(tool.inputSchema) as
+                Record<string, unknown> | undefined;
+            const result = await callHttp(runtime, {
+                method: "tools/call",
+                params: { name, arguments: args ?? {} },
+            });
+            expect(result.error || result.result?.isError).toBeFalsy();
+        }
+        vi.mocked(routeMocks.resolveMcpPrincipal).mockResolvedValue({
+            authMode: "oauth",
+            profile: "admin",
+            userId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            teamId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            email: "coverage@example.invalid",
+        });
+    });
+
+    it("allows eval-profile reads and writes while blocking admin actions over HTTP", async () => {
+        const runtime = runtimeFixture();
+        vi.mocked(routeMocks.resolveMcpPrincipal).mockResolvedValue({
+            authMode: "oauth",
+            profile: "eval",
+            userId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            teamId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            email: "coverage@example.invalid",
+        });
+        for (const [name, args] of [
+            ["list_projects", { workspaceId: projectId }],
+            [
+                "create_project",
+                { workspaceId: projectId, name: "Eval fixture project" },
+            ],
+        ] as const) {
+            const result = await callHttp(runtime, {
+                method: "tools/call",
+                params: { name, arguments: args },
+            });
+            expect(result.error || result.result?.isError).toBeFalsy();
+        }
+        const adminOnly = await callHttp(runtime, {
+            method: "tools/call",
+            params: {
+                name: "set_provider_key",
+                arguments: { provider: "openai", key: "synthetic-fixture" },
+            },
+        });
+        expect(adminOnly.error || adminOnly.result?.isError).toBeTruthy();
+        vi.mocked(routeMocks.resolveMcpPrincipal).mockResolvedValue({
+            authMode: "oauth",
+            profile: "admin",
+            userId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            teamId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            email: "coverage@example.invalid",
+        });
     });
 
     it("denies direct HTTP calls to every non-read tool for the read profile", async () => {

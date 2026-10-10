@@ -113,6 +113,7 @@ describe("MCP workflow tools", () => {
     it("registers the full workflow CRUD and run surface", () => {
         expect([...registerTools().tools.keys()]).toEqual([
             "list_workflows",
+            "list_workflow_summaries_page",
             "get_workflow",
             "create_workflow",
             "create_multiworkflow",
@@ -121,6 +122,7 @@ describe("MCP workflow tools", () => {
             "select_workflow_llm_model",
             "create_workflow_run",
             "list_workflow_runs",
+            "list_workflow_run_summaries_page",
             "get_workflow_run",
             "get_workflow_run_summary",
             "list_workflow_run_cells",
@@ -472,6 +474,17 @@ describe("MCP workflow tools", () => {
         expect(
             schema.safeParse({ ...base, runTarget: "dataset" }).success,
         ).toBe(true);
+        const withoutIdempotencyKey = {
+            projectId: PROJECT_ID,
+            workflowId: WORKFLOW_ID,
+            datasetId: DATASET_ID,
+        };
+        expect(
+            schema.safeParse({
+                ...withoutIdempotencyKey,
+                runTarget: "dataset",
+            }).success,
+        ).toBe(true);
         expect(
             schema.safeParse({
                 ...base,
@@ -612,6 +625,8 @@ describe("MCP workflow tools", () => {
                     null,
                     "input",
                     "succeeded",
+                    null,
+                    "oldest_first",
                 ]),
             ),
         ).toEqual(nextCursor);
@@ -635,6 +650,8 @@ describe("MCP workflow tools", () => {
                 null,
                 "other-node",
                 "succeeded",
+                null,
+                "oldest_first",
             ]),
             nextCursor,
         );

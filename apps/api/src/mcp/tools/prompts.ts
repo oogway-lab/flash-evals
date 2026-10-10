@@ -209,20 +209,26 @@ export function registerPromptTools(
                 },
             );
             if (!validation.passed) {
-                return ok("Prompt validation failed.", validation);
+                const outcome = validation.evidence.sampleResults.some(
+                    (sample) => sample.status === "provider_error",
+                )
+                    ? "provider_error"
+                    : "validation_failed";
+                return ok("Prompt validation failed.", {
+                    ...validation,
+                    outcome,
+                });
             }
-            return ok(
-                "Saved runnable prompt.",
-                await saveRunnablePromptPayload(runtime.db, {
-                    ...input,
-                    fieldConfigs: input.fieldConfigs as IPipelineFieldConfig[],
-                    validationEvidence: validation.evidence,
-                    fitTags: input.fitTags ?? [],
-                    teamId: principal.teamId,
-                    projectId,
-                    createdBy: principal.userId,
-                }),
-            );
+            const saved = await saveRunnablePromptPayload(runtime.db, {
+                ...input,
+                fieldConfigs: input.fieldConfigs as IPipelineFieldConfig[],
+                validationEvidence: validation.evidence,
+                fitTags: input.fitTags ?? [],
+                teamId: principal.teamId,
+                projectId,
+                createdBy: principal.userId,
+            });
+            return ok("Saved runnable prompt.", { ...saved, outcome: "saved" });
         },
     );
 
@@ -346,12 +352,19 @@ export function registerPromptTools(
         {
             title: "Duplicate prompt version",
             description:
-                "Create a new prompt from an existing structured prompt version. For safe retries, choose an idempotencyKey before the first request and reuse it for this same copy.",
+                "Create a new prompt from an existing structured prompt version. The optional idempotencyKey makes retries safe; when supplied, choose it before the first request and reuse it for this same copy.",
             inputSchema: z.object({
                 projectId: ProjectId,
                 sourcePromptVersionId: z.string().uuid(),
                 idempotencyKey: z.string().trim().min(1).max(200).optional(),
             }),
+            outputSchema: {
+                data: z.object({
+                    sourcePromptVersionId: z.string().uuid(),
+                    promptId: z.string().uuid(),
+                    promptVersionId: z.string().uuid(),
+                }),
+            },
         },
         async (input) => {
             const request = {

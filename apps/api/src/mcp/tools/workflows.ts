@@ -11,7 +11,9 @@ import {
     createWorkflowRunPayload,
     deleteWorkflowPayload,
     listWorkflowRunCellsPagePayload,
+    listWorkflowRunSummariesPagePayload,
     listWorkflowRunsPayload,
+    listWorkflowSummariesPagePayload,
     listWorkflowsPayload,
     saveWorkflowRunCellAnnotationPayload,
     saveWorkflowRunNotePayload,
@@ -26,6 +28,7 @@ import { assertWorkflowLlmWritesEnabled } from "../../routes/llmRouting.js";
 import { ok } from "../responses.js";
 import {
     ProjectId,
+    ReviewVerdict,
     SttRunConfig,
     WorkflowEdgeInput,
     WorkflowNodeInput,
@@ -78,6 +81,65 @@ export function registerWorkflowTools(
                     kind,
                 ),
             ),
+    );
+
+    server.registerTool(
+        "list_workflow_summaries_page",
+        {
+            title: "List workflow summaries page",
+            description:
+                "Read a bounded, stable page of workflow summaries. Use list_workflows for its complete legacy result; the cursor is bound to project and kind.",
+            inputSchema: z.object({
+                projectId: ProjectId,
+                kind: WorkflowKindInput.optional(),
+                limit: z.number().int().min(1).max(100).optional(),
+                cursor: z.string().optional(),
+            }),
+            outputSchema: {
+                data: z.object({
+                    workflows: z.array(
+                        z.object({
+                            id: z.string().uuid(),
+                            teamId: z.string().uuid(),
+                            projectId: z.string().uuid(),
+                            name: z.string(),
+                            description: z.string(),
+                            kind: WorkflowKindInput,
+                            createdAt: z.string(),
+                            nodeCount: z.number().int(),
+                        }),
+                    ),
+                    complete: z.boolean(),
+                    nextCursor: z.string().optional(),
+                }),
+            },
+        },
+        async (input) => {
+            const projectId = await resolveProjectId(context, input.projectId);
+            const scope = JSON.stringify([projectId, input.kind ?? null]);
+            const page = await listWorkflowSummariesPagePayload(
+                runtime.db,
+                principal.teamId,
+                projectId,
+                {
+                    limit: boundedMcpPageSize(input.limit),
+                    kind: input.kind,
+                    cursor: decodeMcpPageCursor(input.cursor, scope),
+                },
+            );
+            return ok("Loaded workflow summary page.", {
+                workflows: page.workflows,
+                complete: page.complete,
+                ...(page.nextCursor
+                    ? {
+                          nextCursor: encodeMcpPageCursor(
+                              scope,
+                              page.nextCursor,
+                          ),
+                      }
+                    : {}),
+            });
+        },
     );
 
     server.registerTool(
@@ -259,7 +321,7 @@ export function registerWorkflowTools(
         {
             title: "Create workflow run",
             description:
-                "Create and enqueue a workflow run for a dataset or one item. Choose a stable idempotencyKey before the first request and reuse it for retries of the same intent.",
+                "Create and enqueue a workflow run for a dataset or one item. The optional idempotencyKey makes retries safe; when supplied, choose it before the first request and reuse it for the same intent.",
             inputSchema: z
                 .object({
                     ...WorkflowIdInput,
@@ -267,7 +329,12 @@ export function registerWorkflowTools(
                     runTarget: z.enum(["single_item", "dataset"]),
                     itemId: z.string().uuid().optional(),
                     sttConfig: SttRunConfig.optional(),
-                    idempotencyKey: z.string().trim().min(1).max(200),
+                    idempotencyKey: z
+                        .string()
+                        .trim()
+                        .min(1)
+                        .max(200)
+                        .optional(),
                 })
                 .strict()
                 .superRefine((input, ctx) => {
@@ -338,6 +405,66 @@ export function registerWorkflowTools(
     });
 
     server.registerTool(
+        "list_workflow_run_summaries_page",
+        {
+            title: "List workflow run summaries page",
+            description:
+                "Read a bounded, stable page of workflow run summaries. Use list_workflow_runs for its complete legacy result; the cursor is bound to the workflow.",
+            inputSchema: z.object({
+                ...WorkflowIdInput,
+                limit: z.number().int().min(1).max(100).optional(),
+                cursor: z.string().optional(),
+            }),
+            outputSchema: {
+                data: z.object({
+                    workflowRuns: z.array(
+                        z.object({
+                            id: z.string().uuid(),
+                            workflowId: z.string().uuid(),
+                            datasetId: z.string().uuid(),
+                            datasetName: z.string(),
+                            status: z.string(),
+                            runTarget: z.string(),
+                            total: z.number().int(),
+                            done: z.number().int(),
+                            failed: z.number().int(),
+                            createdAt: z.string(),
+                        }),
+                    ),
+                    complete: z.boolean(),
+                    nextCursor: z.string().optional(),
+                }),
+            },
+        },
+        async (input) => {
+            const projectId = await resolveProjectId(context, input.projectId);
+            const scope = JSON.stringify([projectId, input.workflowId]);
+            const page = await listWorkflowRunSummariesPagePayload(
+                runtime.db,
+                principal.teamId,
+                projectId,
+                input.workflowId,
+                {
+                    limit: boundedMcpPageSize(input.limit),
+                    cursor: decodeMcpPageCursor(input.cursor, scope),
+                },
+            );
+            return ok("Loaded workflow run summary page.", {
+                workflowRuns: page.workflowRuns,
+                complete: page.complete,
+                ...(page.nextCursor
+                    ? {
+                          nextCursor: encodeMcpPageCursor(
+                              scope,
+                              page.nextCursor,
+                          ),
+                      }
+                    : {}),
+            });
+        },
+    );
+
+    server.registerTool(
         "get_workflow_run",
         {
             title: "Get workflow run",
@@ -403,7 +530,7 @@ export function registerWorkflowTools(
         {
             title: "List workflow run cells",
             description:
-                "Read a stable, bounded page of workflow cells, optionally filtered by item, node, or status. Input text and outputs are omitted unless requested.",
+                "Read a stable, bounded page of workflow cells, optionally filtered by item, node, status, or review verdict and ordered oldest or newest first. Input text, outputs, review annotations, and scores are included only when requested.",
             inputSchema: z.object({
                 ...WorkflowIdInput,
                 workflowRunId: z.string().uuid(),
@@ -420,8 +547,12 @@ export function registerWorkflowTools(
                         "cached",
                     ])
                     .optional(),
+                reviewVerdict: ReviewVerdict.optional(),
+                order: z.enum(["oldest_first", "newest_first"]).optional(),
                 includeInputText: z.boolean().optional(),
                 includeOutput: z.boolean().optional(),
+                includeReview: z.boolean().optional(),
+                includeScores: z.boolean().optional(),
             }),
             outputSchema: {
                 data: z.object({
@@ -436,6 +567,21 @@ export function registerWorkflowTools(
                             error: z.string().nullable(),
                             inputText: z.string().nullable().optional(),
                             output: z.unknown().optional(),
+                            review: z
+                                .object({
+                                    verdict: ReviewVerdict,
+                                    comment: z.string(),
+                                })
+                                .nullable()
+                                .optional(),
+                            scores: z
+                                .array(
+                                    z.object({
+                                        scorerType: z.string(),
+                                        score: z.number().nullable(),
+                                    }),
+                                )
+                                .optional(),
                         }),
                     ),
                     complete: z.boolean(),
@@ -452,6 +598,8 @@ export function registerWorkflowTools(
                 input.itemId ?? null,
                 input.nodeKey ?? null,
                 input.status ?? null,
+                input.reviewVerdict ?? null,
+                input.order ?? "oldest_first",
             ]);
             const page = await listWorkflowRunCellsPagePayload(runtime.db, {
                 teamId: principal.teamId,
@@ -463,8 +611,12 @@ export function registerWorkflowTools(
                 itemId: input.itemId,
                 nodeKey: input.nodeKey,
                 status: input.status,
+                reviewVerdict: input.reviewVerdict,
+                order: input.order,
                 includeInputText: input.includeInputText,
                 includeOutput: input.includeOutput,
+                includeReview: input.includeReview,
+                includeScores: input.includeScores,
             });
             return ok("Loaded workflow run cell page.", {
                 cells: page.cells,

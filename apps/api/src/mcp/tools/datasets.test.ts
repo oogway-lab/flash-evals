@@ -56,6 +56,7 @@ describe("MCP dataset tools", () => {
 
         expect([...tools.keys()]).toEqual([
             "list_datasets",
+            "list_dataset_summaries_page",
             "get_dataset",
             "get_dataset_summary",
             "list_dataset_items",
@@ -107,7 +108,7 @@ describe("MCP dataset tools", () => {
         expect(summaryResult.structuredContent.data).toEqual(summary);
 
         const nextCursor = {
-            createdAt: "2026-10-10T00:00:00.000Z",
+            createdAt: "2026-10-10T00:00:00.123456Z",
             id: ITEM_ID,
         };
         mocks.listDatasetItemsPagePayload.mockResolvedValue({

@@ -14,6 +14,7 @@ vi.mock("@clerk/backend", () => ({
 
 import type { IApiConfig } from "../config.js";
 import type { IDb } from "../db.js";
+import { ApiForbiddenError } from "../errors.js";
 import { resolveApiFeatureFlags } from "../featureFlags.js";
 import {
     handleMcpRequest,
@@ -58,6 +59,49 @@ function dbWithLinkedUser(): IDb {
                 },
             ],
         })) as never,
+    };
+}
+
+function dbForResourceFailure(
+    failure:
+        "not_found" | "cross_tenant" | "forbidden" | "internal" | "bad_cursor",
+): IDb {
+    return {
+        query: vi.fn(async (sql: string) => {
+            if (sql.includes("from users")) {
+                return {
+                    rows: [
+                        {
+                            id: "user-1",
+                            team_id: "team-1",
+                            clerk_user_id: "clerk-user-1",
+                            email: "teammate@example.com",
+                            name: "Teammate",
+                        },
+                    ],
+                    rowCount: 1,
+                };
+            }
+            if (sql.includes("from projects")) {
+                if (failure === "cross_tenant") {
+                    return { rows: [], rowCount: 0 };
+                }
+                return {
+                    rows: [{ id: "11111111-1111-4111-8111-111111111111" }],
+                    rowCount: 1,
+                };
+            }
+            if (sql.includes("from datasets")) {
+                if (failure === "forbidden") {
+                    throw new ApiForbiddenError("Dataset access denied.");
+                }
+                if (failure === "internal") {
+                    throw new Error("private database diagnostic");
+                }
+                return { rows: [], rowCount: 0 };
+            }
+            return { rows: [], rowCount: 0 };
+        }) as never,
     };
 }
 
@@ -462,6 +506,101 @@ describe("MCP HTTP OAuth", () => {
                 invalidBody.result?.isError === true,
         ).toBe(true);
     });
+
+    it.each([
+        {
+            name: "cross-tenant project",
+            failure: "cross_tenant" as const,
+            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            code: -32602,
+            message: "Project was not found in the authenticated workspace.",
+            dataCode: "not_found",
+        },
+        {
+            name: "not found",
+            failure: "not_found" as const,
+            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            code: -32602,
+            message: "Not found",
+            dataCode: "not_found",
+        },
+        {
+            name: "forbidden",
+            failure: "forbidden" as const,
+            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            code: -32003,
+            message: "Dataset access denied.",
+            dataCode: "forbidden",
+        },
+        {
+            name: "internal failure",
+            failure: "internal" as const,
+            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            code: -32603,
+            message:
+                "Internal server error. Check the request ID before retrying.",
+            dataCode: "internal_error",
+        },
+        {
+            name: "malformed cursor",
+            failure: "bad_cursor" as const,
+            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222/items/10/not-a-cursor",
+            code: -32602,
+            message:
+                "Invalid page cursor. Restart pagination without a cursor.",
+            dataCode: "bad_request",
+        },
+    ])(
+        "returns a sanitized resources/read protocol error for $name",
+        async (testCase) => {
+            clerkMock.authenticateRequest.mockResolvedValue({
+                toAuth: () => ({
+                    isAuthenticated: true,
+                    tokenType: "oauth_token",
+                    clientId: "oauth-client",
+                    userId: "clerk-user-1",
+                    scopes: [],
+                }),
+            });
+            const response = await handleMcpRequest(
+                new Request("https://api.example.com/mcp", {
+                    method: "POST",
+                    headers: {
+                        authorization: "Bearer header.payload.signature",
+                        origin: "https://claude.example.com",
+                        "content-type": "application/json",
+                        accept: "application/json, text/event-stream",
+                    },
+                    body: JSON.stringify({
+                        jsonrpc: "2.0",
+                        id: 31,
+                        method: "resources/read",
+                        params: { uri: testCase.uri },
+                    }),
+                }),
+                { config, db: dbForResourceFailure(testCase.failure) },
+            );
+
+            expect(response.status).toBe(200);
+            const body = await response.json();
+            expect(body).toMatchObject({
+                jsonrpc: "2.0",
+                id: 31,
+                error: {
+                    code: testCase.code,
+                    message: expect.stringContaining(testCase.message),
+                    data: {
+                        code: testCase.dataCode,
+                        requestId: expect.any(String),
+                    },
+                },
+            });
+            expect(body.result).toBeUndefined();
+            expect(JSON.stringify(body)).not.toContain(
+                "private database diagnostic",
+            );
+        },
+    );
 
     it("rejects disallowed origins before auth work", async () => {
         const response = await handleMcpRequest(
