@@ -12,7 +12,7 @@ describe("MCP success responses", () => {
         expect(response.structuredContent.data).toEqual(data);
     });
 
-    it("bounds the duplicated text fallback while preserving full structured data", () => {
+    it("preserves the full serialized text fallback for large results", () => {
         const data = {
             items: Array.from({ length: 1_000 }, (_, index) => ({
                 id: `item-${index}`,
@@ -25,9 +25,7 @@ describe("MCP success responses", () => {
         const text = response.content[0]!.text;
 
         expect(serialized.length).toBeGreaterThan(24_000);
-        expect(text.length).toBeLessThan(250);
-        expect(text).toContain("Full result omitted from text fallback.");
-        expect(text).not.toContain(serialized);
+        expect(text).toBe(`Dataset details\n\n${serialized}`);
         expect(response.structuredContent.data).toEqual(data);
     });
 });
