@@ -40,6 +40,7 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
     const fixture = {
         workspaceId: "",
         projectId: "",
+        textDatasetId: "",
         imageDatasetId: "",
         imageItemId: "",
         imageStorageKey: "",
@@ -166,11 +167,13 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
                         [syntheticRunIds],
                     );
                 }
-                if (pgBoss.rows[0]?.relation && fixture.workflowRunId) {
+                if (pgBoss.rows[0]?.relation) {
                     await pool.query(
                         `delete from pgboss.job
-                     where name='workflow-run' and data->>'workflowRunId'=$1`,
-                        [fixture.workflowRunId],
+                     where name='workflow-run' and data->>'workflowRunId' in (
+                        select id::text from workflow_runs where team_id=$1
+                     )`,
+                        [teamId],
                     );
                 }
                 await pool.query(
@@ -394,6 +397,7 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
         );
         const datasetId = dataset.id as string;
         expect(datasetId).toMatch(UUID_PATTERN);
+        fixture.textDatasetId = datasetId;
         const imported = data(
             await tool("import_dataset_text_items", {
                 projectId: fixture.projectId,
@@ -483,23 +487,41 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
         expect(listed.map((entry: { id: string }) => entry.id)).toContain(
             datasetId,
         );
-        const datasetSummaries = data(
-            await tool("list_dataset_summaries_page", {
-                projectId: fixture.projectId,
-                limit: 100,
-            }),
+        const datasetSummaryPages: Array<{
+            datasets: Array<{ id: string; name: string; itemCount: number }>;
+            complete: boolean;
+            nextCursor?: string;
+        }> = [];
+        let summaryCursor: string | undefined;
+        for (let pageNumber = 0; pageNumber < 10; pageNumber += 1) {
+            const page = data(
+                await tool("list_dataset_summaries_page", {
+                    projectId: fixture.projectId,
+                    limit: 1,
+                    ...(summaryCursor ? { cursor: summaryCursor } : {}),
+                }),
+            ) as (typeof datasetSummaryPages)[number];
+            datasetSummaryPages.push(page);
+            if (page.complete) break;
+            expect(page.nextCursor).toEqual(expect.any(String));
+            summaryCursor = page.nextCursor;
+        }
+        const pagedDatasets = datasetSummaryPages.flatMap(
+            (page) => page.datasets,
         );
-        expect(datasetSummaries.datasets).toEqual(
+        const pagedDatasetIds = pagedDatasets.map((entry) => entry.id);
+        expect(datasetSummaryPages.length).toBeGreaterThan(1);
+        expect(new Set(pagedDatasetIds).size).toBe(pagedDatasetIds.length);
+        expect(pagedDatasets).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
                     id: datasetId,
                     name: "Acceptance text dataset",
                     itemCount: 2,
-                    modality: "text",
                 }),
             ]),
         );
-        expect(datasetSummaries.complete).toBe(true);
+        expect(datasetSummaryPages.at(-1)?.complete).toBe(true);
         const projects = data(
             await tool("list_projects", { workspaceId: fixture.workspaceId }),
         );
@@ -767,6 +789,69 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
             [fixture.workflowRunCellId],
         );
 
+        const emptyDataset = data(
+            await tool("create_dataset", {
+                projectId,
+                name: "Acceptance empty workflow dataset",
+                purpose: "evaluation",
+                modality: "text",
+            }),
+        );
+        const emptyDatasetId = emptyDataset.id as string;
+        expect(emptyDatasetId).toMatch(UUID_PATTERN);
+        const emptyWorkflow = data(
+            await tool("create_workflow", {
+                projectId,
+                name: "Acceptance zero-cell workflow",
+                description: "Synthetic zero-cell summary fixture",
+                kind: "multi",
+                nodes: [
+                    {
+                        ...inputNode,
+                        nodeConfig: {
+                            type: "input",
+                            modality: "text",
+                            datasetId: emptyDatasetId,
+                        },
+                    },
+                ],
+                edges: [],
+            }),
+        );
+        const emptyWorkflowId = emptyWorkflow.id as string;
+        expect(emptyWorkflowId).toMatch(UUID_PATTERN);
+        const zeroCellRun = data(
+            await tool("create_workflow_run", {
+                projectId,
+                workflowId: emptyWorkflowId,
+                datasetId: emptyDatasetId,
+                runTarget: "dataset",
+                idempotencyKey: `workflow-zero-cell-${teamId}`,
+            }),
+        );
+        const zeroCellWorkflowRunId = zeroCellRun.workflowRunId as string;
+        expect(zeroCellWorkflowRunId).toMatch(UUID_PATTERN);
+        expect(
+            (
+                await pool.query(
+                    "select count(*)::int as count from workflow_run_cells where workflow_run_id=$1",
+                    [zeroCellWorkflowRunId],
+                )
+            ).rows[0]?.count,
+        ).toBe(0);
+        expect(
+            data(
+                await tool("get_workflow_run_summary", {
+                    projectId,
+                    workflowId: emptyWorkflowId,
+                    workflowRunId: zeroCellWorkflowRunId,
+                }),
+            ),
+        ).toMatchObject({
+            run: { id: zeroCellWorkflowRunId },
+            progress: { total: 0, done: 0, failed: 0 },
+        });
+
         const runs = data(
             await tool("list_workflow_runs", {
                 projectId,
@@ -788,6 +873,12 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
                     workflowId: fixture.workflowId,
                     datasetId,
                     total: 1,
+                }),
+                expect.objectContaining({
+                    id: zeroCellWorkflowRunId,
+                    workflowId: emptyWorkflowId,
+                    datasetId: emptyDatasetId,
+                    total: 0,
                 }),
             ]),
         );
@@ -1415,6 +1506,25 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
                 modality: "text",
             }),
         );
+        const deleteWithoutConfirmation = await rpc("tools/call", {
+            name: "delete_dataset",
+            arguments: { projectId, datasetId: empty.id },
+        });
+        expect(
+            Boolean(
+                deleteWithoutConfirmation.error ||
+                deleteWithoutConfirmation.result?.isError,
+            ),
+        ).toBe(true);
+        expect(JSON.stringify(deleteWithoutConfirmation)).toContain("confirm");
+        expect(
+            (
+                await pool.query(
+                    "select id from datasets where id=$1 and team_id=$2",
+                    [empty.id, teamId],
+                )
+            ).rowCount,
+        ).toBe(1);
         await tool("delete_dataset", {
             projectId,
             datasetId: empty.id,
@@ -1699,6 +1809,7 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
         });
     });
 
+    // eslint-disable-next-line complexity -- Exercises protocol/resource paths, auth failures, and recovery using one real DB fixture graph.
     it("roundtrips resources, the setup prompt, tool/resource HTTP 403, and resource 404 protocol errors", async () => {
         const { projectId } = fixture;
         const promptId = randomUUID();
@@ -1764,6 +1875,11 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
                 fixture.imageItemId,
                 fixtureRunModelId,
             ],
+        );
+        await pool.query(
+            `insert into cell_scores(run_cell_id,scorer_type,score,details_json,rationale)
+             values($1,'judge',0.9,'{"rubric":"synthetic"}','Synthetic judge projection')`,
+            [fixtureRunCellId],
         );
 
         const prompts = data(
@@ -1853,6 +1969,11 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
                     status: "completed",
                     datasetId,
                     datasetName: "Acceptance image dataset",
+                    best: expect.objectContaining({
+                        modelId: "gpt-4o",
+                        metric: "judge",
+                        score: 0.9,
+                    }),
                 }),
             ]),
         );
@@ -1888,6 +2009,7 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
                 runId: fixtureRunId,
                 includeInputText: true,
                 includeOutput: true,
+                includeScores: true,
             }),
         );
         expect(runCells.cells).toEqual([
@@ -1895,6 +2017,12 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
                 id: fixtureRunCellId,
                 inputText: "updated synthetic prompt",
                 output: { class: "synthetic" },
+                scores: [
+                    expect.objectContaining({
+                        scorerType: "judge",
+                        score: 0.9,
+                    }),
+                ],
             }),
         ]);
         expect(
@@ -1934,6 +2062,29 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
             verdict: "approved",
             comment: "Synthetic output verified",
         });
+        const reviewedCells = data(
+            await tool("list_run_cells", {
+                projectId,
+                runId: fixtureRunId,
+                includeReview: true,
+                includeScores: true,
+            }),
+        );
+        expect(reviewedCells.cells).toEqual([
+            expect.objectContaining({
+                id: fixtureRunCellId,
+                review: {
+                    verdict: "approved",
+                    comment: "Synthetic output verified",
+                },
+                scores: [
+                    expect.objectContaining({
+                        scorerType: "judge",
+                        score: 0.9,
+                    }),
+                ],
+            }),
+        ]);
 
         const templates = await rpc("resources/templates/list", {});
         expect(templates.result?.resourceTemplates).toHaveLength(8);
@@ -1943,7 +2094,7 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
             `mosaic://projects/${projectId}/runs/${fixtureRunId}`,
             `mosaic://projects/${projectId}/models`,
             `mosaic://projects/${projectId}/datasets/${datasetId}/summary`,
-            `mosaic://projects/${projectId}/datasets/${datasetId}/items/1/first`,
+            `mosaic://projects/${projectId}/datasets/${fixture.textDatasetId}/items/1/first`,
             `mosaic://projects/${projectId}/runs/${fixtureRunId}/summary`,
             `mosaic://projects/${projectId}/runs/${fixtureRunId}/cells/1/first`,
         ];
@@ -1958,8 +2109,26 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
         const datasetPage = await rpc("resources/read", { uri: uris[5] });
         const datasetPageData = JSON.parse(
             datasetPage.result?.contents?.[0]?.text ?? "{}",
-        ) as { items?: unknown[] };
+        ) as {
+            items?: Array<{ id: string }>;
+            complete?: boolean;
+            nextPageUri?: string;
+        };
         expect(datasetPageData.items).toHaveLength(1);
+        expect(datasetPageData.complete).toBe(false);
+        expect(datasetPageData.nextPageUri).toEqual(expect.any(String));
+        const nextDatasetPage = await rpc("resources/read", {
+            uri: datasetPageData.nextPageUri!,
+        });
+        const nextDatasetPageData = JSON.parse(
+            nextDatasetPage.result?.contents?.[0]?.text ?? "{}",
+        ) as { items?: Array<{ id: string }>; complete?: boolean };
+        expect(nextDatasetPage.error).toBeUndefined();
+        expect(nextDatasetPageData.items).toHaveLength(1);
+        expect(nextDatasetPageData.items?.[0]?.id).not.toBe(
+            datasetPageData.items?.[0]?.id,
+        );
+        expect(nextDatasetPageData.complete).toBe(true);
 
         const setupPrompt = await rpc("prompts/get", {
             name: "create_eval_happy_path",
@@ -2046,6 +2215,25 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
     });
 
     it("reports schema rejection and tenant-scoped not-found errors through tools/call", async () => {
+        const missingWorkflowRunKey = await rpc("tools/call", {
+            name: "create_workflow_run",
+            arguments: {
+                projectId: fixtureProjectId,
+                workflowId: randomUUID(),
+                datasetId: randomUUID(),
+                runTarget: "dataset",
+            },
+        });
+        expect(
+            Boolean(
+                missingWorkflowRunKey.error ||
+                missingWorkflowRunKey.result?.isError,
+            ),
+        ).toBe(true);
+        expect(JSON.stringify(missingWorkflowRunKey)).toContain(
+            "idempotencyKey",
+        );
+
         const invalid = await rpc("tools/call", {
             name: "create_dataset",
             arguments: {
@@ -2063,6 +2251,32 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
         });
         expect(foreign.result?.isError).toBe(true);
         expect(foreign.result?.structuredContent?.error?.status).toBe(404);
+
+        const beforeUnauthorizedDelete = await pool.query(
+            "select id from datasets where id=$1 and team_id=$2",
+            [fixture.imageDatasetId, teamId],
+        );
+        expect(beforeUnauthorizedDelete.rowCount).toBe(1);
+        const unauthorizedDelete = await rpc("tools/call", {
+            name: "delete_dataset",
+            arguments: {
+                projectId: fixtureProjectId,
+                datasetId: fixture.imageDatasetId,
+                confirm: true,
+            },
+        });
+        expect(unauthorizedDelete.result?.isError).toBe(true);
+        expect(
+            unauthorizedDelete.result?.structuredContent?.error?.status,
+        ).toBe(404);
+        expect(
+            (
+                await pool.query(
+                    "select id from datasets where id=$1 and team_id=$2",
+                    [fixture.imageDatasetId, teamId],
+                )
+            ).rowCount,
+        ).toBe(1);
     });
 
     async function tool(name: string, args: Record<string, unknown>) {
