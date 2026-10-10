@@ -659,6 +659,65 @@ export async function listWorkflowsPayload(
     }));
 }
 
+export async function listWorkflowSummariesPagePayload(
+    db: IDb,
+    teamId: string,
+    projectId: string,
+    input: {
+        limit: number;
+        kind?: WorkflowKind;
+        cursor?: { createdAt: string; id: string };
+    },
+) {
+    const result = await db.query<
+        IWorkflowRow & { nodeCount: number; cursor_created_at: string }
+    >(
+        `select w.id,w.team_id as "teamId",w.project_id as "projectId",
+                w.name,w.description,w.kind,w.created_at as "createdAt",
+                count(n.id)::int as "nodeCount",
+                to_char(w.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_created_at
+         from prompt_workflows w
+         left join workflow_nodes n on n.workflow_id=w.id
+         where w.team_id=$1 and w.project_id=$2 and w.archived_at is null
+           and ($3::text is null or w.kind=$3)
+           and ($4::timestamptz is null or (w.created_at,w.id)<($4::timestamptz,$5::uuid))
+         group by w.id
+         order by w.created_at desc,w.id desc
+         limit $6`,
+        [
+            teamId,
+            projectId,
+            input.kind ?? null,
+            input.cursor?.createdAt ?? null,
+            input.cursor?.id ?? null,
+            input.limit + 1,
+        ],
+    );
+    const complete = result.rows.length <= input.limit;
+    const rows = result.rows.slice(0, input.limit);
+    return {
+        workflows: rows.map((row) => ({
+            id: row.id,
+            teamId: row.teamId,
+            projectId: row.projectId,
+            name: row.name,
+            description: row.description,
+            kind: row.kind ?? "prompt",
+            createdAt: iso(row.createdAt),
+            nodeCount: row.nodeCount,
+        })),
+        complete,
+        ...(complete || rows.length === 0
+            ? {}
+            : {
+                  nextCursor: {
+                      createdAt: rows.at(-1)!.cursor_created_at,
+                      id: rows.at(-1)!.id,
+                  },
+              }),
+    };
+}
+
 export async function workflowDetailPayload(
     db: IDb,
     teamId: string,
@@ -1007,9 +1066,12 @@ export async function deleteWorkflowPayload(
 
 export {
     createWorkflowRunPayload,
+    listWorkflowRunCellsPagePayload,
+    listWorkflowRunSummariesPagePayload,
     listWorkflowRunsPayload,
     saveWorkflowRunCellAnnotationPayload,
     saveWorkflowRunNotePayload,
     workflowRunDetailPayload,
     workflowRunProgressPayload,
+    workflowRunSummaryPayload,
 } from "./workflowRuns.js";

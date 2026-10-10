@@ -17,6 +17,7 @@ import { resolveApiFeatureFlags } from "../featureFlags.js";
 import { ApiForbiddenError } from "../errors.js";
 import {
     hashMcpToken,
+    mcpProfileFromOAuthScopes,
     resolveClerkOAuthSubject,
     resolveMcpPrincipal,
 } from "./auth.js";
@@ -54,6 +55,18 @@ describe("MCP auth", () => {
         expect(hashMcpToken("mcp_test", "pepper")).not.toBe(
             hashMcpToken("mcp_test", "other"),
         );
+    });
+
+    it("maps OAuth profile scopes and defaults existing clients to eval", () => {
+        expect(mcpProfileFromOAuthScopes([])).toBe("eval");
+        expect(mcpProfileFromOAuthScopes(["flash-evals:read"])).toBe("read");
+        expect(mcpProfileFromOAuthScopes(["flash-evals:admin"])).toBe("admin");
+        expect(
+            mcpProfileFromOAuthScopes([
+                "flash-evals:read",
+                "flash-evals:admin",
+            ]),
+        ).toBe("admin");
     });
 
     it("rejects raw bearer tokens unless fallback mode is enabled", async () => {
@@ -100,6 +113,7 @@ describe("MCP auth", () => {
         expect(principal).toEqual({
             tokenId: "token-1",
             authMode: "raw-token",
+            profile: "admin",
             userId: "user-1",
             teamId: "team-1",
             email: "teammate@example.com",
@@ -176,6 +190,7 @@ describe("MCP auth", () => {
                 tokenType: "oauth_token",
                 clientId: "oauth-client",
                 userId: "clerk-user-1",
+                scopes: [],
             }),
         });
 
@@ -228,6 +243,7 @@ describe("MCP auth", () => {
                 tokenType: "oauth_token",
                 clientId: "other-client",
                 userId: "clerk-user-1",
+                scopes: [],
             }),
         });
 
@@ -272,6 +288,7 @@ describe("MCP auth", () => {
                     tokenType: "oauth_token",
                     clientId,
                     userId: "clerk-user-1",
+                    scopes: [],
                 }),
             });
             await expect(
@@ -319,6 +336,7 @@ describe("MCP auth", () => {
                 tokenType: "oauth_token",
                 clientId: "oauth-client",
                 userId: "clerk-user-1",
+                scopes: [],
             }),
         });
         clerkMock.getUser.mockResolvedValue({
@@ -360,6 +378,7 @@ describe("MCP auth", () => {
             ),
         ).resolves.toEqual({
             authMode: "oauth",
+            profile: "eval",
             userId: "user-1",
             teamId: "team-1",
             email: "teammate@example.com",

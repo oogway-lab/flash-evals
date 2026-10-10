@@ -547,7 +547,10 @@ describe("dataset lifecycle mutations", () => {
                 datasetId: "dataset-1",
                 createdBy: "user-1",
             }),
-        ).resolves.toBeUndefined();
+        ).resolves.toEqual({
+            sourceDatasetId: "dataset-1",
+            createdDatasetId: "copy-1",
+        });
         expect(vi.mocked(db.query).mock.calls[1]?.[1]).toEqual([
             "team-1",
             "project-1",

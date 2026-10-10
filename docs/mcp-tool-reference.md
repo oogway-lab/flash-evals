@@ -2,7 +2,7 @@
 
 [MCP guide](mcp-eval-server.md) · [Documentation home](../README.md#documentation)
 
-The server exposes 78 tools. This page is a navigation index; call `tools/list`
+The server exposes 84 tools. This page is a navigation index; call `tools/list`
 for the exact argument schemas and annotations on your running revision. The
 [MCP guide](mcp-eval-server.md#a-first-evaluation-through-tools) shows a complete
 small evaluation, including IDs, validation, and result handling.
@@ -21,12 +21,14 @@ Discover the authenticated account and choose a workspace/project before calling
 - `update_project`
 - `get_dashboard`
 
-### Datasets (21)
+### Datasets (23)
 
 Use `golden` datasets for reference answers and `evaluation` datasets for inputs without required references. For answer imports, preview mappings and diagnostics before committing. Image and audio upload tools accept base64-encoded files.
 
 - `list_datasets`
 - `get_dataset`
+- `get_dataset_summary`
+- `list_dataset_items`
 - `create_dataset`
 - `import_dataset_images`
 - `import_dataset_text_items`
@@ -49,7 +51,7 @@ Use `golden` datasets for reference answers and `evaluation` datasets for inputs
 
 ### Prompts (12)
 
-Test a draft before saving it. Validation checks the output schema and sample behavior; creating a runnable prompt validates again and can make provider calls. Judge prompts grade outputs against a rubric.
+`create_runnable_prompt` validates its samples and saves on success in one call. Use `test_prompt_draft` or `validate_runnable_prompt` separately for exploratory checks; creating a version validates again. Judge prompts grade outputs against a rubric.
 
 - `list_prompts`
 - `get_prompt`
@@ -64,12 +66,14 @@ Test a draft before saving it. Validation checks the output schema and sample be
 - `duplicate_prompt_version`
 - `delete_prompt`
 
-### Runs and review (8)
+### Runs and review (10)
 
 Keep the run ID returned by creation, poll progress, and inspect individual cells before relying on aggregate scores. Notes describe a whole run; annotations attach a review verdict or comment to a cell.
 
 - `list_runs`
 - `get_run`
+- `get_run_summary`
+- `list_run_cells`
 - `get_run_progress`
 - `create_eval_run`
 - `save_run_note`
@@ -97,7 +101,7 @@ Provider-key listing reports configuration status without returning secret value
 - `set_workflow_llm_default`
 - `clear_workflow_llm_default`
 
-### Workflows (13)
+### Workflows (15)
 
 Read the saved graph before editing it. `update_workflow` replaces the graph; `select_workflow_llm_model` selects the route for one model-backed node. Workflow-run creation requires a stable idempotency key so the same request can be retried without creating another run.
 
@@ -111,6 +115,8 @@ Read the saved graph before editing it. `update_workflow` replaces the graph; `s
 - `create_workflow_run`
 - `list_workflow_runs`
 - `get_workflow_run`
+- `get_workflow_run_summary`
+- `list_workflow_run_cells`
 - `save_workflow_run_note`
 - `annotate_workflow_run_cell`
 - `get_workflow_run_progress`

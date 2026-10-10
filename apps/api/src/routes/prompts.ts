@@ -530,7 +530,11 @@ export async function deletePromptPayload(
 export async function duplicatePromptVersionPayload(
     db: IDb,
     input: IDuplicatePromptVersionRequest,
-): Promise<void> {
+): Promise<{
+    sourcePromptVersionId: string;
+    promptId: string;
+    promptVersionId: string;
+}> {
     await assertProjectInTeam(db, input.teamId, input.projectId);
     const sourceVersionResult = await db.query<ISourcePromptVersionRow>(
         `select
@@ -723,6 +727,12 @@ export async function duplicatePromptVersionPayload(
         on conflict do nothing`,
         [versionResult.rows[0]!.id],
     );
+
+    return {
+        sourcePromptVersionId: input.sourcePromptVersionId,
+        promptId: promptId,
+        promptVersionId: versionResult.rows[0]!.id,
+    };
 }
 
 export async function recordPromptValidationAttemptPayload(

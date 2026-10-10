@@ -10,7 +10,10 @@ import {
     createWorkflowPayload,
     createWorkflowRunPayload,
     deleteWorkflowPayload,
+    listWorkflowRunCellsPagePayload,
+    listWorkflowRunSummariesPagePayload,
     listWorkflowRunsPayload,
+    listWorkflowSummariesPagePayload,
     listWorkflowsPayload,
     saveWorkflowRunCellAnnotationPayload,
     saveWorkflowRunNotePayload,
@@ -19,16 +22,23 @@ import {
     workflowDetailPayload,
     workflowRunDetailPayload,
     workflowRunProgressPayload,
+    workflowRunSummaryPayload,
 } from "../../routes/workflows.js";
 import { assertWorkflowLlmWritesEnabled } from "../../routes/llmRouting.js";
 import { ok } from "../responses.js";
 import {
     ProjectId,
+    ReviewVerdict,
     SttRunConfig,
     WorkflowEdgeInput,
     WorkflowNodeInput,
 } from "../schemas.js";
 import { resolveProjectId, type IMcpContext } from "./context.js";
+import {
+    boundedMcpPageSize,
+    decodeMcpPageCursor,
+    encodeMcpPageCursor,
+} from "../pagination.js";
 
 const WorkflowIdInput = {
     projectId: ProjectId,
@@ -71,6 +81,65 @@ export function registerWorkflowTools(
                     kind,
                 ),
             ),
+    );
+
+    server.registerTool(
+        "list_workflow_summaries_page",
+        {
+            title: "List workflow summaries page",
+            description:
+                "Read a bounded, stable page of workflow summaries; use this for large collections. The legacy list_workflows tool returns all matching summaries. The cursor is bound to project and kind.",
+            inputSchema: z.object({
+                projectId: ProjectId,
+                kind: WorkflowKindInput.optional(),
+                limit: z.number().int().min(1).max(100).optional(),
+                cursor: z.string().optional(),
+            }),
+            outputSchema: {
+                data: z.object({
+                    workflows: z.array(
+                        z.object({
+                            id: z.string().uuid(),
+                            teamId: z.string().uuid(),
+                            projectId: z.string().uuid(),
+                            name: z.string(),
+                            description: z.string(),
+                            kind: WorkflowKindInput,
+                            createdAt: z.string(),
+                            nodeCount: z.number().int(),
+                        }),
+                    ),
+                    complete: z.boolean(),
+                    nextCursor: z.string().optional(),
+                }),
+            },
+        },
+        async (input) => {
+            const projectId = await resolveProjectId(context, input.projectId);
+            const scope = JSON.stringify([projectId, input.kind ?? null]);
+            const page = await listWorkflowSummariesPagePayload(
+                runtime.db,
+                principal.teamId,
+                projectId,
+                {
+                    limit: boundedMcpPageSize(input.limit),
+                    kind: input.kind,
+                    cursor: decodeMcpPageCursor(input.cursor, scope),
+                },
+            );
+            return ok("Loaded workflow summary page.", {
+                workflows: page.workflows,
+                complete: page.complete,
+                ...(page.nextCursor
+                    ? {
+                          nextCursor: encodeMcpPageCursor(
+                              scope,
+                              page.nextCursor,
+                          ),
+                      }
+                    : {}),
+            });
+        },
     );
 
     server.registerTool(
@@ -252,7 +321,7 @@ export function registerWorkflowTools(
         {
             title: "Create workflow run",
             description:
-                "Create and enqueue a workflow run for a dataset or one item.",
+                "Create and enqueue a workflow run for a dataset or one item. Pass a stable idempotencyKey chosen before the first request, and reuse it for retries of the same intent.",
             inputSchema: z
                 .object({
                     ...WorkflowIdInput,
@@ -262,7 +331,17 @@ export function registerWorkflowTools(
                     sttConfig: SttRunConfig.optional(),
                     idempotencyKey: z.string().trim().min(1).max(200),
                 })
-                .strict(),
+                .strict()
+                .superRefine((input, ctx) => {
+                    if (input.runTarget === "single_item" && !input.itemId) {
+                        ctx.addIssue({
+                            code: "custom",
+                            path: ["itemId"],
+                            message:
+                                "itemId is required when runTarget is single_item.",
+                        });
+                    }
+                }),
         },
         async (input) => {
             const result = await createWorkflowRunPayload(
@@ -321,11 +400,71 @@ export function registerWorkflowTools(
     });
 
     server.registerTool(
+        "list_workflow_run_summaries_page",
+        {
+            title: "List workflow run summaries page",
+            description:
+                "Read a bounded, stable page of workflow run summaries; use this for large collections. The legacy list_workflow_runs tool returns all matching summaries. The cursor is bound to the workflow.",
+            inputSchema: z.object({
+                ...WorkflowIdInput,
+                limit: z.number().int().min(1).max(100).optional(),
+                cursor: z.string().optional(),
+            }),
+            outputSchema: {
+                data: z.object({
+                    workflowRuns: z.array(
+                        z.object({
+                            id: z.string().uuid(),
+                            workflowId: z.string().uuid(),
+                            datasetId: z.string().uuid(),
+                            datasetName: z.string(),
+                            status: z.string(),
+                            runTarget: z.string(),
+                            total: z.number().int(),
+                            done: z.number().int(),
+                            failed: z.number().int(),
+                            createdAt: z.string(),
+                        }),
+                    ),
+                    complete: z.boolean(),
+                    nextCursor: z.string().optional(),
+                }),
+            },
+        },
+        async (input) => {
+            const projectId = await resolveProjectId(context, input.projectId);
+            const scope = JSON.stringify([projectId, input.workflowId]);
+            const page = await listWorkflowRunSummariesPagePayload(
+                runtime.db,
+                principal.teamId,
+                projectId,
+                input.workflowId,
+                {
+                    limit: boundedMcpPageSize(input.limit),
+                    cursor: decodeMcpPageCursor(input.cursor, scope),
+                },
+            );
+            return ok("Loaded workflow run summary page.", {
+                workflowRuns: page.workflowRuns,
+                complete: page.complete,
+                ...(page.nextCursor
+                    ? {
+                          nextCursor: encodeMcpPageCursor(
+                              scope,
+                              page.nextCursor,
+                          ),
+                      }
+                    : {}),
+            });
+        },
+    );
+
+    server.registerTool(
         "get_workflow_run",
         {
             title: "Get workflow run",
             description:
-                "Return workflow run detail, cells, review state, scores, and aggregates.",
+                "Return the complete legacy workflow run with cells, review state, scores, and aggregates. For large runs, use get_workflow_run_summary and bounded list_workflow_run_cells pages.",
             inputSchema: workflowRunInput,
         },
         async (input) =>
@@ -339,6 +478,154 @@ export function registerWorkflowTools(
                     input.workflowRunId,
                 ),
             ),
+    );
+
+    server.registerTool(
+        "get_workflow_run_summary",
+        {
+            title: "Get workflow run summary",
+            description:
+                "Return compact workflow run status and aggregate progress. Use list_workflow_run_cells for bounded cell pages; get_workflow_run retains the full legacy response.",
+            inputSchema: workflowRunInput,
+            outputSchema: {
+                data: z.object({
+                    run: z.object({
+                        id: z.string().uuid(),
+                        datasetId: z.string().uuid(),
+                        targetItemId: z.string().uuid().nullable(),
+                        status: z.string(),
+                        runTarget: z.string(),
+                        createdAt: z.string(),
+                    }),
+                    progress: z.object({
+                        status: z.string(),
+                        total: z.number(),
+                        done: z.number(),
+                        failed: z.number(),
+                        pending: z.number(),
+                    }),
+                }),
+            },
+        },
+        async (input) =>
+            ok(
+                "Loaded workflow run summary.",
+                await workflowRunSummaryPayload(
+                    runtime.db,
+                    principal.teamId,
+                    await resolveProjectId(context, input.projectId),
+                    input.workflowId,
+                    input.workflowRunId,
+                ),
+            ),
+    );
+
+    server.registerTool(
+        "list_workflow_run_cells",
+        {
+            title: "List workflow run cells",
+            description:
+                "Read a stable, bounded page of workflow cells, optionally filtered by item, node, status, or review verdict and ordered oldest or newest first. Input text, outputs, review annotations, and scores are included only when requested.",
+            inputSchema: z.object({
+                ...WorkflowIdInput,
+                workflowRunId: z.string().uuid(),
+                limit: z.number().int().min(1).max(100).optional(),
+                cursor: z.string().optional(),
+                itemId: z.string().uuid().optional(),
+                nodeKey: z.string().min(1).optional(),
+                status: z
+                    .enum([
+                        "pending",
+                        "running",
+                        "succeeded",
+                        "failed",
+                        "cached",
+                    ])
+                    .optional(),
+                reviewVerdict: ReviewVerdict.optional(),
+                order: z.enum(["oldest_first", "newest_first"]).optional(),
+                includeInputText: z.boolean().optional(),
+                includeOutput: z.boolean().optional(),
+                includeReview: z.boolean().optional(),
+                includeScores: z.boolean().optional(),
+            }),
+            outputSchema: {
+                data: z.object({
+                    cells: z.array(
+                        z.object({
+                            id: z.string().uuid(),
+                            itemId: z.string().uuid(),
+                            nodeKey: z.string(),
+                            status: z.string(),
+                            latencyMs: z.number().nullable(),
+                            costUsd: z.number().nullable(),
+                            error: z.string().nullable(),
+                            inputText: z.string().nullable().optional(),
+                            output: z.unknown().optional(),
+                            review: z
+                                .object({
+                                    verdict: ReviewVerdict,
+                                    comment: z.string(),
+                                })
+                                .nullable()
+                                .optional(),
+                            scores: z
+                                .array(
+                                    z.object({
+                                        scorerType: z.string(),
+                                        score: z.number().nullable(),
+                                    }),
+                                )
+                                .optional(),
+                        }),
+                    ),
+                    complete: z.boolean(),
+                    nextCursor: z.string().optional(),
+                }),
+            },
+        },
+        async (input) => {
+            const projectId = await resolveProjectId(context, input.projectId);
+            const limit = boundedMcpPageSize(input.limit);
+            const scope = JSON.stringify([
+                input.workflowId,
+                input.workflowRunId,
+                input.itemId ?? null,
+                input.nodeKey ?? null,
+                input.status ?? null,
+                input.reviewVerdict ?? null,
+                input.order ?? "oldest_first",
+            ]);
+            const page = await listWorkflowRunCellsPagePayload(runtime.db, {
+                teamId: principal.teamId,
+                projectId,
+                workflowId: input.workflowId,
+                runId: input.workflowRunId,
+                limit,
+                cursor: decodeMcpPageCursor(input.cursor, scope),
+                itemId: input.itemId,
+                nodeKey: input.nodeKey,
+                status: input.status,
+                reviewVerdict: input.reviewVerdict,
+                order: input.order,
+                includeInputText: input.includeInputText,
+                includeOutput: input.includeOutput,
+                includeReview: input.includeReview,
+                includeScores: input.includeScores,
+            });
+            return ok("Loaded workflow run cell page.", {
+                cells: page.cells,
+                complete: page.complete,
+                ...(page.nextCursor
+                    ? {
+                          nextCursor: encodeMcpPageCursor(
+                              scope,
+                              page.nextCursor,
+                          ),
+                      }
+                    : {}),
+            });
+        },
     );
 
     server.registerTool(

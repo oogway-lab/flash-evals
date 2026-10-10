@@ -59,6 +59,16 @@ import {
     ALLOWED_IMAGE_TYPES as CONTRACT_ALLOWED_IMAGE_TYPES,
 } from "@mosaic/api-contract";
 import { previewAnswerFiles } from "./datasets/answerMapping.js";
+import {
+    MAX_AUDIO_BYTES,
+    MAX_AUDIO_IMPORT_BYTES,
+    MAX_IMAGE_BYTES,
+    MAX_IMAGE_IMPORT_BYTES,
+    MAX_IMPORT_FILE_COUNT,
+    MAX_IMPORT_ROWS,
+    MAX_JSONL_LINE_BYTES,
+    MAX_TEXT_IMPORT_BYTES,
+} from "./datasets/limits.js";
 import type { IApiConfig } from "../config.js";
 import type { IDb } from "../db.js";
 import {
@@ -224,28 +234,75 @@ export async function listDatasetsPayload(
         ],
     );
 
-    return result.rows.map((row) => {
-        const itemCount = countValue(row.item_count);
-        const labeledItemCount = countValue(row.labeled_item_count);
-        return {
-            id: row.id,
-            name: row.name,
-            purpose: row.purpose,
-            modality: row.modality,
-            createdAt:
-                row.created_at instanceof Date
-                    ? row.created_at.toISOString()
-                    : new Date(row.created_at).toISOString(),
-            itemCount,
-            labeledItemCount,
-            isRunnable: isDatasetRunnable(
-                row.purpose,
-                itemCount,
-                labeledItemCount,
-            ),
-            archived: row.archived_at != null,
-        };
-    });
+    return result.rows.map(datasetListPayloadRow);
+}
+
+export async function listDatasetSummariesPagePayload(
+    db: IDb,
+    teamId: string,
+    projectId: string,
+    input: {
+        limit: number;
+        includeArchived?: boolean;
+        cursor?: { createdAt: string; id: string };
+    },
+) {
+    const result = await db.query<IDatasetRow & { cursor_created_at: string }>(
+        `select d.id,d.name,d.purpose,d.modality,d.created_at,d.archived_at,
+                count(di.id)::int as item_count,
+                count(l.id)::int as labeled_item_count,
+                to_char(d.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_created_at
+         from datasets d
+         left join dataset_items di on di.dataset_id=d.id
+         left join labels l on l.dataset_item_id=di.id
+         where d.team_id=$1 and d.project_id=$2
+           and ($3::boolean or d.archived_at is null)
+           and ($4::timestamptz is null or (d.created_at,d.id)<($4::timestamptz,$5::uuid))
+         group by d.id,d.name,d.purpose,d.modality,d.created_at,d.archived_at
+         order by d.created_at desc,d.id desc
+         limit $6`,
+        [
+            teamId,
+            projectId,
+            Boolean(input.includeArchived),
+            input.cursor?.createdAt ?? null,
+            input.cursor?.id ?? null,
+            input.limit + 1,
+        ],
+    );
+    const complete = result.rows.length <= input.limit;
+    const rows = result.rows.slice(0, input.limit);
+    return {
+        datasets: rows.map(datasetListPayloadRow),
+        complete,
+        ...(complete || rows.length === 0
+            ? {}
+            : {
+                  nextCursor: {
+                      createdAt: rows.at(-1)!.cursor_created_at,
+                      id: rows.at(-1)!.id,
+                  },
+              }),
+    };
+}
+
+function datasetListPayloadRow(row: IDatasetRow): IDatasetListRow {
+    const itemCount = countValue(row.item_count);
+    const labeledItemCount = countValue(row.labeled_item_count);
+    return {
+        id: row.id,
+        name: row.name,
+        purpose: row.purpose,
+        modality: row.modality,
+        createdAt:
+            row.created_at instanceof Date
+                ? row.created_at.toISOString()
+                : new Date(row.created_at).toISOString(),
+        itemCount,
+        labeledItemCount,
+        isRunnable: isDatasetRunnable(row.purpose, itemCount, labeledItemCount),
+        archived: row.archived_at != null,
+    };
 }
 
 export async function datasetDetailPayload(
@@ -352,6 +409,152 @@ export async function datasetDetailPayload(
             itemCount,
             labeledItemCount,
         ),
+    };
+}
+
+export async function datasetSummaryPayload(
+    db: IDb,
+    teamId: string,
+    projectId: string,
+    datasetId: string,
+) {
+    const result = await db.query<
+        IDatasetDetailRow & {
+            item_count: number | string;
+            labeled_item_count: number | string;
+            has_legacy_schema: boolean;
+        }
+    >(
+        `select d.id,d.team_id,d.name,d.purpose,d.modality,d.pipeline_id,
+                d.description,d.archived_at,
+                count(i.id)::int as item_count,
+                count(l.dataset_item_id)::int as labeled_item_count,
+                exists(select 1 from dataset_schemas s where s.dataset_id=d.id) as has_legacy_schema
+         from datasets d
+         left join dataset_items i on i.dataset_id=d.id
+         left join labels l on l.dataset_item_id=i.id
+         where d.id=$1 and d.team_id=$2 and d.project_id=$3
+         group by d.id
+         limit 1`,
+        [datasetId, teamId, projectId],
+    );
+    const dataset = result.rows[0];
+    if (!dataset) throw new ApiNotFoundError();
+    const itemCount = countValue(dataset.item_count);
+    const labeledItemCount = countValue(dataset.labeled_item_count);
+    const labelMode = resolveLabelMode({
+        purpose: dataset.purpose,
+        pipelineId: dataset.pipeline_id,
+        hasLegacySchema: dataset.has_legacy_schema,
+    });
+    return {
+        dataset: {
+            id: dataset.id,
+            name: dataset.name,
+            purpose: dataset.purpose,
+            modality: dataset.modality,
+            pipelineId: dataset.pipeline_id,
+            description: dataset.description,
+            archivedAt:
+                dataset.archived_at instanceof Date
+                    ? dataset.archived_at.toISOString()
+                    : dataset.archived_at,
+        },
+        itemCount,
+        labeledItemCount,
+        labelMode,
+        freeformLabel: usesFreeformLabel(labelMode),
+        isRunnable: isDatasetRunnable(
+            dataset.purpose,
+            itemCount,
+            labeledItemCount,
+        ),
+    };
+}
+
+export async function listDatasetItemsPagePayload(
+    db: IDb,
+    input: {
+        teamId: string;
+        projectId: string;
+        datasetId: string;
+        limit: number;
+        cursor?: { createdAt: string; id: string };
+        type?: "audio" | "image" | "text" | "mixed";
+        labeled?: boolean;
+        includeInputText?: boolean;
+        includeStorageKey?: boolean;
+        includeLabel?: boolean;
+    },
+) {
+    const dataset = await db.query<{ id: string }>(
+        `select id from datasets where id=$1 and team_id=$2 and project_id=$3 limit 1`,
+        [input.datasetId, input.teamId, input.projectId],
+    );
+    if (!dataset.rows[0]) throw new ApiNotFoundError();
+
+    const inputTextSelect = input.includeInputText
+        ? "i.input_text"
+        : "null::text";
+    const storageKeySelect = input.includeStorageKey
+        ? "i.storage_key"
+        : "null::text";
+    const labelSelect = input.includeLabel ? "l.label_json" : "null::jsonb";
+    const result = await db.query<{
+        id: string;
+        type: "audio" | "image" | "text" | "mixed";
+        input_text: string | null;
+        source_name: string | null;
+        storage_key: string | null;
+        mime_type: string | null;
+        label_json: LabelJson | null;
+        cursor_created_at: string;
+    }>(
+        `select i.id,i.type,${inputTextSelect} as input_text,i.source_name,
+                ${storageKeySelect} as storage_key,i.mime_type,
+                ${labelSelect} as label_json,
+                to_char(i.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_created_at
+         from dataset_items i
+         inner join datasets d on d.id=i.dataset_id
+         left join labels l on l.dataset_item_id=i.id
+         where d.id=$1 and d.team_id=$2 and d.project_id=$3
+           and ($4::item_type is null or i.type=$4::item_type)
+           and ($5::boolean is null or (l.dataset_item_id is not null)=$5)
+           and ($6::timestamptz is null or (i.created_at,i.id)>($6::timestamptz,$7::uuid))
+         order by i.created_at asc,i.id asc
+         limit $8`,
+        [
+            input.datasetId,
+            input.teamId,
+            input.projectId,
+            input.type ?? null,
+            input.labeled ?? null,
+            input.cursor?.createdAt ?? null,
+            input.cursor?.id ?? null,
+            input.limit + 1,
+        ],
+    );
+    const complete = result.rows.length <= input.limit;
+    const rows = result.rows.slice(0, input.limit);
+    return {
+        items: rows.map((row) => ({
+            id: row.id,
+            type: row.type,
+            sourceName: row.source_name,
+            mimeType: row.mime_type,
+            ...(input.includeInputText ? { inputText: row.input_text } : {}),
+            ...(input.includeStorageKey ? { storageKey: row.storage_key } : {}),
+            ...(input.includeLabel ? { label: row.label_json } : {}),
+        })),
+        complete,
+        ...(complete || rows.length === 0
+            ? {}
+            : {
+                  nextCursor: {
+                      createdAt: rows.at(-1)!.cursor_created_at,
+                      id: rows.at(-1)!.id,
+                  },
+              }),
     };
 }
 
@@ -1503,7 +1706,7 @@ export async function setDatasetArchivedPayload(
 export async function duplicateDatasetPayload(
     db: IDb,
     input: IDuplicateDatasetRequest,
-): Promise<void> {
+): Promise<{ sourceDatasetId: string; createdDatasetId: string }> {
     const source = await assertEditableDataset(
         db,
         input.teamId,
@@ -1589,6 +1792,11 @@ export async function duplicateDatasetPayload(
             );
         }
     }
+
+    return {
+        sourceDatasetId: input.datasetId,
+        createdDatasetId: copyId,
+    };
 }
 
 export async function deleteDatasetPayload(
@@ -2624,14 +2832,6 @@ function uploadFileExtension(fileName: string): string {
     return /^\.[a-z0-9]{1,16}$/.test(ext) ? ext : "";
 }
 
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
-const MAX_IMPORT_FILE_COUNT = 100;
-const MAX_TEXT_IMPORT_BYTES = 2 * 1024 * 1024;
-const MAX_IMPORT_ROWS = 1_000;
-const MAX_JSONL_LINE_BYTES = 64 * 1024;
-const MAX_IMAGE_IMPORT_BYTES = 24 * 1024 * 1024;
-const MAX_AUDIO_IMPORT_BYTES = 250 * 1024 * 1024;
 const RESERVED_LABEL_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 const UPLOAD_MODALITY_CAPS: Record<

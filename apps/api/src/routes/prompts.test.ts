@@ -629,7 +629,11 @@ describe("duplicatePromptVersionPayload", () => {
                 sourcePromptVersionId: "source-pv",
                 createdBy: "user-1",
             }),
-        ).resolves.toBeUndefined();
+        ).resolves.toEqual({
+            sourcePromptVersionId: "source-pv",
+            promptId: "prompt-copy",
+            promptVersionId: "version-copy",
+        });
         expect(db.query).toHaveBeenNthCalledWith(
             6,
             expect.stringContaining("insert into prompts"),

@@ -19,7 +19,7 @@ const FieldMatcherSpec = z.union([
     z.object({ matcher: z.literal("exact") }),
     z.object({
         matcher: z.literal("numeric_tolerance"),
-        tolerance: z.number(),
+        tolerance: z.number().nonnegative(),
         relative: z.boolean().optional(),
     }),
     z.object({ matcher: z.literal("set_overlap") }),
@@ -46,6 +46,12 @@ export const ReasoningEffort = z.enum([
     "xhigh",
 ]);
 export const ReasoningConfig = z.object({ effort: ReasoningEffort });
+export const ReviewVerdict = z.enum([
+    "unreviewed",
+    "approved",
+    "needs_review",
+    "issue",
+]);
 export const ProviderTransport = z.enum([
     "openai",
     "gateway",
@@ -57,12 +63,92 @@ export const JudgeDeclaredInput = z.enum([
     "candidate_output",
     "reference",
 ]);
-export const PromptSampleInput = z.object({
-    name: z.string().min(1),
-    inputText: z.string().optional(),
-    imageStorageKey: z.string().optional(),
-    imageMimeType: z.string().optional(),
+export const PromptSampleInput = z
+    .object({
+        name: z.string().min(1),
+        inputText: z.string().optional(),
+        imageStorageKey: z.string().min(1).optional(),
+        imageMimeType: z.string().optional(),
+    })
+    .refine(
+        (sample) =>
+            sample.inputText !== undefined ||
+            sample.imageStorageKey !== undefined,
+        { message: "Provide inputText or imageStorageKey for each sample." },
+    );
+
+export const SchemaCompatibilityIssue = z.object({
+    path: z.string(),
+    code: z.string(),
+    message: z.string(),
 });
+
+export const PromptValidationEvidence = z.object({
+    staticChecks: z.array(SchemaCompatibilityIssue),
+    schemaValidation: z.object({
+        localValid: z.boolean(),
+        openaiCompatible: z.boolean(),
+        errors: z.array(SchemaCompatibilityIssue),
+    }),
+    sampleResults: z.array(
+        z.object({
+            sampleName: z.string(),
+            status: z.enum(["passed", "failed", "provider_error", "cancelled"]),
+            rawOutput: z.string().optional(),
+            parsedOutput: z.unknown().optional(),
+            errors: z.array(SchemaCompatibilityIssue),
+        }),
+    ),
+});
+
+export const RunnablePromptCreateOutcome = z.discriminatedUnion("outcome", [
+    z.object({
+        outcome: z.literal("saved"),
+        promptId: z.string().uuid(),
+        promptVersionId: z.string().uuid(),
+        promptVersion: z.number().int(),
+        schemaVersionId: z.string().uuid(),
+    }),
+    z.object({
+        outcome: z.literal("validation_failed"),
+        passed: z.literal(false),
+        evidence: PromptValidationEvidence,
+        failureMessage: z.string().optional(),
+    }),
+    z.object({
+        outcome: z.literal("provider_error"),
+        passed: z.literal(false),
+        evidence: PromptValidationEvidence,
+        failureMessage: z.string().optional(),
+    }),
+]);
+
+export const McpRecoverableError = z.object({
+    code: z.string(),
+    message: z.string(),
+    status: z.number().int(),
+    retryable: z.boolean(),
+    retryAfterSeconds: z.number().nonnegative().optional(),
+    field: z.string().optional(),
+    remediation: z.string().optional(),
+    requestId: z.string().uuid(),
+});
+
+export function mcpToolOutput(data: z.ZodType) {
+    return z
+        .object({
+            data: data.optional(),
+            error: McpRecoverableError.optional(),
+        })
+        .superRefine(({ data: result, error }, ctx) => {
+            if ((result === undefined) === (error === undefined)) {
+                ctx.addIssue({
+                    code: "custom",
+                    message: "Provide either data or error, but not both.",
+                });
+            }
+        });
+}
 
 const WorkflowNodeEvalConfig = z.discriminatedUnion("type", [
     z.object({ type: z.literal("none") }),

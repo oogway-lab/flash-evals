@@ -837,8 +837,10 @@ export async function handleRequest(
             url.pathname === "/api/datasets/duplicate"
         ) {
             assertInternalToken(request, config);
-            await duplicateDatasetPayload(db, await request.json());
-            return new Response(null, { status: 204, headers });
+            return Response.json(
+                await duplicateDatasetPayload(db, await request.json()),
+                { headers },
+            );
         }
 
         if (
@@ -988,8 +990,10 @@ export async function handleRequest(
             url.pathname === "/api/prompts/duplicate-version"
         ) {
             assertInternalToken(request, config);
-            await duplicatePromptVersionPayload(db, await request.json());
-            return new Response(null, { status: 204, headers });
+            return Response.json(
+                await duplicatePromptVersionPayload(db, await request.json()),
+                { headers },
+            );
         }
 
         if (

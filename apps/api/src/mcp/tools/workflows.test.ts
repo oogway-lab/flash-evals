@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
     createWorkflowPayload: vi.fn(),
     createWorkflowRunPayload: vi.fn(),
     deleteWorkflowPayload: vi.fn(),
+    listWorkflowRunCellsPagePayload: vi.fn(),
     publishWorkflowRunEnqueue: vi.fn(),
     listWorkflowRunsPayload: vi.fn(),
     listWorkflowsPayload: vi.fn(),
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
     workflowDetailPayload: vi.fn(),
     workflowRunDetailPayload: vi.fn(),
     workflowRunProgressPayload: vi.fn(),
+    workflowRunSummaryPayload: vi.fn(),
     assertWorkflowLlmWritesEnabled: vi.fn(),
     listWorkflowLlmRoutesPayload: vi.fn(),
 }));
@@ -28,6 +30,7 @@ vi.mock("../../routes/llmRouting.js", () => ({
 }));
 
 import { registerWorkflowTools } from "./workflows.js";
+import { decodeMcpPageCursor, encodeMcpPageCursor } from "../pagination.js";
 import { WorkflowNodeInput } from "../schemas.js";
 import {
     createToolHarness,
@@ -110,6 +113,7 @@ describe("MCP workflow tools", () => {
     it("registers the full workflow CRUD and run surface", () => {
         expect([...registerTools().tools.keys()]).toEqual([
             "list_workflows",
+            "list_workflow_summaries_page",
             "get_workflow",
             "create_workflow",
             "create_multiworkflow",
@@ -118,7 +122,10 @@ describe("MCP workflow tools", () => {
             "select_workflow_llm_model",
             "create_workflow_run",
             "list_workflow_runs",
+            "list_workflow_run_summaries_page",
             "get_workflow_run",
+            "get_workflow_run_summary",
+            "list_workflow_run_cells",
             "save_workflow_run_note",
             "annotate_workflow_run_cell",
             "get_workflow_run_progress",
@@ -454,6 +461,49 @@ describe("MCP workflow tools", () => {
         );
     });
 
+    it("requires a stable idempotency key and an itemId for single-item runs", () => {
+        const schema = registerTools().tools.get("create_workflow_run")!.config
+            .inputSchema!;
+        const base = {
+            projectId: PROJECT_ID,
+            workflowId: WORKFLOW_ID,
+            datasetId: DATASET_ID,
+            idempotencyKey: "run-before-first-call",
+        };
+
+        expect(
+            schema.safeParse({ ...base, runTarget: "dataset" }).success,
+        ).toBe(true);
+        const withoutIdempotencyKey = {
+            projectId: PROJECT_ID,
+            workflowId: WORKFLOW_ID,
+            datasetId: DATASET_ID,
+        };
+        expect(
+            schema.safeParse({
+                ...withoutIdempotencyKey,
+                runTarget: "dataset",
+            }).success,
+        ).toBe(false);
+        expect(
+            schema.safeParse({
+                ...base,
+                idempotencyKey: "   ",
+                runTarget: "dataset",
+            }).success,
+        ).toBe(false);
+        expect(
+            schema.safeParse({
+                ...base,
+                runTarget: "single_item",
+                itemId: "66666666-6666-4666-8666-666666666666",
+            }).success,
+        ).toBe(true);
+        expect(
+            schema.safeParse({ ...base, runTarget: "single_item" }).success,
+        ).toBe(false);
+    });
+
     it("passes workflow and run IDs to progress and detail payloads", async () => {
         const { tools, runtime } = registerTools();
         mocks.workflowRunProgressPayload.mockResolvedValue({
@@ -509,6 +559,119 @@ describe("MCP workflow tools", () => {
         expect(detailResponse).toMatchObject({
             structuredContent: { data: detail },
         });
+    });
+
+    it("returns workflow run summaries and filter-bound bounded cell pages", async () => {
+        const { tools, runtime } = registerTools();
+        const summary = {
+            run: {
+                id: WORKFLOW_RUN_ID,
+                datasetId: DATASET_ID,
+                targetItemId: null,
+                status: "completed",
+                runTarget: "dataset",
+                createdAt: "2026-10-10T00:00:00.000Z",
+            },
+            progress: {
+                status: "completed",
+                total: 125,
+                done: 125,
+                failed: 0,
+                pending: 0,
+            },
+        };
+        mocks.workflowRunSummaryPayload.mockResolvedValue(summary);
+        const summaryResult = (await tools
+            .get("get_workflow_run_summary")!
+            .handler({
+                projectId: PROJECT_ID,
+                workflowId: WORKFLOW_ID,
+                workflowRunId: WORKFLOW_RUN_ID,
+            })) as { structuredContent: { data: unknown } };
+        expect(summaryResult.structuredContent.data).toEqual(summary);
+
+        const nextCursor = {
+            createdAt: "2026-10-10T00:00:00.000Z",
+            id: "77777777-7777-4777-8777-777777777777",
+        };
+        mocks.listWorkflowRunCellsPagePayload.mockResolvedValue({
+            cells: [
+                {
+                    id: nextCursor.id,
+                    itemId: DATASET_ID,
+                    nodeKey: "input",
+                    status: "succeeded",
+                    latencyMs: null,
+                    costUsd: null,
+                    error: null,
+                    inputText: "synthetic input",
+                    output: { answer: "synthetic" },
+                },
+            ],
+            complete: false,
+            nextCursor,
+        });
+        const pageResult = (await tools
+            .get("list_workflow_run_cells")!
+            .handler({
+                projectId: PROJECT_ID,
+                workflowId: WORKFLOW_ID,
+                workflowRunId: WORKFLOW_RUN_ID,
+                limit: 1,
+                nodeKey: "input",
+                status: "succeeded",
+                includeInputText: true,
+                includeOutput: true,
+            })) as { structuredContent: { data: Record<string, unknown> } };
+        expect(
+            decodeMcpPageCursor(
+                pageResult.structuredContent.data.nextCursor as string,
+                JSON.stringify([
+                    WORKFLOW_ID,
+                    WORKFLOW_RUN_ID,
+                    null,
+                    "input",
+                    "succeeded",
+                    null,
+                    "oldest_first",
+                ]),
+            ),
+        ).toEqual(nextCursor);
+        expect(mocks.listWorkflowRunCellsPagePayload).toHaveBeenCalledWith(
+            runtime.db,
+            expect.objectContaining({
+                teamId: "team-1",
+                projectId: PROJECT_ID,
+                workflowId: WORKFLOW_ID,
+                runId: WORKFLOW_RUN_ID,
+                limit: 1,
+                nodeKey: "input",
+                status: "succeeded",
+                includeOutput: true,
+            }),
+        );
+        const wrongFilterCursor = encodeMcpPageCursor(
+            JSON.stringify([
+                WORKFLOW_ID,
+                WORKFLOW_RUN_ID,
+                null,
+                "other-node",
+                "succeeded",
+                null,
+                "oldest_first",
+            ]),
+            nextCursor,
+        );
+        await expect(
+            tools.get("list_workflow_run_cells")!.handler({
+                projectId: PROJECT_ID,
+                workflowId: WORKFLOW_ID,
+                workflowRunId: WORKFLOW_RUN_ID,
+                nodeKey: "input",
+                status: "succeeded",
+                cursor: wrongFilterCursor,
+            }),
+        ).rejects.toMatchObject({ status: 400 });
     });
 
     it("writes workflow run review state with principal-owned scope", async () => {
@@ -620,6 +783,44 @@ describe("WorkflowNodeInput", () => {
                 nodeConfig: { type: "llm_text", promptText: "Judge this." },
             }),
         ).toThrow();
+    });
+
+    it("accepts zero numeric tolerance and rejects negative tolerance", () => {
+        const node = {
+            ...VALID_NODES[0],
+            evalConfig: {
+                type: "field_diff" as const,
+                fieldConfigs: [
+                    {
+                        field: "score",
+                        kind: "factual" as const,
+                        spec: {
+                            matcher: "numeric_tolerance" as const,
+                            tolerance: 0,
+                        },
+                    },
+                ],
+            },
+        };
+
+        expect(WorkflowNodeInput.safeParse(node).success).toBe(true);
+        expect(
+            WorkflowNodeInput.safeParse({
+                ...node,
+                evalConfig: {
+                    ...node.evalConfig,
+                    fieldConfigs: [
+                        {
+                            ...node.evalConfig.fieldConfigs[0],
+                            spec: {
+                                matcher: "numeric_tolerance",
+                                tolerance: -0.1,
+                            },
+                        },
+                    ],
+                },
+            }).success,
+        ).toBe(false);
     });
 
     it("keeps accepting legacy prompt nodes without explicit type fields", () => {

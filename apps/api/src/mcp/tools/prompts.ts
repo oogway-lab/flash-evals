@@ -16,12 +16,15 @@ import {
 } from "../../routes/prompts.js";
 import { generateJudgeForRunPayload } from "../../routes/runs.js";
 import { ok } from "../responses.js";
+import { withMcpIdempotency } from "../idempotency.js";
 import {
     FieldConfig,
     JudgeDeclaredInput,
     JsonObject,
+    mcpToolOutput,
     ProjectId,
     PromptSampleInput,
+    RunnablePromptCreateOutcome,
     ProviderTransport,
     ReasoningConfig,
     ReasoningEffort,
@@ -173,7 +176,8 @@ export function registerPromptTools(
         {
             title: "Create runnable prompt",
             description:
-                "Validate and create or update a runnable eval prompt version.",
+                "Validate and create or update a runnable eval prompt version. Check outcome to distinguish a saved prompt from validation failure or a provider error; a persistence error is returned as an MCP tool error.",
+            outputSchema: mcpToolOutput(RunnablePromptCreateOutcome),
             inputSchema: z.object({
                 projectId: ProjectId,
                 promptId: z.string().uuid().optional(),
@@ -208,20 +212,26 @@ export function registerPromptTools(
                 },
             );
             if (!validation.passed) {
-                return ok("Prompt validation failed.", validation);
+                const outcome = validation.evidence.sampleResults.some(
+                    (sample) => sample.status === "provider_error",
+                )
+                    ? "provider_error"
+                    : "validation_failed";
+                return ok("Prompt validation failed.", {
+                    ...validation,
+                    outcome,
+                });
             }
-            return ok(
-                "Saved runnable prompt.",
-                await saveRunnablePromptPayload(runtime.db, {
-                    ...input,
-                    fieldConfigs: input.fieldConfigs as IPipelineFieldConfig[],
-                    validationEvidence: validation.evidence,
-                    fitTags: input.fitTags ?? [],
-                    teamId: principal.teamId,
-                    projectId,
-                    createdBy: principal.userId,
-                }),
-            );
+            const saved = await saveRunnablePromptPayload(runtime.db, {
+                ...input,
+                fieldConfigs: input.fieldConfigs as IPipelineFieldConfig[],
+                validationEvidence: validation.evidence,
+                fitTags: input.fitTags ?? [],
+                teamId: principal.teamId,
+                projectId,
+                createdBy: principal.userId,
+            });
+            return ok("Saved runnable prompt.", { ...saved, outcome: "saved" });
         },
     );
 
@@ -345,22 +355,38 @@ export function registerPromptTools(
         {
             title: "Duplicate prompt version",
             description:
-                "Create a new prompt from an existing structured prompt version.",
+                "Create a new prompt from an existing structured prompt version. The optional idempotencyKey makes retries safe; when supplied, choose it before the first request and reuse it for this same copy.",
             inputSchema: z.object({
                 projectId: ProjectId,
                 sourcePromptVersionId: z.string().uuid(),
+                idempotencyKey: z.string().trim().min(1).max(200).optional(),
             }),
+            outputSchema: {
+                data: z.object({
+                    sourcePromptVersionId: z.string().uuid(),
+                    promptId: z.string().uuid(),
+                    promptVersionId: z.string().uuid(),
+                }),
+            },
         },
         async (input) => {
-            await duplicatePromptVersionPayload(runtime.db, {
+            const request = {
                 teamId: principal.teamId,
                 projectId: await resolveProjectId(context, input.projectId),
                 sourcePromptVersionId: input.sourcePromptVersionId,
                 createdBy: principal.userId,
-            });
-            return ok("Duplicated prompt version.", {
-                sourcePromptVersionId: input.sourcePromptVersionId,
-            });
+            };
+            const result = await withMcpIdempotency(
+                runtime.db,
+                {
+                    teamId: principal.teamId,
+                    operation: "duplicate_prompt_version",
+                    idempotencyKey: input.idempotencyKey,
+                    request,
+                },
+                (tx) => duplicatePromptVersionPayload(tx, request),
+            );
+            return ok("Duplicated prompt version.", result);
         },
     );
 

@@ -11,11 +11,13 @@ import {
 } from "../config.js";
 import type { IDb } from "../db.js";
 import { ApiForbiddenError } from "../errors.js";
+import type { McpProfile } from "./effects.js";
 
 export class McpAuthenticationError extends ApiForbiddenError {}
 
 export interface IMcpPrincipal {
     authMode: "oauth" | "raw-token";
+    profile: McpProfile;
     tokenId?: string;
     userId: string;
     teamId: string;
@@ -64,8 +66,13 @@ export async function resolveMcpPrincipal(
     if (!token) throw new McpAuthenticationError("Missing MCP bearer token.");
     const oauthConfig = resolveMcpOAuthConfig(config);
     if (oauthConfig) {
-        const clerkUserId = await resolveClerkOAuthSubject(token, oauthConfig);
-        return resolveMcpPrincipalForClerkUser(db, config, clerkUserId);
+        const identity = await resolveClerkOAuthIdentity(token, oauthConfig);
+        return resolveMcpPrincipalForClerkUser(
+            db,
+            config,
+            identity.userId,
+            mcpProfileFromOAuthScopes(identity.scopes),
+        );
     }
 
     if (!config.mosaicMcpRawTokenFallbackEnabled) {
@@ -125,6 +132,8 @@ export async function resolveMcpPrincipalForRawToken(
 
     return {
         authMode: "raw-token",
+        // Compatibility for existing opaque MCP tokens, which predate profile scopes.
+        profile: "admin",
         tokenId: row.token_id,
         userId: row.user_id,
         teamId: row.team_id,
@@ -137,6 +146,13 @@ export async function resolveClerkOAuthSubject(
     token: string,
     config: IMcpOAuthConfig,
 ): Promise<string> {
+    return (await resolveClerkOAuthIdentity(token, config)).userId;
+}
+
+export async function resolveClerkOAuthIdentity(
+    token: string,
+    config: IMcpOAuthConfig,
+): Promise<{ userId: string; scopes: string[] }> {
     const client = createClerkClient({
         secretKey: config.secretKey,
         publishableKey: config.publishableKey,
@@ -183,13 +199,14 @@ export async function resolveClerkOAuthSubject(
     if (!auth.userId) {
         throw new McpAuthenticationError("OAuth token has no Clerk subject.");
     }
-    return auth.userId;
+    return { userId: auth.userId, scopes: auth.scopes ?? [] };
 }
 
 export async function resolveMcpPrincipalForClerkUser(
     db: IDb,
     config: IApiConfig,
     clerkUserId: string,
+    profile: McpProfile = "eval",
 ): Promise<IMcpPrincipal> {
     const result = await db.query<IMcpClerkUserRow>(
         `select id, clerk_user_id, team_id, email, name
@@ -209,11 +226,24 @@ export async function resolveMcpPrincipalForClerkUser(
 
     return {
         authMode: "oauth",
+        profile,
         userId: row.id,
         teamId: row.team_id,
         email,
         ...(row.name ? { name: row.name } : {}),
     };
+}
+
+export function mcpProfileFromOAuthScopes(
+    scopes: readonly string[],
+): McpProfile {
+    if (scopes.includes("flash-evals:admin")) return "admin";
+    if (scopes.includes("flash-evals:eval")) return "eval";
+    if (scopes.includes("flash-evals:read")) return "read";
+    // Existing OAuth clients have no Flash Evals profile scope. Keep normal
+    // evaluation tools available, while reserving secret and destructive tools
+    // for clients granted the explicit admin scope.
+    return "eval";
 }
 
 function requiresDomainAdmission(config: IApiConfig): boolean {
