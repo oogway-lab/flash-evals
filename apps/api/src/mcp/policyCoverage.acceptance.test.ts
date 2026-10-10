@@ -175,6 +175,34 @@ describe("MCP independent profile policy over the protocol", () => {
                 const actual = new Set(tools.map((tool) => tool.name));
                 expect(actual).toEqual(EXPECTED_BY_PROFILE[profile]);
 
+                if (profile === "admin") {
+                    const createWorkflowRun = tools.find(
+                        (tool) => tool.name === "create_workflow_run",
+                    );
+                    expect(createWorkflowRun?.inputSchema).toMatchObject({
+                        required: expect.arrayContaining(["idempotencyKey"]),
+                    });
+                    let missingKeyDiagnostic = "";
+                    try {
+                        const result = await session.client.callTool({
+                            name: "create_workflow_run",
+                            arguments: {
+                                projectId:
+                                    "11111111-1111-4111-8111-111111111111",
+                                workflowId:
+                                    "22222222-2222-4222-8222-222222222222",
+                                datasetId:
+                                    "33333333-3333-4333-8333-333333333333",
+                                runTarget: "dataset",
+                            },
+                        });
+                        missingKeyDiagnostic = JSON.stringify(result);
+                    } catch (error) {
+                        missingKeyDiagnostic = String(error);
+                    }
+                    expect(missingKeyDiagnostic).toContain("idempotencyKey");
+                }
+
                 for (const tool of tools) {
                     expect(tool.annotations?.readOnlyHint).toBe(
                         READ_TOOLS.includes(tool.name as never),
