@@ -23,16 +23,20 @@ const READ_TOOLS = [
     "get_dataset",
     "get_dataset_summary",
     "list_dataset_items",
+    "list_dataset_summaries_page",
     "get_prompt",
     "list_prompts",
     "list_runs",
+    "list_run_summaries_page",
     "get_run",
     "get_run_progress",
     "get_run_summary",
     "list_run_cells",
     "list_workflows",
+    "list_workflow_summaries_page",
     "get_workflow",
     "list_workflow_runs",
+    "list_workflow_run_summaries_page",
     "get_workflow_run",
     "get_workflow_run_summary",
     "list_workflow_run_cells",
@@ -72,6 +76,7 @@ const ALL_TOOLS = [
     "get_dataset",
     "get_dataset_summary",
     "list_dataset_items",
+    "list_dataset_summaries_page",
     "create_dataset",
     "import_dataset_images",
     "import_dataset_text_items",
@@ -104,6 +109,7 @@ const ALL_TOOLS = [
     "duplicate_prompt_version",
     "delete_prompt",
     "list_runs",
+    "list_run_summaries_page",
     "get_run",
     "get_run_progress",
     "get_run_summary",
@@ -114,6 +120,7 @@ const ALL_TOOLS = [
     "retry_run",
     "delete_run",
     "list_workflows",
+    "list_workflow_summaries_page",
     "get_workflow",
     "create_workflow",
     "create_multiworkflow",
@@ -122,6 +129,7 @@ const ALL_TOOLS = [
     "select_workflow_llm_model",
     "create_workflow_run",
     "list_workflow_runs",
+    "list_workflow_run_summaries_page",
     "get_workflow_run",
     "get_workflow_run_summary",
     "list_workflow_run_cells",
@@ -154,11 +162,11 @@ const EXPECTED_BY_PROFILE = {
 } as const;
 
 describe("MCP independent profile policy over the protocol", () => {
-    it("matches the reviewed 84-tool inventory and expected profile matrix", async () => {
-        expect(new Set(ALL_TOOLS).size).toBe(84);
-        expect(new Set(READ_TOOLS).size).toBe(29);
+    it("matches the reviewed 88-tool inventory and expected profile matrix", async () => {
+        expect(new Set(ALL_TOOLS).size).toBe(88);
+        expect(new Set(READ_TOOLS).size).toBe(33);
         expect(new Set(ADMIN_ONLY_TOOLS).size).toBe(10);
-        expect(EXPECTED_BY_PROFILE.eval.size).toBe(74);
+        expect(EXPECTED_BY_PROFILE.eval.size).toBe(78);
 
         for (const profile of ["read", "eval", "admin"] as const) {
             const session = await connect(profile);
