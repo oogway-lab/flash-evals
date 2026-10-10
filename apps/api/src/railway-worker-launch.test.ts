@@ -40,9 +40,14 @@ function terminateProcessGroup(pid: number): void {
 }
 
 describe("configured Railway worker launch", () => {
-    it.each(["SIGTERM", "SIGINT"] as const)(
-        "forwards %s to the real worker and waits for graceful completion",
-        async (signal) => {
+    it.each([
+        { signal: "SIGTERM", target: "launcher" },
+        { signal: "SIGINT", target: "launcher" },
+        { signal: "SIGTERM", target: "process group" },
+        { signal: "SIGINT", target: "process group" },
+    ] as const)(
+        "forwards $signal sent to the $target and waits for graceful completion",
+        async ({ signal, target }) => {
             const fixtureDir = mkdtempSync(join(tmpdir(), "railway-worker-"));
             const customCa = join(fixtureDir, "custom-ca.pem");
             copyFileSync(bundledCa, customCa);
@@ -62,6 +67,7 @@ describe("configured Railway worker launch", () => {
                 stdio: ["ignore", "pipe", "pipe"],
             });
             let output = "";
+            let workerPid: number | undefined;
             let exit:
                 | { code: number | null; signal: NodeJS.Signals | null }
                 | undefined;
@@ -90,13 +96,18 @@ describe("configured Railway worker launch", () => {
                 const ready = events(output).find(
                     (item) => item.event === "worker.ready",
                 )!;
+                workerPid = ready.pid;
                 // exec leaves the TLS wrapper as Railway's direct child; pnpm
                 // and an intermediate launch shell must not absorb the signal.
                 expect(ready.parentPid).toBe(child.pid);
                 expect(ready.extraCaCerts).toBe(
                     signal === "SIGINT" ? customCa : bundledCa,
                 );
-                expect(child.kill(signal)).toBe(true);
+                if (target === "process group") {
+                    process.kill(-child.pid!, signal);
+                } else {
+                    expect(child.kill(signal)).toBe(true);
+                }
                 await vi.waitFor(
                     () => {
                         expect(exit, output).toEqual({ code: 0, signal: null });
@@ -112,6 +123,7 @@ describe("configured Railway worker launch", () => {
                     "worker.shutdown_completed",
                 ]);
             } finally {
+                if (workerPid) terminateProcessGroup(workerPid);
                 if (child.pid) terminateProcessGroup(child.pid);
                 rmSync(fixtureDir, { recursive: true, force: true });
             }

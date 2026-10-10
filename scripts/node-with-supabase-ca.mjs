@@ -14,6 +14,9 @@ const SUPABASE_CA_PATH = path.join(
 
 const child = spawn(process.execPath, process.argv.slice(2), {
     cwd: process.cwd(),
+    // A terminal/process-group signal must reach the child only once, through
+    // this wrapper. Otherwise direct delivery plus forwarding forces shutdown.
+    detached: process.platform !== "win32",
     env: {
         ...process.env,
         NODE_EXTRA_CA_CERTS:
