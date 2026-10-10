@@ -166,13 +166,32 @@ aligned with `pnpm-lock.yaml`; Railpack reads that field to select pnpm
 
 For a split Railway topology, configure the API service with
 `pnpm run api:start:railway` and `MOSAIC_API_START_WORKER=false`; configure a
-separate worker service with `pnpm run worker` and no HTTP health check. The
+separate worker service with
+`cd apps/web && exec node ../../scripts/node-with-supabase-ca.mjs --import tsx scripts/worker.ts`
+and no HTTP health check. For a
+legacy service that reads Config as Code, set the worker's **Railway Config File**
+to `/railway.worker.json` and keep its source root at the repository root. The
+default `/railway.json` starts the API and checks `/health`; repository config
+overrides dashboard start and healthcheck settings. The separate worker file
+keeps the same Railpack build and runs the queue consumer through the Node TLS
+wrapper directly, with `exec` replacing the launch shell. It avoids package-manager
+processes between Railway and the worker; the wrapper isolates the child's
+process group so a group signal is not delivered twice, forwards termination
+signals and waits for the worker to drain. Shared packages are built during the
+image build, so this launch does not rebuild them at startup. The config allows
+30 seconds for shutdown. If you increase `MOSAIC_WORKER_DRAIN_TIMEOUT_MS`, also increase the
+service's termination grace period above that window plus five seconds. The
+worker file has no migration or bootstrap command; those remain on the API.
+Keep the worker private with no public domain. The
 worker's process supervisor and `worker.ready` event establish liveness. The
 repository readiness scripts validate supported package commands and the API
 flag, but the actual start and healthcheck settings are per-service Railway
-settings and must be checked there. Railway has deprecated `railway.json` and
+settings and must be checked there. Check the effective config on the deployment
+details page before relying on the selected worker file. Railway has deprecated `railway.json` and
 `railway.toml`: new services cannot opt in, and existing services can use these
-files until the 2026-12-01 cutoff. See [Railway Config as Code](https://docs.railway.com/config-as-code)
+files until the 2026-12-01 cutoff. For a new service that does not read Config as
+Code, configure the same worker settings directly on the service; do not expect
+the JSON file to apply. See [Railway Config as Code](https://docs.railway.com/config-as-code)
 for current configuration options.
 
 ## Model providers
@@ -355,24 +374,25 @@ encryption key together. Read the [security policy](../SECURITY.md).
 
 ## Development, test, and script variables
 
-| Variable                                  | Read by                                   | Purpose                                                                                                                                                                                     |
-| ----------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MOSAIC_DEV_API_PORT`                     | `scripts/dev.mjs`                         | API port for `pnpm run dev` (default `3001`). `PORT` is not used, because `next dev` reads it for web.                                                                                      |
-| `MOSAIC_PACKAGES_BUILT`                   | `scripts/build-packages.mjs`              | Set to `1` by `pnpm run dev` after it builds the shared packages once, so the API, web and worker it starts skip rebuilding them.                                                           |
-| `NODE_EXTRA_CA_CERTS`                     | `scripts/node-with-supabase-ca.mjs`       | Extra CA bundle for Node. Defaults to the bundled Supabase root CA (`apps/web/config/supabase-root-2021-ca.pem`).                                                                           |
-| `MOSAIC_IMAGE_STORAGE_ADAPTER`            | API config, web storage                   | Legacy alias for `MOSAIC_STORAGE_ADAPTER`, used only when the new name is unset.                                                                                                            |
-| `R2_ENDPOINT`                             | shared object-storage package             | Local S3-compatible test endpoint only; rejected when `NODE_ENV=production`.                                                                                                                |
-| `UPLOAD_DIR`                              | API, web storage, worker                  | Directory for the `local` storage adapter (default `.uploads` at the repo root). Local development only: the split-deploy check (`pnpm run deploy:check`) rejects it in deployed env files. |
-| `STT_SMOKE_AUDIO_PATH`                    | `scripts/smoke-stt-capabilities.mjs`      | Audio file for `pnpm run smoke:stt` (default `/tmp/flash-evals-stt-smoke.wav`).                                                                                                             |
-| `STT_SMOKE_PROVIDERS`                     | `scripts/smoke-stt-capabilities.mjs`      | Comma-separated providers to probe (default `openai,gateway,soniox`).                                                                                                                       |
-| `STT_SMOKE_OPENAI_MODEL`                  | `scripts/smoke-stt-capabilities.mjs`      | OpenAI transcription model (default `gpt-4o-mini-transcribe`).                                                                                                                              |
-| `STT_SMOKE_GATEWAY_MODELS`                | `scripts/smoke-stt-capabilities.mjs`      | Gateway models to probe (default `openai/whisper-1,openai/gpt-4o-transcribe,openai/gpt-4o-mini-transcribe`).                                                                                |
-| `STT_SMOKE_SONIOX_MODEL`                  | `scripts/smoke-stt-capabilities.mjs`      | Soniox model (default `stt-async-v5`).                                                                                                                                                      |
-| `MOSAIC_ROUTING_INTEGRATION_DATABASE_URL` | `routing.persistence.integration.test.ts` | Postgres URL for the routing concurrency integration test; the test is skipped when unset. It creates and drops its own schema.                                                             |
-| `PLAYWRIGHT_WEB_BASE_URL`                 | `playwright.config.ts`                    | Run the e2e suite against an existing web server instead of starting one.                                                                                                                   |
-| `PLAYWRIGHT_WEB_PORT`                     | `playwright.config.ts`                    | Port for the web server Playwright starts (default `3000`).                                                                                                                                 |
-| `PLAYWRIGHT_FAKE_API_PORT`                | `playwright.config.ts`                    | Port for the fake API used by the e2e fixtures (default `3101`).                                                                                                                            |
-| `PLAYWRIGHT_API_BASE_URL`                 | `tests/e2e/api-health.spec.ts`            | API base URL for the API health smoke test; the test is skipped when unset. Set `INTERNAL_API_TOKEN` too to check the detailed `/health` payload; without it the test checks status only.   |
+| Variable                                  | Read by                                       | Purpose                                                                                                                                                                                     |
+| ----------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MOSAIC_DEV_API_PORT`                     | `scripts/dev.mjs`                             | API port for `pnpm run dev` (default `3001`). `PORT` is not used, because `next dev` reads it for web.                                                                                      |
+| `MOSAIC_PACKAGES_BUILT`                   | `scripts/build-packages.mjs`                  | Set to `1` by `pnpm run dev` after it builds the shared packages once, so the API, web and worker it starts skip rebuilding them.                                                           |
+| `NODE_EXTRA_CA_CERTS`                     | `scripts/node-with-supabase-ca.mjs`           | Extra CA bundle for Node. Defaults to the bundled Supabase root CA (`apps/web/config/supabase-root-2021-ca.pem`).                                                                           |
+| `MOSAIC_WORKER_TEST_FIXTURES`             | `scripts/fixtures/railway-worker-preload.mjs` | Temporary stub-module directory set and cleaned up by the Railway worker launch regression test. Test-only; do not configure it on deployed services.                                       |
+| `MOSAIC_IMAGE_STORAGE_ADAPTER`            | API config, web storage                       | Legacy alias for `MOSAIC_STORAGE_ADAPTER`, used only when the new name is unset.                                                                                                            |
+| `R2_ENDPOINT`                             | shared object-storage package                 | Local S3-compatible test endpoint only; rejected when `NODE_ENV=production`.                                                                                                                |
+| `UPLOAD_DIR`                              | API, web storage, worker                      | Directory for the `local` storage adapter (default `.uploads` at the repo root). Local development only: the split-deploy check (`pnpm run deploy:check`) rejects it in deployed env files. |
+| `STT_SMOKE_AUDIO_PATH`                    | `scripts/smoke-stt-capabilities.mjs`          | Audio file for `pnpm run smoke:stt` (default `/tmp/flash-evals-stt-smoke.wav`).                                                                                                             |
+| `STT_SMOKE_PROVIDERS`                     | `scripts/smoke-stt-capabilities.mjs`          | Comma-separated providers to probe (default `openai,gateway,soniox`).                                                                                                                       |
+| `STT_SMOKE_OPENAI_MODEL`                  | `scripts/smoke-stt-capabilities.mjs`          | OpenAI transcription model (default `gpt-4o-mini-transcribe`).                                                                                                                              |
+| `STT_SMOKE_GATEWAY_MODELS`                | `scripts/smoke-stt-capabilities.mjs`          | Gateway models to probe (default `openai/whisper-1,openai/gpt-4o-transcribe,openai/gpt-4o-mini-transcribe`).                                                                                |
+| `STT_SMOKE_SONIOX_MODEL`                  | `scripts/smoke-stt-capabilities.mjs`          | Soniox model (default `stt-async-v5`).                                                                                                                                                      |
+| `MOSAIC_ROUTING_INTEGRATION_DATABASE_URL` | `routing.persistence.integration.test.ts`     | Postgres URL for the routing concurrency integration test; the test is skipped when unset. It creates and drops its own schema.                                                             |
+| `PLAYWRIGHT_WEB_BASE_URL`                 | `playwright.config.ts`                        | Run the e2e suite against an existing web server instead of starting one.                                                                                                                   |
+| `PLAYWRIGHT_WEB_PORT`                     | `playwright.config.ts`                        | Port for the web server Playwright starts (default `3000`).                                                                                                                                 |
+| `PLAYWRIGHT_FAKE_API_PORT`                | `playwright.config.ts`                        | Port for the fake API used by the e2e fixtures (default `3101`).                                                                                                                            |
+| `PLAYWRIGHT_API_BASE_URL`                 | `tests/e2e/api-health.spec.ts`                | API base URL for the API health smoke test; the test is skipped when unset. Set `INTERNAL_API_TOKEN` too to check the detailed `/health` payload; without it the test checks status only.   |
 
 `MOSAIC_TEST_DATABASE_URL` enables the real-PostgreSQL workflow-editing integration
 test. Use only a disposable, migrated database: the test leaves immutable
