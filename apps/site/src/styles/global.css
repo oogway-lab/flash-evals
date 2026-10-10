@@ -1,0 +1,1551 @@
+/* flashevals.dev: one thermal receipt roll feeding out of a printer on a
+   canary carbonless-copy counter. */
+
+:root {
+    --counter: oklch(0.93 0.11 102);
+    --counter-ink: oklch(0.24 0.05 85);
+    --counter-ink-soft: oklch(0.38 0.06 95);
+    --paper: oklch(0.988 0.003 250);
+    --paper-shade: oklch(0.95 0.005 250);
+    --print: oklch(0.22 0.025 290);
+    --print-soft: oklch(0.45 0.02 290);
+    --rule: oklch(0.22 0.025 290 / 0.6);
+    --stamp: oklch(0.47 0.2 285);
+    --miss: oklch(0.52 0.2 12);
+    --miss-wash: oklch(0.94 0.045 12);
+    --hit-wash: oklch(0.94 0.02 285);
+    --roll-stripe: oklch(0.7 0.17 5);
+    --printer: oklch(0.235 0.012 265);
+    --printer-edge: oklch(0.34 0.012 265);
+    --printer-ink: oklch(0.9 0.13 96);
+
+    --mono: "Martian Mono Variable", ui-monospace, "SFMono-Regular", monospace;
+    --sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+
+    --roll: min(704px, calc(100vw - 24px));
+    --pad: clamp(18px, 5vw, 44px);
+    --printer-h: 76px;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+    color-scheme: light;
+    scrollbar-color: var(--counter-ink-soft) var(--counter);
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 24px;
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    margin: 0;
+    background: var(--counter);
+    color: var(--counter-ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: calc(var(--printer-h) + env(safe-area-inset-bottom));
+}
+
+::selection {
+    background: var(--stamp);
+    color: var(--paper);
+}
+
+a {
+    color: inherit;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 0.22em;
+}
+
+:focus-visible {
+    outline: 2.5px solid var(--stamp);
+    outline-offset: 3px;
+    border-radius: 2px;
+}
+
+.icon {
+    width: 1em;
+    height: 1em;
+    flex: none;
+    vertical-align: -0.125em;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.skip {
+    position: absolute;
+    left: 12px;
+    top: -60px;
+    z-index: 30;
+    padding: 10px 14px;
+    background: var(--print);
+    color: var(--paper);
+    font: 600 14px/1 var(--mono);
+}
+
+.skip:focus {
+    top: 12px;
+}
+
+/* ---------- Counter chrome: nav and footer on the yellow ---------- */
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 18px clamp(16px, 4vw, 40px);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-stretch: 87.5%;
+    letter-spacing: 0.02em;
+}
+
+.wordmark {
+    font-weight: 760;
+    font-stretch: 112.5%;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-decoration: none;
+}
+
+.topbar nav {
+    display: flex;
+    gap: clamp(14px, 2.4vw, 28px);
+}
+
+.topbar nav a {
+    text-decoration: none;
+    text-transform: uppercase;
+    padding-block: 6px;
+    background: linear-gradient(currentColor, currentColor) 0 100% / 0 1.5px
+        no-repeat;
+    transition: background-size 0.35s var(--ease-out);
+}
+
+.topbar nav a:hover {
+    background-size: 100% 1.5px;
+}
+
+@media (max-width: 760px) {
+    .topbar nav a:not(.keep) {
+        display: none;
+    }
+}
+
+.site-foot {
+    max-width: var(--roll);
+    margin: 56px auto 0;
+    padding: 0 4px 48px;
+    font-size: 14px;
+    color: var(--counter-ink-soft);
+}
+
+.site-foot ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 22px;
+    margin: 0 0 14px;
+    padding: 0;
+    list-style: none;
+    font-family: var(--mono);
+    font-stretch: 87.5%;
+    font-size: 13px;
+    text-transform: uppercase;
+    color: var(--counter-ink);
+}
+
+.site-foot a {
+    text-decoration: none;
+}
+
+.site-foot a:hover {
+    text-decoration: underline;
+}
+
+.site-foot p {
+    margin: 0;
+}
+
+/* ---------- The roll ---------- */
+
+.roll {
+    position: relative;
+    width: var(--roll);
+    margin: 18px auto 0;
+    padding: 30px var(--pad) 12px;
+    background-color: var(--paper);
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .35 0 0 0 0 .45 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+        linear-gradient(
+            90deg,
+            var(--paper-shade),
+            var(--paper) 7%,
+            var(--paper) 93%,
+            var(--paper-shade)
+        );
+    color: var(--print);
+    font-family: var(--mono);
+    font-size: 14px;
+    font-stretch: 87.5%;
+    line-height: 1.65;
+    font-variant-numeric: tabular-nums;
+    box-shadow:
+        0 1px 1px oklch(0.45 0.09 90 / 0.25),
+        0 30px 60px -22px oklch(0.42 0.1 95 / 0.55),
+        0 0 0 1px oklch(0.5 0.08 95 / 0.12);
+}
+
+/* Serrated tear at the top; the bottom ends in the end-of-roll stripe. */
+.roll::before,
+.roll::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 12px;
+    background: var(--paper);
+    -webkit-mask: conic-gradient(
+            from 135deg at 50% 0,
+            #0000,
+            #000 1deg 89deg,
+            #0000 90deg
+        )
+        50% / 16px 100%;
+    mask: conic-gradient(
+            from 135deg at 50% 0,
+            #0000,
+            #000 1deg 89deg,
+            #0000 90deg
+        )
+        50% / 16px 100%;
+}
+
+.roll::before {
+    top: -11px;
+}
+
+.roll::after {
+    bottom: -11px;
+    rotate: 180deg;
+}
+
+.seg {
+    position: relative;
+    padding-block: 34px;
+}
+
+.seg + .seg {
+    border-top: 0;
+}
+
+.seg + .seg::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 2px;
+    background: repeating-linear-gradient(
+        90deg,
+        var(--rule) 0 7px,
+        transparent 7px 12px
+    );
+}
+
+.ln {
+    display: block;
+}
+
+.center {
+    text-align: center;
+}
+
+.soft {
+    color: var(--print-soft);
+}
+
+.caps {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.dw {
+    /* Thermal "double width": condensed glyphs stretched 2× horizontally. */
+    display: inline-block;
+    width: calc(var(--n) * 2ch);
+    max-width: 100%;
+    font-stretch: 75%;
+    font-weight: 760;
+    letter-spacing: 0;
+    white-space: nowrap;
+    text-align: left;
+}
+
+.dw-ink {
+    display: inline-block;
+    transform: scaleX(2);
+    transform-origin: 0 50%;
+}
+
+.nw {
+    white-space: nowrap;
+}
+
+.lead {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6em;
+}
+
+.lead .fill {
+    flex: 1;
+    min-width: 1.5em;
+    border-bottom: 2px dotted var(--rule);
+    transform: translateY(-0.3em);
+}
+
+.stars {
+    height: 14px;
+    margin-block: 6px 2px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 15 7' shape-rendering='crispEdges' fill='%2326212e'%3E%3Cpath d='M3 0h1v7H3zM0 3h7v1H0zM1 1h1v1H1zM5 1h1v1H5zM1 5h1v1H1zM5 5h1v1H5z'/%3E%3C/svg%3E")
+        0 50% / 15px 7px space no-repeat;
+}
+
+.sec-title {
+    margin: 0 0 18px;
+    font-size: 15px;
+    font-weight: 760;
+    font-stretch: 112.5%;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.sec-title .soft {
+    font-weight: 450;
+    font-stretch: 87.5%;
+    letter-spacing: 0.02em;
+}
+
+.sec-lede {
+    margin: 0 0 22px;
+    font-size: 14.5px;
+    line-height: 1.7;
+    max-width: 58ch;
+    text-wrap: pretty;
+}
+
+/* ---------- Masthead ---------- */
+
+.mast .brand {
+    font-size: clamp(20px, 5vw, 30px);
+    line-height: 1.25;
+    margin: 0 0 6px;
+}
+
+.mast .meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.mast h1 {
+    margin: 22px 0 18px;
+    font-size: clamp(31px, 6.6vw, 58px);
+    line-height: 1.04;
+    font-weight: 780;
+    font-stretch: 100%;
+    letter-spacing: -0.035em;
+    text-transform: uppercase;
+    text-wrap: balance;
+}
+
+.mast .pitch {
+    margin: 0 0 22px;
+    font-size: clamp(15px, 2vw, 16.5px);
+    line-height: 1.7;
+    text-wrap: pretty;
+    max-width: 52ch;
+}
+
+/* The clone command: the primary action, with a tear-off copy tab. */
+.clone {
+    display: flex;
+    align-items: stretch;
+    border: 2px solid var(--print);
+    background: var(--paper);
+    font-size: 13.5px;
+}
+
+.clone code {
+    flex: 1;
+    min-width: 0;
+    padding: 14px 16px;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+    font: inherit;
+}
+
+.clone code .prompt {
+    color: var(--print-soft);
+    user-select: none;
+}
+
+.tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 18px;
+    border: 0;
+    background: var(--print);
+    color: var(--paper);
+    font: 700 13px/1 var(--mono);
+    font-stretch: 100%;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition:
+        background-color 0.2s,
+        color 0.2s;
+}
+
+.tab::before {
+    /* Perforation where the tab tears off the strip. */
+    content: "";
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: -2px;
+    width: 4px;
+    background: radial-gradient(circle, var(--paper) 1.4px, transparent 1.9px)
+        50% 0 / 4px 7px repeat-y;
+}
+
+.tab:hover {
+    background: var(--stamp);
+}
+
+.tab .done {
+    display: none;
+}
+
+.tab[data-copied] .idle {
+    display: none;
+}
+
+.tab[data-copied] .done {
+    display: inline;
+}
+
+.motion .tab[data-copied] {
+    animation: tear 0.5s var(--ease-out);
+}
+
+@keyframes tear {
+    0% {
+        transform: translate(0, 0) rotate(0);
+    }
+    35% {
+        transform: translate(7px, -4px) rotate(4deg);
+    }
+    100% {
+        transform: none;
+    }
+}
+
+.next {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 26px;
+    margin-top: 16px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.next a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 650;
+    text-decoration: none;
+    padding-block: 4px;
+    border-bottom: 2px solid currentColor;
+}
+
+.next a .icon {
+    transition: translate 0.3s var(--ease-out);
+}
+
+.next a:hover .icon {
+    translate: 4px 0;
+}
+
+/* ---------- Margin notes, on the counter beside the roll ---------- */
+
+.note {
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--counter-ink);
+    text-wrap: pretty;
+}
+
+.note p {
+    margin: 0;
+}
+
+.note p + p {
+    margin-top: 8px;
+}
+
+.note b {
+    font-weight: 650;
+}
+
+@media (min-width: 1360px) {
+    .note {
+        position: absolute;
+        top: 36px;
+        width: 248px;
+        right: calc(100% + var(--pad) + 52px);
+    }
+
+    .note.right {
+        right: auto;
+        left: calc(100% + var(--pad) + 52px);
+    }
+
+    .note::after {
+        content: "";
+        position: absolute;
+        top: 0.7em;
+        right: -40px;
+        width: 26px;
+        border-top: 1.5px solid var(--counter-ink-soft);
+    }
+
+    .note.right::after {
+        right: auto;
+        left: -40px;
+    }
+}
+
+@media (max-width: 1359.98px) {
+    .note {
+        margin: 22px 0 0;
+        padding: 14px 16px;
+        background: var(--counter);
+        transform: rotate(-0.6deg);
+        box-shadow: 0 6px 14px -8px oklch(0.4 0.1 85 / 0.5);
+    }
+}
+
+/* ---------- Item 017: the run, printed as responses arrive ---------- */
+
+.input {
+    display: grid;
+    grid-template-columns: 148px 1fr;
+    gap: 22px;
+    align-items: start;
+    margin-bottom: 26px;
+}
+
+.photo {
+    position: relative;
+    margin: 0;
+    padding: 12px 10px 16px;
+    background: oklch(0.32 0.03 60);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.photo .slip {
+    padding: 10px 9px 12px;
+    background: oklch(0.96 0.01 85);
+    color: oklch(0.3 0.02 60);
+    font-size: 7.5px;
+    line-height: 1.5;
+    transform: rotate(-3deg);
+    box-shadow: 0 4px 10px oklch(0 0 0 / 0.35);
+}
+
+.photo .slip b {
+    display: block;
+    font-size: 9px;
+    text-align: center;
+    margin-bottom: 4px;
+}
+
+.photo .slip .lead .fill {
+    border-bottom-width: 1px;
+}
+
+.photo figcaption {
+    margin-top: 10px;
+    color: oklch(0.86 0.02 80);
+    font-size: 10.5px;
+    text-align: center;
+}
+
+.ref .lead span:first-child {
+    color: var(--print-soft);
+}
+
+.responses-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    margin: 4px 0 12px;
+}
+
+.replay {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border: 0;
+    background: none;
+    color: var(--print);
+    font: 650 12.5px/1 var(--mono);
+    font-stretch: 87.5%;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-bottom: 2px solid currentColor;
+    cursor: pointer;
+}
+
+.replay:hover .icon {
+    rotate: -90deg;
+}
+
+.replay .icon {
+    transition: rotate 0.4s var(--ease-out);
+}
+
+.resp {
+    position: relative;
+    padding: 14px 0 16px;
+}
+
+.resp + .resp {
+    border-top: 2px dotted var(--rule);
+}
+
+.resp-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-weight: 700;
+}
+
+.code {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.7em;
+    padding: 0 0.3em;
+    background: var(--print);
+    color: var(--paper);
+    font-weight: 700;
+    font-stretch: 100%;
+    line-height: 1.5;
+}
+
+.resp-head .model {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.elapsed {
+    font-weight: 450;
+    color: var(--print-soft);
+    white-space: nowrap;
+}
+
+.fields {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.field {
+    display: grid;
+    grid-template-columns: 1.2em 9.5em 1fr;
+    gap: 0 10px;
+    align-items: baseline;
+}
+
+.field .mark {
+    translate: 0 0.12em;
+}
+
+.field.miss {
+    background: var(--miss-wash);
+    margin-inline: -6px;
+    padding-inline: 6px;
+}
+
+.field.miss .mark,
+.field.miss .got {
+    color: var(--miss);
+}
+
+.field .got {
+    overflow-wrap: anywhere;
+}
+
+.field .exp {
+    grid-column: 3;
+    font-size: 12.5px;
+    color: var(--print-soft);
+}
+
+.resp-sum {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 18px;
+    margin-top: 8px;
+    font-weight: 650;
+}
+
+/* Waiting / printed states, armed only when JavaScript runs the demo. */
+.run.armed .resp:not(.printed) .field,
+.run.armed .resp:not(.printed) .resp-sum {
+    visibility: hidden;
+}
+
+.run.armed .resp:not(.printed) .elapsed::before {
+    content: "";
+    display: inline-block;
+    width: 0.55em;
+    height: 0.55em;
+    margin-right: 0.5em;
+    background: currentColor;
+    animation: blink 0.5s steps(2) infinite;
+}
+
+@keyframes blink {
+    50% {
+        opacity: 0;
+    }
+}
+
+.motion .resp.printed .field,
+.motion .resp.printed .resp-sum {
+    animation: print-line 0.16s steps(4) both;
+    animation-delay: calc(var(--i, 0) * 60ms);
+}
+
+@keyframes print-line {
+    from {
+        clip-path: inset(0 0 100% 0);
+    }
+    to {
+        clip-path: inset(0 0 0 0);
+    }
+}
+
+/* ---------- Subtotal: the leaderboard, with stamps ---------- */
+
+.board {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+}
+
+.board th {
+    padding: 0 0 8px;
+    font-weight: 650;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--print-soft);
+    text-align: right;
+    border-bottom: 2px solid var(--print);
+}
+
+.board th:nth-child(2) {
+    text-align: left;
+}
+
+.board td {
+    position: relative;
+    padding: 14px 0;
+    text-align: right;
+    vertical-align: top;
+    border-bottom: 2px dotted var(--rule);
+}
+
+.board td:first-child {
+    width: 2.6em;
+    text-align: left;
+}
+
+.board td.model {
+    text-align: left;
+    padding-right: 12px;
+    overflow-wrap: anywhere;
+}
+
+.board td + td + td {
+    width: 5.6em;
+}
+
+.board .fail {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    color: var(--miss);
+    font-size: 12.5px;
+}
+
+.board tfoot td {
+    border-bottom: 0;
+    padding-top: 14px;
+    color: var(--print-soft);
+    text-align: left;
+    font-size: 12.5px;
+}
+
+.stamp {
+    position: absolute;
+    z-index: 2;
+    right: -0.4em;
+    top: 50%;
+    padding: 5px 10px 4px;
+    border: 3px solid currentColor;
+    border-radius: 6px;
+    outline: 1.5px solid currentColor;
+    outline-offset: 2px;
+    color: var(--stamp);
+    font-size: 14px;
+    font-weight: 800;
+    font-stretch: 75%;
+    letter-spacing: 0.1em;
+    line-height: 1.2;
+    text-transform: uppercase;
+    white-space: nowrap;
+    pointer-events: none;
+    translate: 0 -50%;
+    transform: rotate(var(--tilt, -7deg));
+    opacity: 0.88;
+    mix-blend-mode: multiply;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='60'%3E%3Cfilter id='i'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' seed='4'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.4 2.15'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23i)'/%3E%3C/svg%3E")
+        calc(var(--i, 0) * 47px) calc(var(--i, 0) * 23px) / 160px 60px;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='60'%3E%3Cfilter id='i'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' seed='4'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.4 2.15'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23i)'/%3E%3C/svg%3E")
+        calc(var(--i, 0) * 47px) calc(var(--i, 0) * 23px) / 160px 60px;
+}
+
+@media (max-width: 1199.98px) {
+    .stamp {
+        right: 0;
+        top: 4px;
+        translate: none;
+        font-size: 12px;
+        border-width: 2.5px;
+    }
+
+    .board td.model {
+        padding-top: 30px;
+    }
+}
+
+.motion .board.armed .stamp {
+    opacity: 0;
+}
+
+.motion .board.stamped .stamp {
+    animation: stamp 0.42s var(--ease-out) both;
+    animation-delay: calc(var(--i, 0) * 260ms);
+}
+
+@keyframes stamp {
+    0% {
+        opacity: 0;
+        transform: rotate(var(--tilt, -7deg)) scale(1.9);
+        filter: blur(3px);
+    }
+    55% {
+        opacity: 0.95;
+        transform: rotate(var(--tilt, -7deg)) scale(0.96);
+        filter: blur(0);
+    }
+    100% {
+        opacity: 0.88;
+        transform: rotate(var(--tilt, -7deg)) scale(1);
+    }
+}
+
+/* ---------- Line items ---------- */
+
+.items {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.items li {
+    display: grid;
+    grid-template-columns: 2.6em 1fr;
+    gap: 0 10px;
+    padding: 9px 0;
+}
+
+.items li + li {
+    border-top: 1.5px dotted var(--rule);
+}
+
+.items .qty {
+    font-weight: 700;
+    text-align: right;
+}
+
+.items .name {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.items .what {
+    grid-column: 2;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--print-soft);
+}
+
+/* ---------- Audio copy ---------- */
+
+.wave {
+    display: block;
+    width: 100%;
+    height: 64px;
+    color: var(--print);
+}
+
+.speakers {
+    display: flex;
+    margin: 6px 0 18px;
+    font-size: 12px;
+    color: var(--print-soft);
+}
+
+.speakers span {
+    padding-top: 6px;
+    border-top: 2px solid var(--print);
+}
+
+.speakers span + span {
+    border-top-style: dotted;
+    margin-left: 4px;
+}
+
+.transcript {
+    font-size: 14.5px;
+}
+
+.variant {
+    padding: 12px 0;
+    border-top: 1.5px dotted var(--rule);
+}
+
+.variant .resp-head {
+    font-weight: 650;
+    font-size: 13px;
+}
+
+.words {
+    margin: 6px 0 4px;
+    font-size: 15px;
+}
+
+.words .sub {
+    color: var(--miss);
+    background: var(--miss-wash);
+    text-decoration: underline wavy;
+    text-underline-offset: 0.25em;
+    text-decoration-thickness: 1px;
+}
+
+.words .miss {
+    color: var(--miss);
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+}
+
+.judge {
+    margin-top: 14px;
+    padding: 10px 12px;
+    border: 2px solid var(--print);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 4px 16px;
+    font-weight: 650;
+}
+
+.judge .flag {
+    color: var(--miss);
+}
+
+/* ---------- Agent copy ---------- */
+
+.copy-banner {
+    margin: 0 0 20px;
+    padding: 6px 0;
+    background: var(--print);
+    color: var(--paper);
+    text-align: center;
+    font-weight: 760;
+    font-stretch: 112.5%;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+.calls {
+    margin: 0 0 16px;
+    padding: 0;
+    list-style: none;
+}
+
+.calls li {
+    display: grid;
+    grid-template-columns: 1.4em minmax(0, auto) 1fr auto;
+    gap: 0 10px;
+    align-items: baseline;
+    padding: 3px 0;
+}
+
+.calls .tool {
+    font-weight: 700;
+}
+
+.calls .fill {
+    border-bottom: 2px dotted var(--rule);
+    transform: translateY(-0.3em);
+    min-width: 1em;
+}
+
+.calls .res {
+    color: var(--print-soft);
+    text-align: right;
+}
+
+.endpoint {
+    padding: 12px 14px;
+    background: var(--hit-wash);
+    font-size: 13px;
+    overflow-x: auto;
+}
+
+/* ---------- Self-host: the settle-up steps ---------- */
+
+.steps {
+    margin: 0 0 14px;
+    padding: 14px 16px;
+    background: var(--print);
+    color: var(--paper);
+    font-size: 13px;
+    line-height: 1.85;
+    counter-reset: step;
+    overflow-x: auto;
+    list-style: none;
+}
+
+.steps li {
+    counter-increment: step;
+    white-space: nowrap;
+}
+
+.steps li::before {
+    content: counter(step);
+    display: inline-block;
+    width: 1.6em;
+    color: var(--printer-ink);
+    opacity: 0.75;
+}
+
+.steps-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.steps-bar .tab {
+    padding: 10px 14px;
+    border-left: 0;
+}
+
+.warn {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    padding: 10px 12px;
+    background: var(--miss-wash);
+    color: var(--miss);
+    font-weight: 650;
+}
+
+.needs {
+    margin-top: 16px;
+}
+
+/* ---------- Totals and the end of the roll ---------- */
+
+.totals .lead {
+    padding: 2px 0;
+}
+
+.totals .grand {
+    text-shadow: 0.45px 0 0 currentColor;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 3px double var(--print);
+    font-size: clamp(17px, 3vw, 22px);
+}
+
+.barcode {
+    display: block;
+    width: min(100%, 420px);
+    height: 74px;
+    margin: 30px auto 8px;
+    color: var(--print);
+}
+
+.thanks {
+    margin-top: 18px;
+}
+
+.end-stripe {
+    position: absolute;
+    right: 18px;
+    bottom: 0;
+    width: 10px;
+    height: 220px;
+    background: linear-gradient(transparent, var(--roll-stripe) 40%);
+    opacity: 0.55;
+}
+
+/* ---------- The printer, fixed at the bottom; paper feeds out of it ---------- */
+
+.printer {
+    position: fixed;
+    z-index: 20;
+    left: 50%;
+    bottom: 0;
+    width: min(calc(var(--roll) + 72px), 100vw);
+    translate: -50% 0;
+    padding: 14px 18px calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(
+        180deg,
+        var(--printer-edge),
+        var(--printer) 22%,
+        var(--printer)
+    );
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 30px -10px oklch(0.3 0.08 85 / 0.45);
+    color: var(--paper);
+    font-family: var(--mono);
+    font-stretch: 87.5%;
+}
+
+.printer::before {
+    /* The paper slot. */
+    content: "";
+    position: absolute;
+    top: 5px;
+    left: 36px;
+    right: 36px;
+    height: 5px;
+    border-radius: 3px;
+    background: oklch(0.1 0.01 265);
+    box-shadow: inset 0 2px 2px oklch(0 0 0 / 0.8);
+}
+
+.printer .panel {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: calc(var(--printer-h) - 26px);
+}
+
+.lcd {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 38px;
+    padding: 0 12px;
+    background: oklch(0.16 0.01 265);
+    border-radius: 4px;
+    box-shadow: inset 0 1px 3px oklch(0 0 0 / 0.7);
+    color: var(--printer-ink);
+    font-size: 12.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.lcd .led {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--printer-ink);
+    box-shadow: 0 0 6px var(--printer-ink);
+    flex: none;
+}
+
+.printer .feed {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    height: 40px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--counter);
+    color: var(--counter-ink);
+    font: 760 13px/1 var(--mono);
+    font-stretch: 100%;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow:
+        0 2px 0 oklch(0.62 0.13 90),
+        0 4px 8px oklch(0 0 0 / 0.35);
+    transition:
+        translate 0.12s,
+        box-shadow 0.12s;
+}
+
+.printer .feed:active {
+    translate: 0 2px;
+    box-shadow:
+        0 0 0 oklch(0.62 0.13 90),
+        0 2px 4px oklch(0 0 0 / 0.35);
+}
+
+.printer .feed .done,
+.printer .feed[data-copied] .idle {
+    display: none;
+}
+
+.printer .feed[data-copied] .done {
+    display: inline;
+}
+
+.printer .gh {
+    display: inline-flex;
+    align-items: center;
+    height: 40px;
+    padding: 0 6px;
+    color: var(--paper);
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-decoration: none;
+}
+
+.printer .gh:hover {
+    color: var(--printer-ink);
+}
+
+@media (max-width: 560px) {
+    :root {
+        --printer-h: 68px;
+    }
+
+    .printer {
+        border-radius: 12px 12px 0 0;
+        padding-inline: 12px;
+    }
+
+    .lcd {
+        display: none;
+    }
+
+    .printer .feed {
+        flex: 1;
+        justify-content: center;
+    }
+
+    .input {
+        grid-template-columns: 1fr;
+    }
+
+    .photo {
+        width: 160px;
+    }
+
+    .field {
+        grid-template-columns: 1.2em 7.4em 1fr;
+    }
+
+    .board thead {
+        display: none;
+    }
+
+    .board tr {
+        display: grid;
+        grid-template-columns: 2.4em 1fr 1fr 1fr;
+        border-bottom: 2px dotted var(--rule);
+        padding: 12px 0;
+    }
+
+    .board td {
+        border: 0;
+        padding: 0;
+        text-align: left;
+        width: auto !important;
+    }
+
+    .board td.model {
+        grid-column: 2 / -1;
+        padding: 0 0 6px;
+    }
+
+    .board td.model + td {
+        grid-column: 2;
+    }
+
+    .board td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 10.5px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--print-soft);
+    }
+
+    .board tfoot tr {
+        display: block;
+        border: 0;
+    }
+
+    .stamp {
+        top: 10px;
+    }
+
+    .board td.model {
+        padding-top: 0;
+        padding-right: 7.5em;
+    }
+}
+
+/* ---------- Motion: the head prints on load, lines develop above the slot ---------- */
+
+.motion .mast .ln {
+    animation: print-line 0.2s steps(5) both;
+    animation-delay: calc(120ms + var(--i, 0) * 85ms);
+}
+
+.motion .roll {
+    animation: feed 1.3s var(--ease-out) both;
+}
+
+@keyframes feed {
+    from {
+        translate: 0 90px;
+    }
+}
+
+@supports (animation-timeline: view()) {
+    .motion .develop {
+        animation: develop linear both;
+        animation-timeline: view();
+        animation-range: cover calc(var(--printer-h) - 10px) cover
+            calc(var(--printer-h) + 90px);
+    }
+
+    @keyframes develop {
+        from {
+            opacity: 0.4;
+            filter: blur(0.5px);
+        }
+        to {
+            opacity: 1;
+            filter: blur(0);
+        }
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ---------- Narrow-screen corrections ---------- */
+
+@media (max-width: 560px) {
+    .sec-title {
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .board tr {
+        position: relative;
+    }
+
+    .board td {
+        position: static;
+    }
+
+    .board .stamp {
+        top: 8px;
+        right: -4px;
+    }
+
+    .steps-bar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .calls li {
+        grid-template-columns: 1.4em 1fr;
+    }
+
+    .calls .fill {
+        display: none;
+    }
+
+    .calls .res {
+        grid-column: 2;
+        text-align: left;
+        font-size: 12.5px;
+    }
+}
+
+.mast .meta {
+    flex-wrap: wrap;
+}
+
+.mast .meta span {
+    white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+    .clone code {
+        white-space: normal;
+        overflow-wrap: normal;
+    }
+
+    .resp-head {
+        flex-wrap: wrap;
+    }
+
+    .resp-head .elapsed {
+        flex-basis: 100%;
+        padding-left: 2.4em;
+    }
+
+    .totals .grand {
+        font-size: 15px;
+    }
+}
+
+@media (max-width: 420px) {
+    .sec-title {
+        font-size: 13px;
+    }
+}
+
+.board td.model {
+    font-stretch: 75%;
+}
+
+/* Verdict lane: stamps print to the right of the figures, never over them. */
+.board td.verdict {
+    width: 8.6em;
+    padding: 0;
+}
+
+.board .stamp {
+    right: auto;
+    left: 0.5em;
+    top: 50%;
+    translate: 0 -50%;
+}
+
+@media (min-width: 561px) {
+    .board td.model {
+        padding-right: 6px;
+        font-size: 13px;
+    }
+
+    .board td + td + td {
+        width: 5.2em;
+    }
+
+    .board .stamp {
+        padding-inline: 8px;
+        font-size: 12.5px;
+    }
+}
+
+@media (max-width: 560px) {
+    .board td.verdict {
+        position: absolute;
+        top: 8px;
+        right: 0;
+    }
+
+    .board .stamp {
+        position: static;
+        display: inline-block;
+        translate: none;
+    }
+}
+
+@media (max-width: 400px) {
+    .board .stamp {
+        font-size: 10.5px;
+        padding: 4px 7px 3px;
+    }
+}
+
+@media (max-width: 340px) {
+    .sec-title {
+        font-size: 11.5px;
+    }
+
+    .board td.model {
+        padding-right: 8.5em;
+    }
+}

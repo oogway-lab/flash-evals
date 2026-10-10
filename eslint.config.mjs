@@ -12,6 +12,7 @@ export default [
             "**/.next/**",
             "**/.open-next/**",
             "**/.wrangler/**",
+            "**/.astro/**",
             "**/coverage/**",
             "**/.claude/worktrees/**",
             "**/.worktrees/**",
