@@ -30,6 +30,7 @@ import {
     type ISttNodeExecutionResult,
 } from "./nodes/executeSttWorkflowNode";
 import { executeWorkflowLlmInvocation } from "./llmInvocation";
+import { logWorkerEvent, safeWorkerError } from "../jobs/workerObservability";
 
 type WorkflowCell = typeof workflowRunCells.$inferSelect;
 type DatasetItem = WorkflowDatasetItem;
@@ -239,10 +240,19 @@ async function executeClaimedCell(
                     projectId: context.projectId,
                 });
         } catch (error) {
-            console.error(`workflow cell ${cell.id} scoring failed:`, error);
+            logWorkerEvent("error", "workflow_cell.scoring_failed", {
+                workflowRunId: cell.workflowRunId,
+                cellId: cell.id,
+                ...safeWorkerError(error),
+            });
         }
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        logWorkerEvent("error", "workflow_cell.failed", {
+            workflowRunId: cell.workflowRunId,
+            cellId: cell.id,
+            ...safeWorkerError(error),
+        });
         await db
             .update(workflowRunCells)
             .set({ status: "failed", inputText, error: message })

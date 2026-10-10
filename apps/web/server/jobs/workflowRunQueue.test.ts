@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
     updatePayloads: [] as Array<Record<string, unknown>>,
     send: vi.fn(),
     work: vi.fn(),
+    stop: vi.fn(async () => undefined),
     executeWorkflowRun: vi.fn(),
 }));
 
@@ -15,6 +16,7 @@ vi.mock("pg-boss", () => ({
         createQueue = vi.fn(async () => undefined);
         send = mocks.send;
         work = mocks.work;
+        stop = mocks.stop;
     },
 }));
 
@@ -44,6 +46,7 @@ import {
     enqueueWorkflowRun,
     recoverOrphanedWorkflowRuns,
     startWorkflowRunWorker,
+    stopWorkflowRunWorker,
 } from "./workflowRunQueue";
 
 describe("workflow run queue", () => {
@@ -54,6 +57,7 @@ describe("workflow run queue", () => {
         mocks.updatePayloads.length = 0;
         mocks.send.mockReset();
         mocks.work.mockReset();
+        mocks.stop.mockReset();
         mocks.executeWorkflowRun.mockReset();
     });
 
@@ -119,7 +123,7 @@ describe("workflow run queue", () => {
         expect(mocks.updatePayloads).toContainEqual(
             expect.objectContaining({
                 status: "failed",
-                error: "Workflow worker exhausted retries: database unavailable",
+                error: "Workflow worker exhausted retries.",
             }),
         );
 
@@ -131,5 +135,13 @@ describe("workflow run queue", () => {
             { workflowRunId: "run-recovered-after-cutoff" },
             expect.any(Object),
         );
+
+        await expect(stopWorkflowRunWorker(1_500)).resolves.toEqual({
+            remainingInFlight: 0,
+        });
+        expect(mocks.stop).toHaveBeenCalledWith({
+            graceful: true,
+            timeout: 1_500,
+        });
     });
 });

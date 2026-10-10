@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     updatePayloads: [] as Array<Record<string, unknown>>,
     send: vi.fn(),
     work: vi.fn(),
+    stop: vi.fn(async () => undefined),
 }));
 
 vi.mock("pg-boss", () => ({
@@ -19,6 +20,7 @@ vi.mock("pg-boss", () => ({
         createQueue = vi.fn(async () => undefined);
         send = mocks.send;
         work = mocks.work;
+        stop = mocks.stop;
     },
 }));
 
@@ -45,7 +47,7 @@ vi.mock("../db/client", () => ({
 
 vi.mock("../runs/executor", () => ({ executeRun: vi.fn() }));
 
-import { recoverOrphanedRuns, startRunWorker } from "./runQueue";
+import { recoverOrphanedRuns, startRunWorker, stopRunWorker } from "./runQueue";
 
 describe("run queue stale claims", () => {
     beforeEach(() => {
@@ -56,6 +58,7 @@ describe("run queue stale claims", () => {
         mocks.updatePayloads.length = 0;
         mocks.send.mockReset();
         mocks.work.mockReset();
+        mocks.stop.mockReset();
     });
 
     it("clears stale V1 cell claims before re-enqueueing their runs", async () => {
@@ -147,5 +150,13 @@ describe("run queue stale claims", () => {
 
         expect(mocks.work).toHaveBeenCalledOnce();
         expect(mocks.send).toHaveBeenCalledWith("eval-run", { runId: "run-2" });
+
+        await expect(stopRunWorker(1_500)).resolves.toEqual({
+            remainingInFlight: 0,
+        });
+        expect(mocks.stop).toHaveBeenCalledWith({
+            graceful: true,
+            timeout: 1_500,
+        });
     });
 });

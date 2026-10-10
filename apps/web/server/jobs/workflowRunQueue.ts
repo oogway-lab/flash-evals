@@ -4,23 +4,33 @@ import { db } from "../db/client";
 import { workflowRunCells, workflowRuns } from "../db/schema";
 import { executeWorkflowRun } from "../workflowRuns/executor";
 import { parseStaleClaimMs } from "./claimLease";
+import { logWorkerEvent, safeWorkerError } from "./workerObservability";
+import { WORKFLOW_RUN_QUEUE } from "./queueNames";
 
-export const WORKFLOW_RUN_QUEUE = "workflow-run";
+export { WORKFLOW_RUN_QUEUE } from "./queueNames";
 interface IWorkflowRunJob {
     workflowRunId: string;
 }
 const staleClaimMs = parseStaleClaimMs(process.env.WORKFLOW_STALE_CLAIM_MS);
 let boss: PgBoss | undefined;
 let workerStarted = false;
+let stopping = false;
+let recoveryTimer: ReturnType<typeof setInterval> | undefined;
+let recoveryInFlight: Promise<void> | undefined;
+let stopPromise: Promise<{ remainingInFlight: number }> | undefined;
+let activeJobs = 0;
 
 async function getBoss() {
     if (!boss) {
         const url = process.env.DATABASE_URL;
         if (!url) throw new Error("DATABASE_URL is not set");
         boss = new PgBoss({ connectionString: url, max: 2 });
-        boss.on("error", (error) =>
-            console.error("workflow pg-boss error:", error),
-        );
+        boss.on("error", (error) => {
+            logWorkerEvent("error", "queue.error", {
+                queue: WORKFLOW_RUN_QUEUE,
+                ...safeWorkerError(error),
+            });
+        });
         await boss.start();
         await boss.createQueue(WORKFLOW_RUN_QUEUE);
     }
@@ -41,6 +51,7 @@ export async function enqueueWorkflowRun(workflowRunId: string) {
 }
 
 export async function recoverOrphanedWorkflowRuns() {
+    if (stopping) return;
     const cutoff = new Date(Date.now() - staleClaimMs);
     const stuck = await db
         .selectDistinct({ id: workflowRuns.id })
@@ -79,10 +90,16 @@ export async function recoverOrphanedWorkflowRuns() {
         .set({ status: "pending" })
         .where(inArray(workflowRuns.id, ids));
     for (const id of ids) await enqueueWorkflowRun(id);
+    logWorkerEvent("warn", "recovery.completed", {
+        queue: WORKFLOW_RUN_QUEUE,
+        recoveredCount: ids.length,
+    });
 }
 
 export async function startWorkflowRunWorker() {
     if (workerStarted) return;
+    stopping = false;
+    stopPromise = undefined;
     workerStarted = true;
     try {
         await recoverOrphanedWorkflowRuns();
@@ -93,23 +110,37 @@ export async function startWorkflowRunWorker() {
             { includeMetadata: true },
             async (jobs) => {
                 for (const job of jobs) {
+                    const startedAt = Date.now();
+                    activeJobs += 1;
+                    logWorkerEvent("info", "job.started", {
+                        queue: WORKFLOW_RUN_QUEUE,
+                        workflowRunId: job.data.workflowRunId,
+                        jobId: job.id,
+                        retryCount: job.retryCount,
+                        retryLimit: job.retryLimit,
+                    });
                     const heartbeat = startClaimHeartbeat(
                         job.data.workflowRunId,
                     );
                     try {
                         await executeWorkflowRun(job.data.workflowRunId);
                     } catch (error) {
+                        logWorkerEvent("error", "job.failed", {
+                            queue: WORKFLOW_RUN_QUEUE,
+                            workflowRunId: job.data.workflowRunId,
+                            jobId: job.id,
+                            retryCount: job.retryCount,
+                            retryLimit: job.retryLimit,
+                            durationMs: Date.now() - startedAt,
+                            ...safeWorkerError(error),
+                        });
                         if (job.retryCount >= job.retryLimit) {
-                            const message =
-                                error instanceof Error
-                                    ? error.message
-                                    : String(error);
                             await db
                                 .update(workflowRunCells)
                                 .set({
                                     status: "failed",
                                     claimedAt: null,
-                                    error: `Workflow worker exhausted retries: ${message}`,
+                                    error: "Workflow worker exhausted retries.",
                                 })
                                 .where(
                                     and(
@@ -129,15 +160,34 @@ export async function startWorkflowRunWorker() {
                                 .where(
                                     eq(workflowRuns.id, job.data.workflowRunId),
                                 );
+                            logWorkerEvent("error", "job.retries_exhausted", {
+                                queue: WORKFLOW_RUN_QUEUE,
+                                workflowRunId: job.data.workflowRunId,
+                                jobId: job.id,
+                                retryCount: job.retryCount,
+                                retryLimit: job.retryLimit,
+                                durationMs: Date.now() - startedAt,
+                                ...safeWorkerError(error),
+                            });
                         }
                         throw error;
                     } finally {
                         clearInterval(heartbeat);
+                        activeJobs -= 1;
                     }
+                    logWorkerEvent("info", "job.completed", {
+                        queue: WORKFLOW_RUN_QUEUE,
+                        workflowRunId: job.data.workflowRunId,
+                        jobId: job.id,
+                        durationMs: Date.now() - startedAt,
+                    });
                 }
             },
         );
         startRecoverySweep();
+        logWorkerEvent("info", "worker.queue_ready", {
+            queue: WORKFLOW_RUN_QUEUE,
+        });
     } catch (error) {
         workerStarted = false;
         throw error;
@@ -159,10 +209,11 @@ function startClaimHeartbeat(
                     ),
                 )
                 .catch((error) =>
-                    console.error(
-                        `workflow run ${workflowRunId} claim heartbeat failed:`,
-                        error,
-                    ),
+                    logWorkerEvent("error", "claim_heartbeat.failed", {
+                        queue: WORKFLOW_RUN_QUEUE,
+                        workflowRunId,
+                        ...safeWorkerError(error),
+                    }),
                 );
         },
         Math.max(10_000, Math.floor(staleClaimMs / 3)),
@@ -172,23 +223,45 @@ function startClaimHeartbeat(
 }
 
 function startRecoverySweep(): void {
-    let active = false;
-    const timer = setInterval(
+    if (recoveryTimer) clearInterval(recoveryTimer);
+    recoveryTimer = setInterval(
         () => {
-            if (active) return;
-            active = true;
-            void recoverOrphanedWorkflowRuns()
-                .catch((error) =>
-                    console.error(
-                        "workflow stale-claim recovery failed:",
-                        error,
-                    ),
-                )
+            if (stopping || recoveryInFlight) return;
+            const current = recoverOrphanedWorkflowRuns()
+                .catch((error) => {
+                    logWorkerEvent("error", "recovery.failed", {
+                        queue: WORKFLOW_RUN_QUEUE,
+                        ...safeWorkerError(error),
+                    });
+                })
                 .finally(() => {
-                    active = false;
+                    if (recoveryInFlight === current)
+                        recoveryInFlight = undefined;
                 });
+            recoveryInFlight = current;
         },
         Math.max(10_000, Math.floor(staleClaimMs / 3)),
     );
-    timer.unref();
+    recoveryTimer.unref();
+}
+
+export async function stopWorkflowRunWorker(
+    timeoutMs = 20_000,
+): Promise<{ remainingInFlight: number }> {
+    if (stopPromise) return stopPromise;
+    stopping = true;
+    if (recoveryTimer) clearInterval(recoveryTimer);
+    recoveryTimer = undefined;
+    const instance = boss;
+    boss = undefined;
+    workerStarted = false;
+
+    stopPromise = (async () => {
+        await recoveryInFlight;
+        if (instance) {
+            await instance.stop({ graceful: true, timeout: timeoutMs });
+        }
+        return { remainingInFlight: activeJobs };
+    })();
+    return stopPromise;
 }

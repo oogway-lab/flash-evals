@@ -51,7 +51,8 @@ command for the local walkthrough.
 
 The worker needs database and provider access. It does not execute jobs through
 the web server. An API health response alone does not verify that a worker is
-running or can call a provider.
+running or can call a provider. Use the private `pnpm worker:status` command and
+the process supervisor; see the [worker operations runbook](worker-operations.md).
 
 ## Model providers
 
@@ -140,6 +141,7 @@ local tokens, production OAuth, and `MOSAIC_MCP_ALLOWED_ORIGINS`.
 | `EVAL_CONCURRENCY`                  | 5 for eval runs; 4 for workflows | Parallel cells within a run; minimum 1.                                                        |
 | `RUN_STALE_CLAIM_MS`                | 900000                           | Reclaim timeout for interrupted eval cells; minimum 60000.                                     |
 | `WORKFLOW_STALE_CLAIM_MS`           | 900000                           | Reclaim timeout for interrupted workflow cells; minimum 60000.                                 |
+| `MOSAIC_WORKER_DRAIN_TIMEOUT_MS`    | 20000                            | Bounded SIGTERM/SIGINT drain window in ms; minimum 1000, maximum 300000.                       |
 
 Set a rate limit to `0` only when you intentionally want it disabled. Spend
 checks use recorded costs and do not reserve funds for in-flight work. Treat

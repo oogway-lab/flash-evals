@@ -4,8 +4,10 @@ import { db } from "../db/client";
 import { runs, runCells } from "../db/schema";
 import { executeRun } from "../runs/executor";
 import { parseStaleClaimMs } from "./claimLease";
+import { logWorkerEvent, safeWorkerError } from "./workerObservability";
+import { RUN_QUEUE } from "./queueNames";
 
-export const RUN_QUEUE = "eval-run";
+export { RUN_QUEUE } from "./queueNames";
 
 interface RunJob {
     runId: string;
@@ -13,6 +15,11 @@ interface RunJob {
 
 let boss: PgBoss | undefined;
 let workerStarted = false;
+let stopping = false;
+let recoveryTimer: ReturnType<typeof setInterval> | undefined;
+let recoveryInFlight: Promise<void> | undefined;
+let stopPromise: Promise<{ remainingInFlight: number }> | undefined;
+let activeJobs = 0;
 const staleClaimMs = parseStaleClaimMs(process.env.RUN_STALE_CLAIM_MS);
 
 async function getBoss(): Promise<PgBoss> {
@@ -20,7 +27,12 @@ async function getBoss(): Promise<PgBoss> {
         const url = process.env.DATABASE_URL;
         if (!url) throw new Error("DATABASE_URL is not set");
         const instance = new PgBoss({ connectionString: url, max: 2 });
-        instance.on("error", (e) => console.error("pg-boss error:", e));
+        instance.on("error", (error) => {
+            logWorkerEvent("error", "queue.error", {
+                queue: RUN_QUEUE,
+                ...safeWorkerError(error),
+            });
+        });
         await instance.start();
         await instance.createQueue(RUN_QUEUE);
         boss = instance;
@@ -35,23 +47,54 @@ export async function enqueueRun(runId: string): Promise<void> {
 
 export async function startRunWorker(): Promise<void> {
     if (workerStarted) return;
+    stopping = false;
+    stopPromise = undefined;
     workerStarted = true;
     try {
         await recoverOrphanedRuns();
         const b = await getBoss();
-        await b.work<RunJob>(RUN_QUEUE, async (jobs) => {
-            for (const job of jobs) {
-                const heartbeat = startClaimHeartbeat(job.data.runId);
-                try {
-                    await executeRun(job.data.runId);
-                } catch (err) {
-                    console.error(`run ${job.data.runId} failed:`, err);
-                } finally {
-                    clearInterval(heartbeat);
+        await b.work<RunJob>(
+            RUN_QUEUE,
+            { includeMetadata: true },
+            async (jobs) => {
+                for (const job of jobs) {
+                    const startedAt = Date.now();
+                    activeJobs += 1;
+                    logWorkerEvent("info", "job.started", {
+                        queue: RUN_QUEUE,
+                        runId: job.data.runId,
+                        jobId: job.id,
+                        retryCount: job.retryCount,
+                        retryLimit: job.retryLimit,
+                    });
+                    const heartbeat = startClaimHeartbeat(job.data.runId);
+                    try {
+                        await executeRun(job.data.runId);
+                        logWorkerEvent("info", "job.completed", {
+                            queue: RUN_QUEUE,
+                            runId: job.data.runId,
+                            jobId: job.id,
+                            durationMs: Date.now() - startedAt,
+                        });
+                    } catch (error) {
+                        logWorkerEvent("error", "job.failed", {
+                            queue: RUN_QUEUE,
+                            runId: job.data.runId,
+                            jobId: job.id,
+                            retryCount: job.retryCount,
+                            retryLimit: job.retryLimit,
+                            durationMs: Date.now() - startedAt,
+                            ...safeWorkerError(error),
+                        });
+                    } finally {
+                        clearInterval(heartbeat);
+                        activeJobs -= 1;
+                    }
                 }
-            }
-        });
+            },
+        );
         startRecoverySweep();
+        logWorkerEvent("info", "worker.queue_ready", { queue: RUN_QUEUE });
     } catch (error) {
         workerStarted = false;
         throw error;
@@ -59,22 +102,47 @@ export async function startRunWorker(): Promise<void> {
 }
 
 function startRecoverySweep(): void {
-    let active = false;
-    const timer = setInterval(
+    if (recoveryTimer) clearInterval(recoveryTimer);
+    recoveryTimer = setInterval(
         () => {
-            if (active) return;
-            active = true;
-            void recoverOrphanedRuns()
-                .catch((error) =>
-                    console.error("run stale-claim recovery failed:", error),
-                )
+            if (stopping || recoveryInFlight) return;
+            const current = recoverOrphanedRuns()
+                .catch((error) => {
+                    logWorkerEvent("error", "recovery.failed", {
+                        queue: RUN_QUEUE,
+                        ...safeWorkerError(error),
+                    });
+                })
                 .finally(() => {
-                    active = false;
+                    if (recoveryInFlight === current)
+                        recoveryInFlight = undefined;
                 });
+            recoveryInFlight = current;
         },
         Math.max(10_000, Math.floor(staleClaimMs / 3)),
     );
-    timer.unref();
+    recoveryTimer.unref();
+}
+
+export async function stopRunWorker(
+    timeoutMs = 20_000,
+): Promise<{ remainingInFlight: number }> {
+    if (stopPromise) return stopPromise;
+    stopping = true;
+    if (recoveryTimer) clearInterval(recoveryTimer);
+    recoveryTimer = undefined;
+    const instance = boss;
+    boss = undefined;
+    workerStarted = false;
+
+    stopPromise = (async () => {
+        await recoveryInFlight;
+        if (instance) {
+            await instance.stop({ graceful: true, timeout: timeoutMs });
+        }
+        return { remainingInFlight: activeJobs };
+    })();
+    return stopPromise;
 }
 
 function startClaimHeartbeat(runId: string): ReturnType<typeof setInterval> {
@@ -85,10 +153,11 @@ function startClaimHeartbeat(runId: string): ReturnType<typeof setInterval> {
                 .set({ claimedAt: new Date() })
                 .where(eq(runCells.runId, runId))
                 .catch((error) =>
-                    console.error(
-                        `run ${runId} claim heartbeat failed:`,
-                        error,
-                    ),
+                    logWorkerEvent("error", "claim_heartbeat.failed", {
+                        queue: RUN_QUEUE,
+                        runId,
+                        ...safeWorkerError(error),
+                    }),
                 );
         },
         Math.max(10_000, Math.floor(staleClaimMs / 3)),
@@ -98,6 +167,7 @@ function startClaimHeartbeat(runId: string): ReturnType<typeof setInterval> {
 }
 
 export async function recoverOrphanedRuns(nowMs = Date.now()): Promise<void> {
+    if (stopping) return;
     const cutoff = new Date(nowMs - staleClaimMs);
     const rows = await db
         .select({
@@ -133,7 +203,10 @@ export async function recoverOrphanedRuns(nowMs = Date.now()): Promise<void> {
         .set({ status: "pending" })
         .where(inArray(runs.id, ids));
     for (const id of ids) await enqueueRun(id);
-    console.info(`recovered ${ids.length} orphaned run(s)`);
+    logWorkerEvent("warn", "recovery.completed", {
+        queue: RUN_QUEUE,
+        recoveredCount: ids.length,
+    });
 }
 
 function shouldRecoverRun(
