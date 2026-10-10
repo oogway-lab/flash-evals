@@ -1,0 +1,20 @@
+---
+// Model ids break only after the provider slash, never inside the name.
+interface Props {
+    id: string;
+}
+
+const [provider, ...rest] = Astro.props.id.split("/");
+const name = rest.join("/");
+---
+
+{
+    name ? (
+        <span class="model-id">
+            {provider}/<wbr />
+            <span class="nw">{name}</span>
+        </span>
+    ) : (
+        <span class="nw">{provider}</span>
+    )
+}

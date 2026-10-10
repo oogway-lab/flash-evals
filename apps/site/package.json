@@ -1,0 +1,22 @@
+{
+    "name": "@mosaic/site",
+    "version": "0.0.0",
+    "private": true,
+    "description": "The flashevals.dev marketing site.",
+    "license": "AGPL-3.0-only",
+    "type": "module",
+    "scripts": {
+        "dev": "astro dev --port 4321",
+        "build": "astro build",
+        "preview": "astro build && wrangler dev --port 4322",
+        "deploy": "astro build && wrangler deploy"
+    },
+    "dependencies": {
+        "@fontsource-variable/geist": "5.3.0",
+        "@fontsource-variable/martian-mono": "5.3.0",
+        "astro": "7.3.4"
+    },
+    "devDependencies": {
+        "wrangler": "^4.147.0"
+    }
+}

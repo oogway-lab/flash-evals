@@ -1,0 +1,499 @@
+---
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import DoubleWidth from "../components/DoubleWidth.astro";
+import ModelId from "../components/ModelId.astro";
+import { code128B } from "../lib/code128";
+import {
+    CLONE_COMMAND,
+    DOCS_URL,
+    MCP_DOCS_URL,
+    REPO_URL,
+    STT_DOCS_URL,
+    agentCalls,
+    audio,
+    installSteps,
+    item,
+    leaderboard,
+    lineItems,
+    responses,
+} from "../lib/content";
+
+const title = "Flash Evals: pick your model on your data";
+const description =
+    "Flash Evals is a self-hosted, open-source workbench that runs your own text, image, and audio examples through competing models and keeps every input, output, score, latency, and cost on one record.";
+
+const printedAt = new Date().toISOString().slice(0, 16).replace("T", " ");
+
+// Footer barcode: real Code 128, so a scanner reads the domain.
+const modules = code128B("flashevals.dev");
+let x = 10;
+const bars: { x: number; w: number }[] = [];
+modules.forEach((width, index) => {
+    if (index % 2 === 0) bars.push({ x, w: width });
+    x += width;
+});
+const barcodeWidth = x + 10;
+
+// Printed waveform for the audio item: deterministic, two speaker turns.
+const waveBars = Array.from({ length: 112 }, (_, i) => {
+    const turnGap = i > 50 && i < 56;
+    const envelope = turnGap ? 0.06 : 0.35 + 0.65 * Math.abs(Math.sin(i * 0.21));
+    const jitter = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+    const h = Math.max(2, Math.round((0.25 + 0.75 * jitter) * envelope * 30) * 2);
+    return { x: i * 5, h };
+});
+
+const stampTilts = ["-7deg", "5deg", "-4deg"];
+let stampIndex = 0;
+---
+
+<Base title={title} description={description}>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="topbar">
+        <a class="wordmark" href="/" aria-label="Flash Evals home">Flash Evals</a>
+        <nav aria-label="Primary">
+            <a href="#run">How it works</a>
+            <a href="#audio">Audio</a>
+            <a href="#agents">Agents</a>
+            <a href="#self-host" class="keep">Self-host</a>
+            <a href={REPO_URL} class="keep">GitHub</a>
+        </nav>
+    </header>
+
+    <main id="main" class="roll">
+        <!-- Masthead -->
+        <section class="seg mast" aria-labelledby="hero-title">
+            <span class="ln center brand" style="--i:0"><DoubleWidth text="FLASH EVALS" /></span>
+            <span class="ln center soft" style="--i:1">Self-hosted model evaluation</span>
+            <span class="ln center soft" style="--i:2">flashevals.dev · AGPL-3.0-only · early alpha</span>
+            <span class="ln stars" style="--i:3" aria-hidden="true"></span>
+            <span class="ln meta" style="--i:4">
+                <span>RUN 0412 · receipts-v3</span>
+                <span data-clock>{printedAt}</span>
+            </span>
+
+            <h1 id="hero-title" class="ln" style="--i:5">
+                Pick your model on your data. Keep the receipts.
+            </h1>
+            <p class="ln pitch" style="--i:6">
+                Flash Evals runs your own text, image, and audio examples through
+                competing models, and keeps every input, output, score, latency, and
+                cost on the same record. See which one wins, and exactly why.
+            </p>
+
+            <div class="ln" style="--i:7">
+                <div class="clone">
+                    <code><span class="prompt">$ </span>{CLONE_COMMAND.split("/").map((part, i) => (<>{i > 0 && <>/<wbr /></>}{part}</>))}</code>
+                    <button class="tab" type="button" data-copy={CLONE_COMMAND}>
+                        <Icon name="copy" />
+                        <span class="idle">Copy</span>
+                        <span class="done">Copied</span>
+                    </button>
+                </div>
+                <div class="next">
+                    <a href={DOCS_URL}>Read the setup guide <Icon name="arrow" /></a>
+                    <a href={REPO_URL}>View the source <Icon name="arrow" /></a>
+                </div>
+            </div>
+
+            <aside class="note">
+                <p><b>What this is.</b> An open-source workbench you run yourself. Your data goes only to
+                    the model providers you choose, with your own keys.
+                </p>
+            </aside>
+        </section>
+
+        <!-- One item, three models -->
+        <section class="seg run" id="run" aria-labelledby="run-title" data-run>
+            <h2 class="sec-title develop" id="run-title">
+                <DoubleWidth text={`Item ${item.number} / ${item.total}`} />
+                <span class="soft">illustrative run</span>
+            </h2>
+            <p class="sec-lede develop">
+                A run sends every example in your dataset to every model you pick.
+                Here is one receipt-extraction item going to three of them.
+            </p>
+
+            <div class="input develop">
+                <figure class="photo">
+                    <div class="slip" aria-hidden="true">
+                        <b>{item.merchant.toUpperCase()}</b>
+                        <span class="lead"><span>OAT MILK</span><span class="fill"></span><span>3.49</span></span>
+                        <span class="lead"><span>SOURDOUGH</span><span class="fill"></span><span>6.20</span></span>
+                        <span class="lead"><span>EGGS x12</span><span class="fill"></span><span>5.80</span></span>
+                        <span class="lead"><span>COFFEE</span><span class="fill"></span><span>14.99</span></span>
+                        <span class="lead"><span>APPLES</span><span class="fill"></span><span>4.12</span></span>
+                        <span class="lead"><span>RICE</span><span class="fill"></span><span>3.37</span></span>
+                        <span class="lead"><span>TAX</span><span class="fill"></span><span>3.12</span></span>
+                        <span class="lead"><b>TOTAL</b><span class="fill"></span><b>41.09</b></span>
+                    </div>
+                    <figcaption>{item.file}</figcaption>
+                </figure>
+                <div class="ref">
+                    <span class="ln caps soft">Reference label</span>
+                    {
+                        item.reference.map((f) => (
+                            <span class="lead">
+                                <span>{f.name}</span>
+                                <span class="fill" />
+                                <span>{f.value}</span>
+                            </span>
+                        ))
+                    }
+                </div>
+            </div>
+
+            <div class="responses-head develop">
+                <span class="caps">Responses, printed as they arrive</span>
+                <button class="replay" type="button" data-replay hidden>
+                    <Icon name="replay" /> Rerun
+                </button>
+            </div>
+
+            {
+                responses.map((r) => {
+                    const correct = r.fields.filter((f) => !f.expected).length;
+                    return (
+                        <article class="resp" data-latency={r.latencyMs}>
+                            <div class="resp-head">
+                                <span class="code">{r.code}</span>
+                                <span class="model"><ModelId id={r.model} /></span>
+                                <span class="elapsed" data-elapsed>
+                                    {r.latencyMs} ms
+                                </span>
+                            </div>
+                            <ul class="fields">
+                                {r.fields.map((f, i) => (
+                                    <li
+                                        class:list={["field", { miss: f.expected }]}
+                                        style={`--i:${i}`}
+                                    >
+                                        <Icon
+                                            class="mark"
+                                            name={f.expected ? "cross" : "tick"}
+                                            label={f.expected ? "Mismatch" : "Match"}
+                                        />
+                                        <span>{f.name}</span>
+                                        <span class="got">{f.got}</span>
+                                        {f.expected && (
+                                            <span class="exp">expected {f.expected}</span>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
+                            <div class="resp-sum" style={`--i:${r.fields.length}`}>
+                                <span>
+                                    Fields {correct}/{r.fields.length}
+                                </span>
+                                <span>{(r.latencyMs / 1000).toFixed(2)} s</span>
+                                <span>${r.cost} est.</span>
+                            </div>
+                        </article>
+                    );
+                })
+            }
+
+            <aside class="note right">
+                <p><b>Field-level diffs.</b> Structured answers are checked field by field against your
+                    reference labels, so a transposed digit is a visible miss, not a
+                    vague "worse".
+                </p>
+            </aside>
+        </section>
+
+        <!-- Subtotal: the leaderboard -->
+        <section class="seg" aria-labelledby="sub-title">
+            <h2 class="sec-title develop" id="sub-title">
+                <DoubleWidth text={`Subtotal · ${item.total} items`} />
+                <span class="soft">illustrative</span>
+            </h2>
+            <p class="sec-lede develop">
+                Every cell rolls up into a per-model leaderboard: quality, latency,
+                and estimated cost side by side, with failures counted, not hidden.
+            </p>
+
+            <table class="board develop" data-board>
+                <caption class="visually-hidden">
+                    Illustrative leaderboard for a 240-item receipt extraction run
+                </caption>
+                <thead>
+                    <tr>
+                        <th scope="col"><span class="visually-hidden">Code</span></th>
+                        <th scope="col">Model</th>
+                        <th scope="col">Fields</th>
+                        <th scope="col">p50</th>
+                        <th scope="col">$/1k</th>
+                        <th scope="col"><span class="visually-hidden">Verdict</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {
+                        leaderboard.map((row) => (
+                            <tr>
+                                <td>
+                                    <span class="code">{row.code}</span>
+                                </td>
+                                <td class="model">
+                                    <ModelId id={row.model} />
+                                    {row.failures && (
+                                        <span class="fail">
+                                            <Icon name="cross" /> {row.failures}
+                                        </span>
+                                    )}
+                                </td>
+                                <td data-label="Fields">{row.accuracy}</td>
+                                <td data-label="p50">{row.p50}</td>
+                                <td data-label="$/1k">{row.costPer1k}</td>
+                                <td class="verdict">
+                                    {row.stamp && (
+                                        <span
+                                            class="stamp"
+                                            style={`--tilt:${stampTilts[stampIndex]};--i:${stampIndex++}`}
+                                        >
+                                            {row.stamp}
+                                        </span>
+                                    )}
+                                </td>
+                            </tr>
+                        ))
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="6">
+                            Estimated spend for this run: $1.23 · 3 failed cells kept for
+                            review
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <aside class="note">
+                <p><b>Reading the bill.</b> In this example, flash-lite trails by 3.7 points at about a
+                    thirteenth of the cost. Whether that's worth it is your call. Now
+                    it's a call you can show your working for.
+                </p>
+            </aside>
+        </section>
+
+        <!-- Line items -->
+        <section class="seg" aria-labelledby="items-title">
+            <h2 class="sec-title develop" id="items-title">
+                <DoubleWidth text={`On this bill`} />
+                <span class="soft">qty · item</span>
+            </h2>
+            <ul class="items">
+                {
+                    lineItems.map((li) => (
+                        <li class="develop">
+                            <span class="qty">{li.qty === "1" ? "" : li.qty}</span>
+                            <span class="name">{li.item}</span>
+                            <span class="what">{li.note}</span>
+                        </li>
+                    ))
+                }
+            </ul>
+        </section>
+
+        <!-- Audio -->
+        <section class="seg" id="audio" aria-labelledby="audio-title">
+            <h2 class="sec-title develop" id="audio-title">
+                <DoubleWidth text={`Audio · item ${audio.item}`} />
+                <span class="soft">{audio.language} · {audio.duration}</span>
+            </h2>
+            <p class="sec-lede develop">
+                Speech-to-text runs score transcripts against your reference, compare
+                up to six config variants, and check speaker turns where the provider
+                supports them.
+            </p>
+
+            <svg
+                class="wave develop"
+                viewBox={`0 0 ${112 * 5} 64`}
+                preserveAspectRatio="none"
+                role="img"
+                aria-label={`Waveform of ${audio.file}, two speakers`}
+            >
+                {
+                    waveBars.map((b) => (
+                        <rect x={b.x} y={32 - b.h / 2} width="3" height={b.h} fill="currentColor" />
+                    ))
+                }
+            </svg>
+            <div class="speakers develop" aria-hidden="true">
+                <span style="width:45%">Speaker 1</span>
+                <span style="flex:1">Speaker 2</span>
+            </div>
+
+            <div class="transcript">
+                <div class="develop">
+                    <span class="ln caps soft">Reference</span>
+                    <p class="words">{audio.reference}</p>
+                </div>
+                {
+                    audio.variants.map((v) => (
+                        <div class="variant develop">
+                            <div class="resp-head">
+                                <span class="code">{v.code}</span>
+                                <span class="model">{v.label}</span>
+                            </div>
+                            <p class="words">
+                                {v.words.map((word, i) => (
+                                    <>
+                                        {i > 0 && " "}
+                                        {word.mark === "sub" ? (
+                                            <span class="sub" title={`reference: ${word.ref}`}>
+                                                {word.w}
+                                            </span>
+                                        ) : word.mark === "miss" ? (
+                                            <del class="miss">{word.w}</del>
+                                        ) : (
+                                            word.w
+                                        )}
+                                    </>
+                                ))}
+                            </p>
+                            <div class="resp-sum">
+                                <span>Transcript {v.accuracy}</span>
+                                <span>Speakers {v.speakers}</span>
+                            </div>
+                        </div>
+                    ))
+                }
+            </div>
+
+            <div class="judge develop">
+                <span>Judge · OTP leakage</span>
+                <span class="flag">Flagged in A, B, C</span>
+            </div>
+
+            <aside class="note right">
+                <p><b>Your rubric, too.</b> Judges run even without a gold label, so checks like "did the
+                    transcript leak a one-time code" sit next to accuracy.
+                </p>
+                <p><a href={STT_DOCS_URL}>Speech-to-text guide</a></p>
+            </aside>
+        </section>
+
+        <!-- Agent copy -->
+        <section class="seg" id="agents" aria-labelledby="agents-title">
+            <h2 class="copy-banner develop" id="agents-title"><DoubleWidth text="AGENT COPY" /></h2>
+            <p class="sec-lede develop">
+                The built-in MCP server gives an agent the same datasets, prompts,
+                runs, and review notes as the web app. Same API logic, same data.
+            </p>
+            <ol class="calls">
+                {
+                    agentCalls.map((c) => (
+                        <li class="develop">
+                            <Icon name="dot" />
+                            <span class="tool">{c.tool}</span>
+                            <span class="fill" />
+                            <span class="res">{c.result}</span>
+                        </li>
+                    ))
+                }
+            </ol>
+            <div class="endpoint develop">
+                <span class="soft">POST</span> http://127.0.0.1:3001/mcp · Streamable HTTP
+            </div>
+
+            <aside class="note">
+                <p><b>Worth knowing.</b> MCP can change and delete data. Its confirm flags come from the
+                    client; they are not a human approval screen.
+                </p>
+                <p><a href={MCP_DOCS_URL}>MCP guide</a></p>
+            </aside>
+        </section>
+
+        <!-- Self-host -->
+        <section class="seg" id="self-host" aria-labelledby="host-title">
+            <h2 class="sec-title develop" id="host-title">
+                <DoubleWidth text={`Run it yourself`} />
+                <span class="soft">about ten minutes</span>
+            </h2>
+            <p class="sec-lede develop">
+                Clone it, start PostgreSQL, seed the synthetic examples, and open
+                localhost:3000. No account or provider key is needed to look around.
+            </p>
+
+            <div class="steps-bar develop">
+                <span class="caps soft">Node 24.21.0 · pnpm 12.6.0 · Docker Compose v2</span>
+                <button class="tab" type="button" data-copy={installSteps.join("\n")}>
+                    <Icon name="copy" />
+                    <span class="idle">Copy all</span>
+                    <span class="done">Copied</span>
+                </button>
+            </div>
+            <ol class="steps develop">
+                {installSteps.map((s) => <li><code>{s}</code></li>)}
+            </ol>
+            <div class="warn develop">
+                <Icon name="cross" />
+                <span>The seed resets application tables. Point it at a disposable database.</span>
+            </div>
+            <p class="needs develop soft">
+                Add a provider key (OPENROUTER_API_KEY by default) to make real model
+                calls. Runs, judges, and prompt tests can incur provider charges.
+            </p>
+        </section>
+
+        <!-- Totals -->
+        <section class="seg totals" aria-labelledby="totals-title">
+            <h2 class="visually-hidden" id="totals-title">Terms</h2>
+            <span class="lead develop"><span>License</span><span class="fill"></span><span>AGPL-3.0-only</span></span>
+            <span class="lead develop"><span>Hosting</span><span class="fill"></span><span>Your machine</span></span>
+            <span class="lead develop"><span>Model calls</span><span class="fill"></span><span>Your keys</span></span>
+            <span class="lead develop"><span>Cost figures</span><span class="fill"></span><span>Estimates</span></span>
+            <span class="lead develop"><span>Status</span><span class="fill"></span><span>Early alpha</span></span>
+            <span class="lead develop grand"><DoubleWidth text="TOTAL DUE TO US" /><span class="fill"></span><span>0.00</span></span>
+
+            <svg
+                class="barcode develop"
+                viewBox={`0 0 ${barcodeWidth} 60`}
+                preserveAspectRatio="none"
+                role="img"
+                aria-label="Barcode encoding flashevals.dev"
+            >
+                {bars.map((b) => <rect x={b.x} y="0" width={b.w} height="60" fill="currentColor" />)}
+            </svg>
+            <span class="ln center soft develop">flashevals.dev</span>
+            <span class="ln center thanks develop"><DoubleWidth text="THANK YOU" /></span>
+            <span class="ln center develop">for evaluating</span>
+            <span class="ln center soft develop">Please keep this receipt</span>
+            <span class="end-stripe" aria-hidden="true"></span>
+        </section>
+    </main>
+
+    <footer class="site-foot">
+        <ul>
+            <li><a href={REPO_URL}>GitHub</a></li>
+            <li><a href={DOCS_URL}>Getting started</a></li>
+            <li><a href={`${REPO_URL}/blob/main/CONCEPTS.md`}>Concepts</a></li>
+            <li><a href={`${REPO_URL}/blob/main/SECURITY.md`}>Security</a></li>
+            <li><a href={`${REPO_URL}/blob/main/LICENSE`}>License</a></li>
+        </ul>
+        <p>© 2026 Oogway Labs Private Limited. Demo runs on this page are illustrative, not benchmarks.</p>
+    </footer>
+
+    <div class="printer" role="region" aria-label="Get Flash Evals">
+        <div class="panel">
+            <div class="lcd" aria-hidden="true">
+                <span class="led"></span>
+                <span data-lcd>Ready · git clone flash-evals</span>
+            </div>
+            <button class="feed" type="button" data-copy={CLONE_COMMAND}>
+                <Icon name="copy" />
+                <span class="idle">Copy clone command</span>
+                <span class="done">Copied to clipboard</span>
+            </button>
+            <a class="gh" href={REPO_URL}>GitHub</a>
+        </div>
+    </div>
+
+    <script>
+        import "../scripts/site";
+    </script>
+</Base>

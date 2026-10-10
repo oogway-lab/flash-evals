@@ -1,0 +1,14 @@
+---
+// Thermal "double width" print mode: a condensed mono glyph stretched 2× on
+// the horizontal axis only. Mono advance is fixed, so the box is n × 2ch.
+interface Props {
+    text: string;
+    class?: string;
+}
+
+const { text, class: className } = Astro.props;
+---
+
+<span class:list={["dw", className]} style={`--n:${[...text].length}`}
+    ><span class="dw-ink">{text}</span></span
+>

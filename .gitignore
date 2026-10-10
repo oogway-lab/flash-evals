@@ -66,3 +66,7 @@ settings.local.json
 apps/web/scripts/current-db-data.sql
 
 .uploads/
+
+# Astro
+.astro/
+/.impeccable/

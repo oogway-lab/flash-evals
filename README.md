@@ -73,6 +73,7 @@ a non-Docker database, stopping and restarting, and setup troubleshooting.
 | Understand runs, workflows, and model routing         | [Concepts](CONCEPTS.md)                               |
 | Change the code and run checks                        | [Contributing](CONTRIBUTING.md)                       |
 | Understand data isolation and security reporting      | [Security policy](SECURITY.md)                        |
+| Work on or deploy the flashevals.dev website          | [Site README](apps/site/README.md)                    |
 
 ## Before using your own data
 
@@ -98,6 +99,7 @@ PostgreSQL and saves their results.
 | ----------------------- | -------------------------------------------------------- |
 | `apps/web`              | Web app, worker, database schema, and migrations         |
 | `apps/api`              | API, MCP server, storage, provider calls, and run queues |
+| `apps/site`             | The flashevals.dev marketing site (static Astro)         |
 | `packages/api-contract` | Shared API types and client                              |
 | `packages/llm-core`     | Model-provider transports and cost helpers               |
 | `packages/secrets`      | Provider-credential encryption helpers                   |
