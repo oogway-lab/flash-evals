@@ -18,19 +18,26 @@ built deployment can require a web rebuild. Never put secrets in those variables
 
 ## How environment files are loaded
 
-| Command                                                                       | Environment files                                                                 |
-| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `pnpm run api:dev` or `pnpm run api:start`                                    | `apps/api/.env`                                                                   |
-| `pnpm --filter @mosaic/web dev`                                               | Next.js environment loading from `apps/web`                                       |
-| `pnpm run worker`                                                             | `apps/api/.env`, then `apps/web/.env`                                             |
-| `pnpm run db:migrate`, `pnpm run db:bootstrap-pilot-team`, or `pnpm run seed` | `apps/api/.env`, then `apps/web/.env`                                             |
-| `pnpm run dev`                                                                | The files above, plus explicit local overrides                                    |
-| `pnpm run api:start:railway`                                                  | Process environment; starts API and worker unless `MOSAIC_API_START_WORKER=false` |
+| Command                                    | Environment files                                                                 |
+| ------------------------------------------ | --------------------------------------------------------------------------------- |
+| `pnpm run api:dev` or `pnpm run api:start` | `apps/api/.env`                                                                   |
+| `pnpm --filter @mosaic/web dev`            | Next.js environment loading from `apps/web`                                       |
+| `pnpm run worker`                          | `apps/api/.env`, then `apps/web/.env`                                             |
+| `pnpm run db:migrate` or `pnpm run seed`   | `apps/api/.env`, then `apps/web/.env`                                             |
+| `pnpm run db:bootstrap-pilot-team`         | `apps/api/.env` only                                                              |
+| `pnpm run dev`                             | The files above, plus explicit local overrides                                    |
+| `pnpm run api:start:railway`               | Process environment; starts API and worker unless `MOSAIC_API_START_WORKER=false` |
 
 Existing process environment variables override values read from files. For the
 worker and database commands, later env-file values override earlier file values;
 avoid duplicating API settings in the web file. Next.js also recognizes its own
 `.env.local` and environment-specific files, which can override `.env` values.
+
+The pilot team bootstrap deliberately loads only `apps/api/.env`, so
+`MOSAIC_DEFAULT_TEAM_ID` and `MOSAIC_DEFAULT_TEAM_NAME` come from the API
+environment and cannot be shadowed by blank or conflicting values in
+`apps/web/.env`. Values already present in the process environment still take
+precedence over the API env file.
 
 The combined development command supplies local API URLs, web CORS, and the
 seeded user/team IDs. It enables `MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS` on the API
@@ -59,9 +66,11 @@ the process supervisor; see the [worker operations runbook](worker-operations.md
 
 The Cloudflare web Worker reads `MOSAIC_WEB_DATABASE_URL` from its Worker
 environment. Set it as a Cloudflare secret using the shared Supabase transaction
-pooler URI copied from the Supabase Connect dialog (port 6543), including
-`sslmode=require`. This is the only additional web runtime secret needed for
-Postgres. Keep the Railway API and worker on their separate `DATABASE_URL`
+pooler URI copied from the Supabase Connect dialog (port 6543). The client
+removes URL TLS options and explicitly enables TLS with the bundled Supabase
+root CA and certificate hostname verification; a URI's `sslmode=require` cannot
+weaken that verification. This is the only additional web runtime secret needed
+for Postgres. Keep the Railway API and worker on their separate `DATABASE_URL`
 session-pooler URI (port 5432 for this deployment).
 
 This uses direct `pg` connections over Workers' supported `node:net` and
@@ -93,8 +102,9 @@ different team. This command does not run or reset migrations. Do not use
 `pnpm run seed` on a hosted database; that command truncates application tables.
 
 References: [Cloudflare's Worker PostgreSQL guide](https://developers.cloudflare.com/workers/tutorials/postgres/),
+[Cloudflare's `node:tls` guide](https://developers.cloudflare.com/workers/runtime-apis/nodejs/tls/),
 [OpenNext's database guide](https://opennext.js.org/cloudflare/howtos/db), and
-[Supabase's connection-mode guide](https://supabase.com/docs/guides/database/connecting-to-postgres).
+[Supabase's connection and SSL guide](https://supabase.com/docs/guides/database/connecting-to-postgres#ssl).
 
 For a split Railway topology, configure the API service with
 `pnpm run api:start:railway` and `MOSAIC_API_START_WORKER=false`; configure a

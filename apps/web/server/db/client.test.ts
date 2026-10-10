@@ -1,5 +1,8 @@
 import { sql } from "drizzle-orm";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SUPABASE_ROOT_CA } from "./supabase-ca";
 
 const state = vi.hoisted(() => ({
     context: undefined as
@@ -76,7 +79,10 @@ describe("web database client", () => {
     });
 
     it("uses a one-use pool bound to the current Worker request", async () => {
-        useCloudflareContext("postgres://web-request-one", {});
+        useCloudflareContext(
+            "postgres://db-user:db-password@pooler.example:6543/postgres?sslmode=require&application_name=web",
+            {},
+        );
         const { db } = await import("./client");
 
         await db.execute(sql.raw("SELECT 1"));
@@ -84,7 +90,9 @@ describe("web database client", () => {
 
         expect(state.pools).toHaveLength(1);
         expect(state.pools[0]?.options).toEqual({
-            connectionString: "postgres://web-request-one",
+            connectionString:
+                "postgres://db-user:db-password@pooler.example:6543/postgres?application_name=web",
+            ssl: { ca: SUPABASE_ROOT_CA, rejectUnauthorized: true },
             max: 1,
             maxUses: 1,
             idleTimeoutMillis: 0,
@@ -96,9 +104,18 @@ describe("web database client", () => {
 
         expect(state.pools).toHaveLength(2);
         expect(state.pools[1]?.options).toMatchObject({
-            connectionString: "postgres://web-request-two",
             maxUses: 1,
+            ssl: { ca: SUPABASE_ROOT_CA, rejectUnauthorized: true },
         });
+    });
+
+    it("uses the repository's Supabase root certificate for Worker TLS", async () => {
+        const certificate = await readFile(
+            resolve(process.cwd(), "config/supabase-root-2021-ca.pem"),
+            "utf8",
+        );
+
+        expect(SUPABASE_ROOT_CA.trim()).toBe(certificate.trim());
     });
 
     it("fails closed when a Worker request has no database binding", async () => {

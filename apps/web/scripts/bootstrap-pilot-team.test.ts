@@ -1,3 +1,7 @@
+import { spawnSync } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { bootstrapPilotTeam } from "./bootstrap-pilot-team";
 
@@ -14,6 +18,61 @@ function fakeClient(
 }
 
 describe("bootstrapPilotTeam", () => {
+    it.each([
+        ["blank", ""],
+        ["conflicting", "22222222-2222-4222-8222-222222222222"],
+    ])(
+        "uses the API team ID when the web .env has a %s value",
+        async (_caseName, webTeamId) => {
+            const packageJson = JSON.parse(
+                await readFile(
+                    path.join(process.cwd(), "package.json"),
+                    "utf8",
+                ),
+            ) as { scripts: Record<string, string> };
+            const envFileArgs =
+                packageJson.scripts["db:bootstrap-pilot-team"]?.match(
+                    /--env-file-if-exists=\S+/g,
+                ) ?? [];
+            expect(envFileArgs).toEqual(["--env-file-if-exists=../api/.env"]);
+
+            const directory = await mkdtemp(
+                path.join(os.tmpdir(), "pilot-bootstrap-env-"),
+            );
+            try {
+                const apiEnv = path.join(directory, "api.env");
+                const webEnv = path.join(directory, "web.env");
+                await writeFile(apiEnv, `MOSAIC_DEFAULT_TEAM_ID=${teamId}\n`);
+                await writeFile(
+                    webEnv,
+                    `MOSAIC_DEFAULT_TEAM_ID=${webTeamId}\n`,
+                );
+
+                const childEnv = { ...process.env };
+                delete childEnv.MOSAIC_DEFAULT_TEAM_ID;
+                const result = spawnSync(
+                    process.execPath,
+                    [
+                        `--env-file-if-exists=${apiEnv}`,
+                        "--input-type=module",
+                        "-e",
+                        "process.stdout.write(process.env.MOSAIC_DEFAULT_TEAM_ID ?? '')",
+                    ],
+                    { cwd: process.cwd(), env: childEnv, encoding: "utf8" },
+                );
+
+                expect(await readFile(webEnv, "utf8")).toContain(
+                    `MOSAIC_DEFAULT_TEAM_ID=${webTeamId}`,
+                );
+                expect(result.error).toBeUndefined();
+                expect(result.status).toBe(0);
+                expect(result.stdout).toBe(teamId);
+            } finally {
+                await rm(directory, { recursive: true, force: true });
+            }
+        },
+    );
+
     it("creates the configured team only when teams is empty", async () => {
         const client = fakeClient([
             { rows: [] },

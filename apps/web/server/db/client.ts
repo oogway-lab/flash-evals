@@ -1,11 +1,29 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { SUPABASE_ROOT_CA } from "./supabase-ca";
 import * as schema from "./schema";
 
 let pool: Pool | undefined;
 const cloudflarePools = new WeakMap<object, Pool>();
 const cloudflareContextKey = Symbol.for("__cloudflare-context__");
+
+function getVerifiedWorkerConnectionString(url: string): string {
+    const connectionUrl = new URL(url);
+    for (const parameter of [
+        "ssl",
+        "sslmode",
+        "sslrootcert",
+        "sslcert",
+        "sslkey",
+        "sslpassword",
+        "sslnegotiation",
+        "uselibpqcompat",
+    ]) {
+        connectionUrl.searchParams.delete(parameter);
+    }
+    return connectionUrl.toString();
+}
 
 declare global {
     interface CloudflareEnv {
@@ -35,7 +53,10 @@ function getCloudflarePool(): Pool | undefined {
     // this request's OpenNext execution context, and retires each connection
     // after one use. Supabase transaction pooler supplies backend pooling.
     const requestPool = new Pool({
-        connectionString: url,
+        // Don't let URL query options replace the TLS config below. Workers
+        // verify the Supabase root and hostname for every Postgres connection.
+        connectionString: getVerifiedWorkerConnectionString(url),
+        ssl: { ca: SUPABASE_ROOT_CA, rejectUnauthorized: true },
         max: 1,
         maxUses: 1,
         idleTimeoutMillis: 0,
