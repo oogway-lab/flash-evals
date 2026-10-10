@@ -172,9 +172,10 @@ this change.
 
 ## Authentication and tenancy
 
-Clerk remains the application identity provider and MCP OAuth issuer. Supabase
-provides Postgres and optional object storage; Supabase Auth is not part of this
-configuration.
+Clerk remains the application identity provider and MCP OAuth issuer. The
+hosted Supabase baseline validation is complete; Supabase provides Postgres and
+optional object storage in this setup. Supabase Auth and a separate OAuth
+client are not prerequisites for the current Clerk-based configuration.
 
 Local development bypasses web sign-in only when `AUTH_DEV=true` and
 `AUTH_DEV_ALLOW_INSECURE=1`, with valid default user/team IDs. The root development
