@@ -60,7 +60,7 @@ export function registerRunTools(
         {
             title: "List eval run summaries page",
             description:
-                "Read a bounded, stable page of eval run summaries. Use list_runs for its complete legacy result; the cursor is bound to the project.",
+                "Read a bounded, stable page of eval run summaries; use this for large collections. The legacy list_runs tool returns all matching summaries. The cursor is bound to the project.",
             inputSchema: z.object({
                 projectId: ProjectId,
                 limit: z.number().int().min(1).max(100).optional(),
@@ -132,7 +132,7 @@ export function registerRunTools(
         {
             title: "Get eval run",
             description:
-                "Return run matrix, progress, leaderboard, notes, and annotations.",
+                "Return the complete legacy run matrix, progress, leaderboard, notes, and annotations. For large runs, use get_run_summary and bounded list_run_cells pages.",
             inputSchema: z.object({
                 projectId: ProjectId,
                 runId: z.string().uuid(),

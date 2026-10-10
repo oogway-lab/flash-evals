@@ -101,6 +101,8 @@ const routeMocks = vi.hoisted(() => {
                 saveRunnablePromptPayload: async () => ({
                     promptId: "33333333-3333-4333-8333-333333333333",
                     promptVersionId: "55555555-5555-4555-8555-555555555555",
+                    promptVersion: 1,
+                    schemaVersionId: "66666666-6666-4666-8666-666666666666",
                 }),
                 duplicatePromptVersionPayload: async () => ({
                     sourcePromptVersionId:
@@ -110,7 +112,15 @@ const routeMocks = vi.hoisted(() => {
                 }),
                 validateRunnablePromptPayload: async () => ({
                     passed: true,
-                    evidence: { sampleResults: [] },
+                    evidence: {
+                        staticChecks: [],
+                        schemaValidation: {
+                            localValid: true,
+                            openaiCompatible: true,
+                            errors: [],
+                        },
+                        sampleResults: [],
+                    },
                 }),
             },
         ),
@@ -671,6 +681,70 @@ describe("MCP complete tool call coverage over stdio", () => {
                     ) as Record<string, unknown>,
                 ),
             ).length,
+        );
+    });
+
+    it("rejects workflow runs without their stable idempotency key before enqueue", async () => {
+        const harness = await connect();
+        close = harness.close;
+        routeMocks.workflows.createWorkflowRunPayload.mockClear();
+        routeMocks.publishWorkflowRunEnqueue.mockClear();
+
+        const result = await harness.client.callTool({
+            name: "create_workflow_run",
+            arguments: {
+                projectId,
+                workflowId: "55555555-5555-4555-8555-555555555555",
+                datasetId,
+                runTarget: "dataset",
+            },
+        });
+
+        expect(result.isError).toBe(true);
+        expect(
+            routeMocks.workflows.createWorkflowRunPayload,
+        ).not.toHaveBeenCalled();
+        expect(routeMocks.publishWorkflowRunEnqueue).not.toHaveBeenCalled();
+    });
+
+    it("returns a tool error when a validated runnable prompt cannot be saved", async () => {
+        const harness = await connect();
+        close = harness.close;
+        routeMocks.prompts.validateRunnablePromptPayload.mockResolvedValueOnce({
+            passed: true,
+            evidence: {
+                staticChecks: [],
+                schemaValidation: {
+                    localValid: true,
+                    openaiCompatible: true,
+                    errors: [],
+                },
+                sampleResults: [],
+            },
+        });
+        routeMocks.prompts.saveRunnablePromptPayload.mockRejectedValueOnce(
+            new Error("database password must stay private"),
+        );
+        const tool = (await harness.client.listTools()).tools.find(
+            ({ name }) => name === "create_runnable_prompt",
+        )!;
+        const arguments_ = specimen(tool.inputSchema) as Record<
+            string,
+            unknown
+        >;
+        arguments_.samples = [{ name: "fixture", inputText: "example" }];
+
+        const result = await harness.client.callTool({
+            name: tool.name,
+            arguments: arguments_,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.structuredContent).toMatchObject({
+            error: { code: "internal_error", retryable: true },
+        });
+        expect(JSON.stringify(result.content)).not.toContain(
+            "database password",
         );
     });
 

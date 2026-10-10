@@ -456,7 +456,7 @@ describe("MCP stdio transport", () => {
         });
         const promptText = prompt.messages[0]?.content;
         expect(JSON.stringify(promptText)).toContain(
-            "validates and saves the version on success",
+            "check its outcome to distinguish a saved prompt from validation failure or provider error",
         );
 
         const datasetToolSummary = await harness.client.callTool({

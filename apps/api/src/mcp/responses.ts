@@ -1,10 +1,16 @@
+const MAX_TEXT_FALLBACK_CHARS = 24_000;
+
 export function ok(message: string, data: unknown) {
     const serialized = JSON.stringify(data) ?? "null";
+    const text =
+        serialized.length <= MAX_TEXT_FALLBACK_CHARS
+            ? `${message}\n\n${serialized}`
+            : `${message}\n\nFull result omitted from text fallback. Use structuredContent.data or a bounded page reader to inspect the complete response.`;
     return {
         content: [
             {
                 type: "text" as const,
-                text: `${message}\n\n${serialized}`,
+                text,
             },
         ],
         structuredContent: { data },

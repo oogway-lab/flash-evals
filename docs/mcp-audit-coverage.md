@@ -119,6 +119,8 @@ That matrix verifies transport, registration, input decoding, output-schema vali
 
 Read-profile calls now positively exercise every independently listed read tool through both HTTP and stdio, alongside direct denials for every restricted tool. Eval-profile coverage checks a successful read and write plus an admin-only denial over both transports. Read-profile resource access is also exercised through stdio. Resource handlers use the authenticated project resolver; HTTP and stdio tests cover cross-tenant reads, protocol errors, and team/project ownership.
 
+Successful tools keep the compact JSON text fallback for results up to 24,000 characters. Larger results keep their full `structuredContent.data` and return a short text pointer, avoiding a second unbounded copy. The bounded page tools are the recommended path for large datasets and matrices. `create_runnable_prompt` declares a discriminated `saved` / `validation_failed` / `provider_error` output; persistence failures remain MCP tool errors.
+
 ## Persistence and route evidence
 
 | Concern                                                   | Test evidence                                                                                            | Boundary                                                                                                                                                                                                                |
@@ -134,3 +136,11 @@ Test enumeration or the fixture-only transport matrix alone is not a full busine
 ## Catalog-size note
 
 No schema-factoring or catalog-size reduction is claimed here. The create/update workflow graph schemas remain domain-specific and preserve the useful workflow primitives. The catalog snapshot and both SDK transport matrices validate that client-visible schemas are emitted and accepted; a separate measured client-compatibility experiment would be needed before making an optimization claim.
+
+## Remaining compatibility and follow-up notes
+
+- The legacy `list_datasets`, `list_runs`, `list_workflows`, and `list_workflow_runs` responses return all matching summaries; `get_dataset`, `get_run`, and `get_workflow_run` remain complete for v1 compatibility. These results are not silently truncated. The corresponding bounded summary/item/cell readers are recommended for large collections, and tool descriptions identify the legacy behavior.
+- Workflow-run creation requires a stable idempotency key before the first request; ordinary eval-run creation retains its existing optional key contract.
+- Run progress tools return current status and aggregate counts; regular eval-run creation also returns `enqueueStatus`. They do not yet publish a recommended polling interval, so clients should continue polling the progress tool until its status is terminal.
+- The exhaustive transport matrix uses deterministic route and provider fixtures. The independent Postgres acceptance ledger records real database-backed scenarios separately; true provider-socket lost-response recovery is intentionally not exercised because it would require a live external provider boundary.
+- Catalog optimization remains unmeasured; no schema factoring or client-compatibility claim is made.

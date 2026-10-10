@@ -461,7 +461,7 @@ describe("MCP workflow tools", () => {
         );
     });
 
-    it("requires itemId only for single-item workflow runs", () => {
+    it("requires a stable idempotency key and an itemId for single-item runs", () => {
         const schema = registerTools().tools.get("create_workflow_run")!.config
             .inputSchema!;
         const base = {
@@ -484,7 +484,14 @@ describe("MCP workflow tools", () => {
                 ...withoutIdempotencyKey,
                 runTarget: "dataset",
             }).success,
-        ).toBe(true);
+        ).toBe(false);
+        expect(
+            schema.safeParse({
+                ...base,
+                idempotencyKey: "   ",
+                runTarget: "dataset",
+            }).success,
+        ).toBe(false);
         expect(
             schema.safeParse({
                 ...base,

@@ -1439,10 +1439,22 @@ export async function listWorkflowRunsPayload(
          order by r.created_at desc`,
         [workflowId, teamId, projectId],
     );
-    return result.rows.map((row) => ({
-        ...row,
+    return result.rows.map(workflowRunSummaryRow);
+}
+
+function workflowRunSummaryRow(row: IWorkflowRunSummary): IWorkflowRunSummary {
+    return {
+        id: row.id,
+        workflowId: row.workflowId,
+        datasetId: row.datasetId,
+        datasetName: row.datasetName,
+        status: row.status,
+        runTarget: row.runTarget,
+        total: row.total,
+        done: row.done,
+        failed: row.failed,
         createdAt: iso(row.createdAt),
-    }));
+    };
 }
 
 export async function listWorkflowRunSummariesPagePayload(
@@ -1482,10 +1494,7 @@ export async function listWorkflowRunSummariesPagePayload(
     const complete = result.rows.length <= input.limit;
     const rows = result.rows.slice(0, input.limit);
     return {
-        workflowRuns: rows.map((row) => ({
-            ...row,
-            createdAt: iso(row.createdAt),
-        })),
+        workflowRuns: rows.map(workflowRunSummaryRow),
         complete,
         ...(complete || rows.length === 0
             ? {}

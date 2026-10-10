@@ -289,7 +289,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": false,
       "readOnlyHint": true,
     },
-    "description": "Read a bounded, stable page of dataset summaries. Use list_datasets for its complete legacy result; the cursor is bound to the project and archived filter.",
+    "description": "Read a bounded, stable page of dataset summaries; use this for large collections. The legacy list_datasets tool returns all matching summaries. The cursor is bound to the project and archived filter.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -327,7 +327,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": false,
       "readOnlyHint": true,
     },
-    "description": "Return dataset metadata, items, labels, and schema context.",
+    "description": "Return the complete legacy dataset response with metadata, items, labels, and schema context. For large datasets, use get_dataset_summary and the bounded list_dataset_items pages.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -1854,7 +1854,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": true,
       "readOnlyHint": false,
     },
-    "description": "Validate and create or update a runnable eval prompt version.",
+    "description": "Validate and create or update a runnable eval prompt version. Check outcome to distinguish a saved prompt from validation failure or a provider error; a persistence error is returned as an MCP tool error.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -2416,7 +2416,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": false,
       "readOnlyHint": true,
     },
-    "description": "Read a bounded, stable page of eval run summaries. Use list_runs for its complete legacy result; the cursor is bound to the project.",
+    "description": "Read a bounded, stable page of eval run summaries; use this for large collections. The legacy list_runs tool returns all matching summaries. The cursor is bound to the project.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -2451,7 +2451,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": false,
       "readOnlyHint": true,
     },
-    "description": "Return run matrix, progress, leaderboard, notes, and annotations.",
+    "description": "Return the complete legacy run matrix, progress, leaderboard, notes, and annotations. For large runs, use get_run_summary and bounded list_run_cells pages.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -4027,7 +4027,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": false,
       "readOnlyHint": true,
     },
-    "description": "Read a bounded, stable page of workflow summaries. Use list_workflows for its complete legacy result; the cursor is bound to project and kind.",
+    "description": "Read a bounded, stable page of workflow summaries; use this for large collections. The legacy list_workflows tool returns all matching summaries. The cursor is bound to project and kind.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -9006,7 +9006,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": true,
       "readOnlyHint": false,
     },
-    "description": "Create and enqueue a workflow run for a dataset or one item. The optional idempotencyKey makes retries safe; when supplied, choose it before the first request and reuse it for the same intent.",
+    "description": "Create and enqueue a workflow run for a dataset or one item. Pass a stable idempotencyKey chosen before the first request, and reuse it for retries of the same intent.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -9175,6 +9175,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
         "workflowId",
         "datasetId",
         "runTarget",
+        "idempotencyKey",
       ],
       "type": "object",
     },
@@ -9221,7 +9222,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": false,
       "readOnlyHint": true,
     },
-    "description": "Read a bounded, stable page of workflow run summaries. Use list_workflow_runs for its complete legacy result; the cursor is bound to the workflow.",
+    "description": "Read a bounded, stable page of workflow run summaries; use this for large collections. The legacy list_workflow_runs tool returns all matching summaries. The cursor is bound to the workflow.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -9262,7 +9263,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "openWorldHint": false,
       "readOnlyHint": true,
     },
-    "description": "Return workflow run detail, cells, review state, scores, and aggregates.",
+    "description": "Return the complete legacy workflow run with cells, review state, scores, and aggregates. For large runs, use get_workflow_run_summary and bounded list_workflow_run_cells pages.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,

@@ -21,8 +21,10 @@ import {
     FieldConfig,
     JudgeDeclaredInput,
     JsonObject,
+    mcpToolOutput,
     ProjectId,
     PromptSampleInput,
+    RunnablePromptCreateOutcome,
     ProviderTransport,
     ReasoningConfig,
     ReasoningEffort,
@@ -174,7 +176,8 @@ export function registerPromptTools(
         {
             title: "Create runnable prompt",
             description:
-                "Validate and create or update a runnable eval prompt version.",
+                "Validate and create or update a runnable eval prompt version. Check outcome to distinguish a saved prompt from validation failure or a provider error; a persistence error is returned as an MCP tool error.",
+            outputSchema: mcpToolOutput(RunnablePromptCreateOutcome),
             inputSchema: z.object({
                 projectId: ProjectId,
                 promptId: z.string().uuid().optional(),

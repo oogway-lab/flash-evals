@@ -88,7 +88,7 @@ export function registerWorkflowTools(
         {
             title: "List workflow summaries page",
             description:
-                "Read a bounded, stable page of workflow summaries. Use list_workflows for its complete legacy result; the cursor is bound to project and kind.",
+                "Read a bounded, stable page of workflow summaries; use this for large collections. The legacy list_workflows tool returns all matching summaries. The cursor is bound to project and kind.",
             inputSchema: z.object({
                 projectId: ProjectId,
                 kind: WorkflowKindInput.optional(),
@@ -321,7 +321,7 @@ export function registerWorkflowTools(
         {
             title: "Create workflow run",
             description:
-                "Create and enqueue a workflow run for a dataset or one item. The optional idempotencyKey makes retries safe; when supplied, choose it before the first request and reuse it for the same intent.",
+                "Create and enqueue a workflow run for a dataset or one item. Pass a stable idempotencyKey chosen before the first request, and reuse it for retries of the same intent.",
             inputSchema: z
                 .object({
                     ...WorkflowIdInput,
@@ -329,12 +329,7 @@ export function registerWorkflowTools(
                     runTarget: z.enum(["single_item", "dataset"]),
                     itemId: z.string().uuid().optional(),
                     sttConfig: SttRunConfig.optional(),
-                    idempotencyKey: z
-                        .string()
-                        .trim()
-                        .min(1)
-                        .max(200)
-                        .optional(),
+                    idempotencyKey: z.string().trim().min(1).max(200),
                 })
                 .strict()
                 .superRefine((input, ctx) => {
@@ -409,7 +404,7 @@ export function registerWorkflowTools(
         {
             title: "List workflow run summaries page",
             description:
-                "Read a bounded, stable page of workflow run summaries. Use list_workflow_runs for its complete legacy result; the cursor is bound to the workflow.",
+                "Read a bounded, stable page of workflow run summaries; use this for large collections. The legacy list_workflow_runs tool returns all matching summaries. The cursor is bound to the workflow.",
             inputSchema: z.object({
                 ...WorkflowIdInput,
                 limit: z.number().int().min(1).max(100).optional(),
@@ -469,7 +464,7 @@ export function registerWorkflowTools(
         {
             title: "Get workflow run",
             description:
-                "Return workflow run detail, cells, review state, scores, and aggregates.",
+                "Return the complete legacy workflow run with cells, review state, scores, and aggregates. For large runs, use get_workflow_run_summary and bounded list_workflow_run_cells pages.",
             inputSchema: workflowRunInput,
         },
         async (input) =>

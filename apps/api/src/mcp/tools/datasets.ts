@@ -150,7 +150,7 @@ export function registerDatasetTools(
         {
             title: "List dataset summaries page",
             description:
-                "Read a bounded, stable page of dataset summaries. Use list_datasets for its complete legacy result; the cursor is bound to the project and archived filter.",
+                "Read a bounded, stable page of dataset summaries; use this for large collections. The legacy list_datasets tool returns all matching summaries. The cursor is bound to the project and archived filter.",
             inputSchema: z.object({
                 projectId: ProjectId,
                 limit: z.number().int().min(1).max(100).optional(),
@@ -213,7 +213,7 @@ export function registerDatasetTools(
         {
             title: "Get dataset",
             description:
-                "Return dataset metadata, items, labels, and schema context.",
+                "Return the complete legacy dataset response with metadata, items, labels, and schema context. For large datasets, use get_dataset_summary and the bounded list_dataset_items pages.",
             inputSchema: z.object({
                 projectId: ProjectId,
                 datasetId: z.string().uuid(),

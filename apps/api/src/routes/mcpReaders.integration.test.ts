@@ -487,6 +487,12 @@ describe.skipIf(!databaseUrl)("bounded MCP readers (PostgreSQL)", () => {
                 workflowId,
                 { limit: 40, cursor },
             );
+            if (!cursor) {
+                expect(page.workflowRuns[0]).not.toHaveProperty(
+                    "cursor_created_at",
+                );
+                expect(Object.keys(page.workflowRuns[0]!)).toHaveLength(10);
+            }
             return {
                 ids: page.workflowRuns.map((run) => run.id),
                 complete: page.complete,

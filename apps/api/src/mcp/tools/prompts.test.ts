@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { z } from "zod";
 
 const mocks = vi.hoisted(() => ({
     createJudgePromptPayload: vi.fn(),
@@ -131,7 +132,23 @@ describe("MCP prompt management tools", () => {
             const { tools } = registerTools();
             const validation = {
                 passed: outcome === "saved",
-                evidence: { sampleResults },
+                failureMessage:
+                    outcome === "saved"
+                        ? undefined
+                        : "Sample validation failed.",
+                evidence: {
+                    staticChecks: [],
+                    schemaValidation: {
+                        localValid: true,
+                        openaiCompatible: true,
+                        errors: [],
+                    },
+                    sampleResults: sampleResults.map((sample) => ({
+                        sampleName: "Question",
+                        status: sample.status,
+                        errors: [],
+                    })),
+                },
             };
             mocks.validateRunnablePromptPayload.mockResolvedValueOnce(
                 validation,
@@ -139,8 +156,11 @@ describe("MCP prompt management tools", () => {
             mocks.saveRunnablePromptPayload.mockResolvedValueOnce({
                 promptId: PROMPT_ID,
                 promptVersionId: VERSION_ID,
+                promptVersion: 3,
+                schemaVersionId: "44444444-4444-4444-8444-444444444444",
             });
 
+            const tool = tools.get("create_runnable_prompt")!;
             const result = (await tools
                 .get("create_runnable_prompt")!
                 .handler(runnablePromptInput)) as {
@@ -148,6 +168,11 @@ describe("MCP prompt management tools", () => {
             };
 
             expect(result.structuredContent.data.outcome).toBe(outcome);
+            expect(
+                (tool.config.outputSchema as z.ZodType).safeParse(
+                    result.structuredContent,
+                ).success,
+            ).toBe(true);
         },
     );
 
