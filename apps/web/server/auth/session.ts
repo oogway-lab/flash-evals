@@ -1,4 +1,8 @@
-import { MosaicApiError } from "@mosaic/api-contract";
+import {
+    isEmailAllowedForDomain,
+    normalizeEmailAddress,
+    MosaicApiError,
+} from "@mosaic/api-contract";
 import { notFound, redirect } from "next/navigation";
 import { serverApiClient } from "@/server/api/client";
 import { currentClerkIdentity, type IClerkIdentity } from "./clerk";
@@ -72,7 +76,10 @@ export async function principalForClerkIdentity(
     }
 
     const email = normalizeEmail(identity.email);
-    if (mosaicTenancyMode() === "single-org" && !isAllowedEmail(email)) {
+    if (
+        (mosaicTenancyMode() === "single-org" || allowedEmailDomain() !== "") &&
+        !isAllowedEmail(email)
+    ) {
         throw new ForbiddenError(accessDeniedMessage());
     }
 
@@ -133,15 +140,13 @@ export function allowedEmailDomain(): string {
 }
 
 export function normalizeEmail(email: string): string {
-    return email.trim().toLowerCase();
+    return normalizeEmailAddress(email);
 }
 
 export function isAllowedEmail(email: string): boolean {
-    const normalized = normalizeEmail(email);
-    const [, domain] = normalized.split("@");
     // Fail closed: with no configured domain, nobody is provisioned.
     const allowed = allowedEmailDomain();
-    return Boolean(domain) && allowed !== "" && domain === allowed;
+    return isEmailAllowedForDomain(email, allowed);
 }
 
 export function accessDeniedMessage(): string {

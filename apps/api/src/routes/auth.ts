@@ -2,6 +2,10 @@ import type {
     IPrincipalResponse,
     IResolvePrincipalRequest,
 } from "@mosaic/api-contract";
+import {
+    isEmailAllowedForDomain,
+    normalizeEmailAddress,
+} from "@mosaic/api-contract";
 import type { IApiConfig } from "../config.js";
 import { isTransactionalDb, type IDb, withTransaction } from "../db.js";
 import { ApiConflictError, ApiForbiddenError } from "../errors.js";
@@ -39,13 +43,28 @@ export async function resolvePrincipalPayload(
 
     const principalInput: PrincipalInput = {
         clerkUserId: identity.clerkUserId,
-        email: normalizeEmail(identity.email),
+        email: normalizeEmailAddress(identity.email),
         name: identity.name,
     };
 
+    if (
+        (config.mosaicTenancyMode === "single-org" ||
+            config.mosaicAllowedEmailDomain !== "") &&
+        !isEmailAllowedForDomain(
+            principalInput.email,
+            config.mosaicAllowedEmailDomain,
+        )
+    ) {
+        throw new ApiForbiddenError(
+            config.mosaicAllowedEmailDomain
+                ? `Only ${config.mosaicAllowedEmailDomain} email addresses can access this Flash Evals instance.`
+                : "Sign-in is disabled until MOSAIC_ALLOWED_EMAIL_DOMAIN is configured.",
+        );
+    }
+
     if (config.mosaicTenancyMode === "isolated") {
-        // Any verified email is accepted, and every new identity gets its
-        // own private team instead of joining a shared one.
+        // Each new identity gets its own private team. A configured email
+        // domain has already been enforced above.
         return resolveOrProvisionPrincipal(
             db,
             principalInput,
@@ -54,17 +73,10 @@ export async function resolvePrincipalPayload(
         );
     }
 
-    if (
-        !isAllowedEmail(principalInput.email, config.mosaicAllowedEmailDomain)
-    ) {
-        throw new ApiForbiddenError(
-            config.mosaicAllowedEmailDomain
-                ? `Only ${config.mosaicAllowedEmailDomain} email addresses can access this Flash Evals instance.`
-                : "Sign-in is disabled until MOSAIC_ALLOWED_EMAIL_DOMAIN is configured.",
-        );
-    }
     if (!config.mosaicDefaultTeamId) {
-        throw new ApiConflictError("Flash Evals tenant configuration is missing.");
+        throw new ApiConflictError(
+            "Flash Evals tenant configuration is missing.",
+        );
     }
 
     return resolveOrProvisionPrincipal(
@@ -92,22 +104,14 @@ async function resolveOrProvisionPrincipal(
         await linkExistingEmailUser(db, existingByEmail, input);
         const linked = await findUserByClerkId(db, input.clerkUserId);
         if (!linked) {
-            throw new ApiConflictError("Could not load linked Flash Evals user.");
+            throw new ApiConflictError(
+                "Could not load linked Flash Evals user.",
+            );
         }
         return toPrincipal(await ensureWorkspace(db, linked, input));
     }
 
     return toPrincipal(await provisionNew(db, input));
-}
-
-function normalizeEmail(email: string): string {
-    return email.trim().toLowerCase();
-}
-
-function isAllowedEmail(email: string, allowedDomain: string): boolean {
-    const [, domain] = email.split("@");
-    // Fail closed: with no configured domain, nobody is provisioned.
-    return Boolean(domain) && allowedDomain !== "" && domain === allowedDomain;
 }
 
 function toPrincipal(

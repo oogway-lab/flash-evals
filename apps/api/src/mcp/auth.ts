@@ -1,6 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createClerkClient, type MachineAuthObject } from "@clerk/backend";
 import {
+    isEmailAllowedForDomain,
+    normalizeEmailAddress,
+} from "@mosaic/api-contract";
+import {
     resolveMcpOAuthConfig,
     type IApiConfig,
     type IMcpOAuthConfig,
@@ -25,10 +29,12 @@ interface IMcpTokenRow {
     team_id: string;
     email: string;
     name: string | null;
+    clerk_user_id: string | null;
 }
 
 interface IMcpClerkUserRow {
     id: string;
+    clerk_user_id: string;
     team_id: string;
     email: string;
     name: string | null;
@@ -59,7 +65,7 @@ export async function resolveMcpPrincipal(
     const oauthConfig = resolveMcpOAuthConfig(config);
     if (oauthConfig) {
         const clerkUserId = await resolveClerkOAuthSubject(token, oauthConfig);
-        return resolveMcpPrincipalForClerkUser(db, clerkUserId);
+        return resolveMcpPrincipalForClerkUser(db, config, clerkUserId);
     }
 
     if (!config.mosaicMcpRawTokenFallbackEnabled) {
@@ -80,6 +86,7 @@ export async function resolveMcpPrincipalForRawToken(
             mat.user_id,
             mat.team_id,
             u.email,
+            u.clerk_user_id,
             u.name
         from mcp_access_tokens mat
         inner join users u on u.id = mat.user_id
@@ -92,16 +99,36 @@ export async function resolveMcpPrincipalForRawToken(
     const row = result.rows[0];
     if (!row) throw new ApiForbiddenError("Invalid MCP bearer token.");
 
-    await db.query("update mcp_access_tokens set last_used_at = now() where id = $1", [
-        row.token_id,
-    ]);
+    let email = normalizeEmailAddress(row.email);
+    if (requiresDomainAdmission(config)) {
+        if (!isEmailAllowedForDomain(email, config.mosaicAllowedEmailDomain)) {
+            throw new ApiForbiddenError(
+                "This Flash Evals account is not allowed to use MCP.",
+            );
+        }
+    }
+    if (row.clerk_user_id && config.clerkSecretKey) {
+        email = await verifyCurrentClerkEmailAdmission(
+            row.clerk_user_id,
+            config,
+        );
+    } else if (config.nodeEnv === "production") {
+        throw new ApiForbiddenError(
+            "A current verified Clerk identity is required for MCP access.",
+        );
+    }
+
+    await db.query(
+        "update mcp_access_tokens set last_used_at = now() where id = $1",
+        [row.token_id],
+    );
 
     return {
         authMode: "raw-token",
         tokenId: row.token_id,
         userId: row.user_id,
         teamId: row.team_id,
-        email: row.email,
+        email,
         ...(row.name ? { name: row.name } : {}),
     };
 }
@@ -134,11 +161,18 @@ export async function resolveClerkOAuthSubject(
         );
         authCandidate = state.toAuth();
     } catch {
-        throw new McpAuthenticationError("Invalid or expired Clerk OAuth token.");
+        throw new McpAuthenticationError(
+            "Invalid or expired Clerk OAuth token.",
+        );
     }
 
-    if (!authCandidate.isAuthenticated || authCandidate.tokenType !== "oauth_token") {
-        throw new McpAuthenticationError("Invalid or expired Clerk OAuth token.");
+    if (
+        !authCandidate.isAuthenticated ||
+        authCandidate.tokenType !== "oauth_token"
+    ) {
+        throw new McpAuthenticationError(
+            "Invalid or expired Clerk OAuth token.",
+        );
     }
     const auth: ClerkOAuthAuth = authCandidate;
     if (config.clientId && auth.clientId !== config.clientId) {
@@ -154,10 +188,11 @@ export async function resolveClerkOAuthSubject(
 
 export async function resolveMcpPrincipalForClerkUser(
     db: IDb,
+    config: IApiConfig,
     clerkUserId: string,
 ): Promise<IMcpPrincipal> {
     const result = await db.query<IMcpClerkUserRow>(
-        `select id, team_id, email, name
+        `select id, clerk_user_id, team_id, email, name
         from users
         where clerk_user_id = $1
         limit 1`,
@@ -170,13 +205,69 @@ export async function resolveMcpPrincipalForClerkUser(
         );
     }
 
+    const email = await verifyCurrentClerkEmailAdmission(clerkUserId, config);
+
     return {
         authMode: "oauth",
         userId: row.id,
         teamId: row.team_id,
-        email: row.email,
+        email,
         ...(row.name ? { name: row.name } : {}),
     };
+}
+
+function requiresDomainAdmission(config: IApiConfig): boolean {
+    return (
+        config.mosaicTenancyMode === "single-org" ||
+        config.mosaicAllowedEmailDomain !== ""
+    );
+}
+
+async function verifyCurrentClerkEmailAdmission(
+    clerkUserId: string,
+    config: IApiConfig,
+): Promise<string> {
+    if (!config.clerkSecretKey) {
+        throw new ApiForbiddenError(
+            "A current verified Clerk identity is required for MCP access.",
+        );
+    }
+
+    const client = createClerkClient({
+        secretKey: config.clerkSecretKey,
+        publishableKey: config.clerkPublishableKey,
+        jwtKey: config.clerkJwtKey,
+        telemetry: { disabled: true },
+    });
+
+    let user: Awaited<ReturnType<typeof client.users.getUser>>;
+    try {
+        user = await client.users.getUser(clerkUserId);
+    } catch {
+        throw new ApiForbiddenError(
+            "The current Clerk identity could not be verified for MCP access.",
+        );
+    }
+
+    const email = user.primaryEmailAddress?.emailAddress;
+    const emailVerified =
+        user.primaryEmailAddress?.verification?.status === "verified";
+    if (!email || !emailVerified) {
+        throw new ApiForbiddenError(
+            "A currently verified email address is required for MCP access.",
+        );
+    }
+
+    const normalized = normalizeEmailAddress(email);
+    if (
+        requiresDomainAdmission(config) &&
+        !isEmailAllowedForDomain(normalized, config.mosaicAllowedEmailDomain)
+    ) {
+        throw new ApiForbiddenError(
+            "This Flash Evals account is not allowed to use MCP.",
+        );
+    }
+    return normalized;
 }
 
 function bearerToken(request: Request): string | undefined {
