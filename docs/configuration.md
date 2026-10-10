@@ -171,8 +171,12 @@ legacy service that reads Config as Code, set the worker's **Railway Config File
 to `/railway.worker.json` and keep its source root at the repository root. The
 default `/railway.json` starts the API and checks `/health`; repository config
 overrides dashboard start and healthcheck settings. The separate worker file
-keeps the same Railpack build, starts the queue consumer, and allows 30 seconds
-for shutdown. If you increase `MOSAIC_WORKER_DRAIN_TIMEOUT_MS`, also increase the
+keeps the same Railpack build and runs the queue consumer through the Node TLS
+wrapper directly, with `exec` replacing the launch shell. It avoids package-manager
+processes between Railway and the worker; the wrapper forwards termination
+signals and waits for the worker to drain. Shared packages are built during the
+image build, so this launch does not rebuild them at startup. The config allows
+30 seconds for shutdown. If you increase `MOSAIC_WORKER_DRAIN_TIMEOUT_MS`, also increase the
 service's termination grace period above that window plus five seconds. The
 worker file has no migration or bootstrap command; those remain on the API.
 Keep the worker private with no public domain. The

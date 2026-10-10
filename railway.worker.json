@@ -5,7 +5,7 @@
         "buildCommand": "pnpm --filter @mosaic/api build"
     },
     "deploy": {
-        "startCommand": "pnpm run worker",
+        "startCommand": "cd apps/web && exec node ../../scripts/node-with-supabase-ca.mjs --import tsx scripts/worker.ts",
         "healthcheckPath": null,
         "restartPolicyType": "ON_FAILURE",
         "restartPolicyMaxRetries": 3,

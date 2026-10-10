@@ -39,7 +39,9 @@ describe("Railway build config", () => {
         expect(worker.build.buildCommand).toBe(
             "pnpm --filter @mosaic/api build",
         );
-        expect(worker.deploy.startCommand).toBe("pnpm run worker");
+        expect(worker.deploy.startCommand).toBe(
+            "cd apps/web && exec node ../../scripts/node-with-supabase-ca.mjs --import tsx scripts/worker.ts",
+        );
         expect(worker.deploy.healthcheckPath).toBeNull();
         expect(worker.deploy.preDeployCommand).toBeUndefined();
         // The worker drains for 20 seconds plus a 5-second shutdown buffer.
