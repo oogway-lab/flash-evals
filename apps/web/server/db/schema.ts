@@ -1484,3 +1484,28 @@ export const apiRateLimits = pgTable(
     },
     (t) => [primaryKey({ columns: [t.bucketKey, t.windowStart] })],
 );
+
+// MCP copy operations keep their small response so callers can safely retry
+// with the same key after a transport failure. Raw keys are never persisted.
+export const mcpIdempotencyRecords = pgTable(
+    "mcp_idempotency_records",
+    {
+        teamId: uuid("team_id")
+            .notNull()
+            .references(() => teams.id, { onDelete: "cascade" }),
+        operation: text("operation").notNull(),
+        keyHash: text("key_hash").notNull(),
+        fingerprint: text("fingerprint").notNull(),
+        responseJson: jsonb("response_json").notNull(),
+        createdAt: createdAt(),
+    },
+    (t) => [
+        primaryKey({ columns: [t.teamId, t.operation, t.keyHash] }),
+        check("mcp_idempotency_key_hash_check", sql`length(${t.keyHash}) = 64`),
+        check(
+            "mcp_idempotency_fingerprint_check",
+            sql`length(${t.fingerprint}) = 64`,
+        ),
+        index("mcp_idempotency_created_at_idx").on(t.createdAt),
+    ],
+);

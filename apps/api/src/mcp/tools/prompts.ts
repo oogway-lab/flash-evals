@@ -16,6 +16,7 @@ import {
 } from "../../routes/prompts.js";
 import { generateJudgeForRunPayload } from "../../routes/runs.js";
 import { ok } from "../responses.js";
+import { withMcpIdempotency } from "../idempotency.js";
 import {
     FieldConfig,
     JudgeDeclaredInput,
@@ -345,22 +346,31 @@ export function registerPromptTools(
         {
             title: "Duplicate prompt version",
             description:
-                "Create a new prompt from an existing structured prompt version.",
+                "Create a new prompt from an existing structured prompt version. For safe retries, choose an idempotencyKey before the first request and reuse it for this same copy.",
             inputSchema: z.object({
                 projectId: ProjectId,
                 sourcePromptVersionId: z.string().uuid(),
+                idempotencyKey: z.string().trim().min(1).max(200).optional(),
             }),
         },
         async (input) => {
-            await duplicatePromptVersionPayload(runtime.db, {
+            const request = {
                 teamId: principal.teamId,
                 projectId: await resolveProjectId(context, input.projectId),
                 sourcePromptVersionId: input.sourcePromptVersionId,
                 createdBy: principal.userId,
-            });
-            return ok("Duplicated prompt version.", {
-                sourcePromptVersionId: input.sourcePromptVersionId,
-            });
+            };
+            const result = await withMcpIdempotency(
+                runtime.db,
+                {
+                    teamId: principal.teamId,
+                    operation: "duplicate_prompt_version",
+                    idempotencyKey: input.idempotencyKey,
+                    request,
+                },
+                (tx) => duplicatePromptVersionPayload(tx, request),
+            );
+            return ok("Duplicated prompt version.", result);
         },
     );
 

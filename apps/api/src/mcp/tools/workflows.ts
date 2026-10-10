@@ -10,6 +10,7 @@ import {
     createWorkflowPayload,
     createWorkflowRunPayload,
     deleteWorkflowPayload,
+    listWorkflowRunCellsPagePayload,
     listWorkflowRunsPayload,
     listWorkflowsPayload,
     saveWorkflowRunCellAnnotationPayload,
@@ -19,6 +20,7 @@ import {
     workflowDetailPayload,
     workflowRunDetailPayload,
     workflowRunProgressPayload,
+    workflowRunSummaryPayload,
 } from "../../routes/workflows.js";
 import { assertWorkflowLlmWritesEnabled } from "../../routes/llmRouting.js";
 import { ok } from "../responses.js";
@@ -29,6 +31,11 @@ import {
     WorkflowNodeInput,
 } from "../schemas.js";
 import { resolveProjectId, type IMcpContext } from "./context.js";
+import {
+    boundedMcpPageSize,
+    decodeMcpPageCursor,
+    encodeMcpPageCursor,
+} from "../pagination.js";
 
 const WorkflowIdInput = {
     projectId: ProjectId,
@@ -252,7 +259,7 @@ export function registerWorkflowTools(
         {
             title: "Create workflow run",
             description:
-                "Create and enqueue a workflow run for a dataset or one item.",
+                "Create and enqueue a workflow run for a dataset or one item. Choose a stable idempotencyKey before the first request and reuse it for retries of the same intent.",
             inputSchema: z
                 .object({
                     ...WorkflowIdInput,
@@ -262,7 +269,17 @@ export function registerWorkflowTools(
                     sttConfig: SttRunConfig.optional(),
                     idempotencyKey: z.string().trim().min(1).max(200),
                 })
-                .strict(),
+                .strict()
+                .superRefine((input, ctx) => {
+                    if (input.runTarget === "single_item" && !input.itemId) {
+                        ctx.addIssue({
+                            code: "custom",
+                            path: ["itemId"],
+                            message:
+                                "itemId is required when runTarget is single_item.",
+                        });
+                    }
+                }),
         },
         async (input) => {
             const result = await createWorkflowRunPayload(
@@ -339,6 +356,129 @@ export function registerWorkflowTools(
                     input.workflowRunId,
                 ),
             ),
+    );
+
+    server.registerTool(
+        "get_workflow_run_summary",
+        {
+            title: "Get workflow run summary",
+            description:
+                "Return compact workflow run status and aggregate progress. Use list_workflow_run_cells for bounded cell pages; get_workflow_run retains the full legacy response.",
+            inputSchema: workflowRunInput,
+            outputSchema: {
+                data: z.object({
+                    run: z.object({
+                        id: z.string().uuid(),
+                        datasetId: z.string().uuid(),
+                        targetItemId: z.string().uuid().nullable(),
+                        status: z.string(),
+                        runTarget: z.string(),
+                        createdAt: z.string(),
+                    }),
+                    progress: z.object({
+                        status: z.string(),
+                        total: z.number(),
+                        done: z.number(),
+                        failed: z.number(),
+                        pending: z.number(),
+                    }),
+                }),
+            },
+        },
+        async (input) =>
+            ok(
+                "Loaded workflow run summary.",
+                await workflowRunSummaryPayload(
+                    runtime.db,
+                    principal.teamId,
+                    await resolveProjectId(context, input.projectId),
+                    input.workflowId,
+                    input.workflowRunId,
+                ),
+            ),
+    );
+
+    server.registerTool(
+        "list_workflow_run_cells",
+        {
+            title: "List workflow run cells",
+            description:
+                "Read a stable, bounded page of workflow cells, optionally filtered by item, node, or status. Input text and outputs are omitted unless requested.",
+            inputSchema: z.object({
+                ...WorkflowIdInput,
+                workflowRunId: z.string().uuid(),
+                limit: z.number().int().min(1).max(100).optional(),
+                cursor: z.string().optional(),
+                itemId: z.string().uuid().optional(),
+                nodeKey: z.string().min(1).optional(),
+                status: z
+                    .enum([
+                        "pending",
+                        "running",
+                        "succeeded",
+                        "failed",
+                        "cached",
+                    ])
+                    .optional(),
+                includeInputText: z.boolean().optional(),
+                includeOutput: z.boolean().optional(),
+            }),
+            outputSchema: {
+                data: z.object({
+                    cells: z.array(
+                        z.object({
+                            id: z.string().uuid(),
+                            itemId: z.string().uuid(),
+                            nodeKey: z.string(),
+                            status: z.string(),
+                            latencyMs: z.number().nullable(),
+                            costUsd: z.number().nullable(),
+                            error: z.string().nullable(),
+                            inputText: z.string().nullable().optional(),
+                            output: z.unknown().optional(),
+                        }),
+                    ),
+                    complete: z.boolean(),
+                    nextCursor: z.string().optional(),
+                }),
+            },
+        },
+        async (input) => {
+            const projectId = await resolveProjectId(context, input.projectId);
+            const limit = boundedMcpPageSize(input.limit);
+            const scope = JSON.stringify([
+                input.workflowId,
+                input.workflowRunId,
+                input.itemId ?? null,
+                input.nodeKey ?? null,
+                input.status ?? null,
+            ]);
+            const page = await listWorkflowRunCellsPagePayload(runtime.db, {
+                teamId: principal.teamId,
+                projectId,
+                workflowId: input.workflowId,
+                runId: input.workflowRunId,
+                limit,
+                cursor: decodeMcpPageCursor(input.cursor, scope),
+                itemId: input.itemId,
+                nodeKey: input.nodeKey,
+                status: input.status,
+                includeInputText: input.includeInputText,
+                includeOutput: input.includeOutput,
+            });
+            return ok("Loaded workflow run cell page.", {
+                cells: page.cells,
+                complete: page.complete,
+                ...(page.nextCursor
+                    ? {
+                          nextCursor: encodeMcpPageCursor(
+                              scope,
+                              page.nextCursor,
+                          ),
+                      }
+                    : {}),
+            });
+        },
     );
 
     server.registerTool(

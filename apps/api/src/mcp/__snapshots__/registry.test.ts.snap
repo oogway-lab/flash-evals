@@ -3,14 +3,24 @@
 exports[`MCP prompt tools > snapshots the complete tool catalog and input schemas 1`] = `
 [
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "List shared workspaces in the authenticated Flash Evals tenant.",
     "inputSchema": undefined,
     "name": "list_workspaces",
     "title": "List Flash Evals workspaces",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Create a shared workspace in the authenticated Flash Evals tenant.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -31,7 +41,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Create Flash Evals workspace",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Rename a shared workspace in the authenticated Flash Evals tenant.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -58,14 +73,24 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Rename Flash Evals workspace",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "Return the Flash Evals user and team bound to this MCP token.",
     "inputSchema": undefined,
     "name": "get_current_user",
     "title": "Get current Flash Evals user",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "Return datasets, runnable prompt versions, judge prompts, saved LLM routes, and configured provider status. Use list_workflow_llm_provider_models with one selected transport for live model candidates.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -94,7 +119,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "List eval setup context",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "List projects in one explicit shared Flash Evals workspace.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -116,7 +146,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "List Flash Evals projects",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Create a project in the authenticated Flash Evals workspace.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -144,7 +179,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Create Flash Evals project",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Rename a project in the authenticated Flash Evals workspace without changing its ID or resources.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -179,7 +219,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Rename Flash Evals project",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "Return workspace statistics and recent eval runs for a project.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -208,7 +253,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Get Flash Evals dashboard",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "List datasets for the authenticated Flash Evals team.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -233,7 +283,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "List datasets",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "Return dataset metadata, items, labels, and schema context.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -261,7 +316,107 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Get dataset",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Return compact dataset metadata and item/label counts. Use list_dataset_items for bounded item pages; get_dataset retains the full legacy response.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "datasetId": {
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "projectId": {
+          "description": "Project to operate in.",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+      },
+      "required": [
+        "projectId",
+        "datasetId",
+      ],
+      "type": "object",
+    },
+    "name": "get_dataset_summary",
+    "title": "Get dataset summary",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Read a stable, bounded page of dataset items. Cursors are bound to the dataset and filters. Input text, storage keys, and labels are omitted unless requested.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+        },
+        "datasetId": {
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "includeInputText": {
+          "type": "boolean",
+        },
+        "includeLabel": {
+          "type": "boolean",
+        },
+        "includeStorageKey": {
+          "type": "boolean",
+        },
+        "labeled": {
+          "type": "boolean",
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "projectId": {
+          "description": "Project to operate in.",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "type": {
+          "enum": [
+            "audio",
+            "image",
+            "text",
+            "mixed",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "projectId",
+        "datasetId",
+      ],
+      "type": "object",
+    },
+    "name": "list_dataset_items",
+    "title": "List dataset items",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Create an image or text dataset for golden-answer or evaluation-only use.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -305,7 +460,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Create dataset",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Upload one or more base64-encoded image files into an image dataset.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -346,6 +506,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
             ],
             "type": "object",
           },
+          "maxItems": 100,
           "minItems": 1,
           "type": "array",
         },
@@ -367,7 +528,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Import dataset images",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Import text dataset rows from CSV or JSONL content, optionally with labels.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -408,7 +574,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Import dataset text items",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Attach golden answers to existing dataset items using CSV or JSONL answer content.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -441,7 +612,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Import dataset golden answers",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Detect and preview mapped STT golden answers, including speaker-turn arrays and a derived gold transcript, without writing labels.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -481,6 +657,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
             ],
             "type": "object",
           },
+          "maxItems": 100,
           "minItems": 1,
           "type": "array",
         },
@@ -529,8 +706,10 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
   },
   {
     "annotations": {
-      "destructiveHint": true,
-      "idempotentHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
     },
     "description": "Commit a previously previewed STT golden-answer mapping, including normalized speaker turns and an optional derived transcript.",
     "inputSchema": {
@@ -571,6 +750,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
             ],
             "type": "object",
           },
+          "maxItems": 100,
           "minItems": 1,
           "type": "array",
         },
@@ -624,7 +804,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Commit mapped golden answers",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Upload images and CSV or JSONL rows that pair each filename with freeform golden-answer content.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -669,6 +854,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
             ],
             "type": "object",
           },
+          "maxItems": 100,
           "minItems": 1,
           "type": "array",
         },
@@ -691,7 +877,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Import images with answers",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Import image files plus spreadsheet/CSV rows that pair each filename with structured golden-answer fields.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -736,6 +927,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
             ],
             "type": "object",
           },
+          "maxItems": 100,
           "minItems": 1,
           "type": "array",
         },
@@ -758,7 +950,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Import paired image items",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Add a text item or a base64-encoded image or audio item to a dataset.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -849,7 +1046,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Add dataset item",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Update a dataset item's text and optional label.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -888,6 +1090,8 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
     },
     "description": "Permanently delete an item from a dataset.",
     "inputSchema": {
@@ -924,6 +1128,8 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
     },
     "description": "Permanently remove the label from a dataset item.",
     "inputSchema": {
@@ -957,7 +1163,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Delete dataset label",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Rename a dataset.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -991,7 +1202,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Rename dataset",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Set or clear a dataset description.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1034,6 +1250,8 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
     },
     "description": "Archive or restore a dataset.",
     "inputSchema": {
@@ -1071,8 +1289,13 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Archive or restore dataset",
   },
   {
-    "annotations": undefined,
-    "description": "Duplicate a dataset, including its schema, items, and labels.",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Duplicate a dataset, including its schema, items, and labels. For safe retries, choose an idempotencyKey before the first request and reuse it for this same copy.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -1080,6 +1303,11 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
         "datasetId": {
           "format": "uuid",
           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "idempotencyKey": {
+          "maxLength": 200,
+          "minLength": 1,
           "type": "string",
         },
         "projectId": {
@@ -1102,6 +1330,8 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
     },
     "description": "Permanently delete a dataset and its items.",
     "inputSchema": {
@@ -1135,7 +1365,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Delete dataset",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Upload one or more base64-encoded files into an audio dataset.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1171,6 +1406,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
             ],
             "type": "object",
           },
+          "maxItems": 100,
           "minItems": 1,
           "type": "array",
         },
@@ -1197,7 +1433,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Import dataset audio",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Upload audio files and CSV or JSONL rows pairing each filename with a golden transcript.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1237,6 +1478,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
             ],
             "type": "object",
           },
+          "maxItems": 100,
           "minItems": 1,
           "type": "array",
         },
@@ -1264,7 +1506,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Import audio with answers",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "List eval and judge prompts for the authenticated team.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1286,7 +1533,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "List prompts",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "Return prompt details, latest version, and schema details.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1314,7 +1566,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Get prompt",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
     "description": "Use Flash Evals's schema generator to propose structured output fields for a prompt draft.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1351,7 +1608,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Generate schema from prompt",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
     "description": "Run a prompt draft against sample inputs before creating a runnable prompt version.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1405,6 +1667,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                 "type": "string",
               },
               "imageStorageKey": {
+                "minLength": 1,
                 "type": "string",
               },
               "inputText": {
@@ -1454,7 +1717,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Test prompt draft",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
     "description": "Validate a prompt, JSON schema, and samples before saving it as runnable.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1496,6 +1764,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                 "type": "string",
               },
               "imageStorageKey": {
+                "minLength": 1,
                 "type": "string",
               },
               "inputText": {
@@ -1541,7 +1810,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Validate runnable prompt",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Validate and create or update a runnable eval prompt version.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1594,6 +1868,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                             "type": "boolean",
                           },
                           "tolerance": {
+                            "minimum": 0,
                             "type": "number",
                           },
                         },
@@ -1718,6 +1993,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                 "type": "string",
               },
               "imageStorageKey": {
+                "minLength": 1,
                 "type": "string",
               },
               "inputText": {
@@ -1765,7 +2041,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Create runnable prompt",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
     "description": "Ask Flash Evals's optimizer to improve a prompt for a target model and schema.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1810,7 +2091,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Optimize prompt",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
     "description": "Run a judge prompt draft against a candidate output.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1864,7 +2150,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Test judge draft",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
     "description": "Generate a run-level judge rubric for a runnable prompt version and dataset.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1902,7 +2193,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Generate judge for run",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Create a runnable judge prompt and its first version.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1973,12 +2269,22 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Create judge prompt",
   },
   {
-    "annotations": undefined,
-    "description": "Create a new prompt from an existing structured prompt version.",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Create a new prompt from an existing structured prompt version. For safe retries, choose an idempotencyKey before the first request and reuse it for this same copy.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "idempotencyKey": {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
         "projectId": {
           "description": "Project to operate in.",
           "format": "uuid",
@@ -2004,6 +2310,8 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
     },
     "description": "Permanently delete a prompt and its unused versions.",
     "inputSchema": {
@@ -2037,7 +2345,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Delete prompt",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "List eval runs for the authenticated Flash Evals team.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2059,7 +2372,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "List eval runs",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "Return run matrix, progress, leaderboard, notes, and annotations.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2092,7 +2410,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Get eval run",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "Return the current status and aggregate progress for a run.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2120,8 +2443,112 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Get run progress",
   },
   {
-    "annotations": undefined,
-    "description": "Create an eval run and durably enqueue it. Supply a stable idempotencyKey when retrying the same request; pending_enqueue means publication will be retried automatically.",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Return compact run status, aggregate progress, and model IDs. Use list_run_cells for bounded cell pages; get_run retains the full legacy matrix.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "description": "Project to operate in.",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "runId": {
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+      },
+      "required": [
+        "projectId",
+        "runId",
+      ],
+      "type": "object",
+    },
+    "name": "get_run_summary",
+    "title": "Get eval run summary",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Read a stable, bounded page of eval cells, optionally filtered by item, model, or status. Input text and outputs are omitted unless requested.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+        },
+        "includeInputText": {
+          "type": "boolean",
+        },
+        "includeOutput": {
+          "type": "boolean",
+        },
+        "itemId": {
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "modelId": {
+          "minLength": 1,
+          "type": "string",
+        },
+        "projectId": {
+          "description": "Project to operate in.",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "runId": {
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "running",
+            "succeeded",
+            "failed",
+            "cached",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "projectId",
+        "runId",
+      ],
+      "type": "object",
+    },
+    "name": "list_run_cells",
+    "title": "List eval run cells",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "description": "Create an eval run and durably enqueue it. Choose a stable idempotencyKey before the first request and reuse it for retries of the same intent; pending_enqueue means publication will be retried automatically.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -2171,6 +2598,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                             "type": "boolean",
                           },
                           "tolerance": {
+                            "minimum": 0,
                             "type": "number",
                           },
                         },
@@ -2378,7 +2806,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Create eval run",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Create or update the team note attached to an eval run.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2410,7 +2843,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Save run note",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Mark a run cell as approved, needing review, issue, or unreviewed.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2452,7 +2890,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Annotate run cell",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Retry failed work for an eval run and enqueue it again.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2483,6 +2926,8 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
     },
     "description": "Permanently delete an eval run and its results.",
     "inputSchema": {
@@ -2516,14 +2961,24 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Delete eval run",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "List configured provider-key metadata without returning secret material.",
     "inputSchema": undefined,
     "name": "list_provider_keys",
     "title": "List provider keys",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Configure a provider key without returning or logging the secret.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2562,6 +3017,8 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
     },
     "description": "Permanently remove a configured provider key.",
     "inputSchema": {
@@ -2594,7 +3051,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Clear provider key",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
     "description": "Make a rate-sensitive, credentialed probe of one STT provider route; some providers may take up to 30 seconds.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2621,7 +3083,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Probe STT route",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "List immutable capability snapshots and credential availability for workflow LLM routing.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2643,7 +3110,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "List workflow LLM capabilities",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
     "description": "Run an optional diagnostic discovery and persist its immutable evidence snapshot. Route creation checks the provider automatically; this tool is never a prerequisite.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2675,7 +3147,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Refresh workflow LLM capabilities",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "List versioned workflow LLM routes without returning credential secrets.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2697,7 +3174,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "List workflow LLM routes",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
     "description": "List live registered model candidates for one selected configured provider. Provider-listed candidates are selection context, not proof that a later execution will succeed.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2729,7 +3211,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "List workflow LLM provider models",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "List a bounded page of immutable workflow LLM route versions, oldest pins included through a cursor.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2767,7 +3254,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "List workflow LLM route history",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
     "description": "Create a route or append an immutable route version using the canonical routing schema.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3153,7 +3645,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Create workflow LLM route version",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
     "description": "Create a pin-ready workflow LLM route from a provider and model. Flash Evals resolves the configured credential and checks the live provider model listing during creation; do not provide credential or capability UUIDs.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3265,8 +3762,10 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
   },
   {
     "annotations": {
-      "destructiveHint": true,
+      "destructiveHint": false,
       "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
     },
     "description": "Disable a route for future selection without deleting immutable versions.",
     "inputSchema": {
@@ -3300,7 +3799,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Disable workflow LLM route",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "Get the effective project-level workflow LLM default.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3322,7 +3826,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Get workflow LLM default",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Set the project default to an immutable workflow LLM route version.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3353,6 +3862,8 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
     },
     "description": "Clear the project-level workflow LLM default used by default-bound nodes.",
     "inputSchema": {
@@ -3380,7 +3891,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Clear workflow LLM default",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "List workflows in a Flash Evals project, optionally by kind.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3410,7 +3926,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "List workflows",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "Return a workflow graph and configuration.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3438,7 +3959,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Get workflow",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Create a validated workflow graph.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3572,6 +4098,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -3884,6 +4411,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -4140,6 +4668,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -4510,6 +5039,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -4822,6 +5352,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -5175,6 +5706,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -5487,6 +6019,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -5804,7 +6337,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Create workflow",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Create a valid Multiworkflow seed matching the New Multiworkflow canvas.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -5851,7 +6389,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Create Multiworkflow",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Replace a workflow's metadata and validated graph.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -5985,6 +6528,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -6297,6 +6841,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -6553,6 +7098,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -6923,6 +7469,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -7235,6 +7782,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -7588,6 +8136,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -7900,6 +8449,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                                               "type": "boolean",
                                             },
                                             "tolerance": {
+                                              "minimum": 0,
                                               "type": "number",
                                             },
                                           },
@@ -8233,6 +8783,8 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
     },
     "description": "Archive a workflow so it is no longer available for runs.",
     "inputSchema": {
@@ -8266,7 +8818,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Delete workflow",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Pin one exact immutable workflow LLM route version to one Multiworkflow model node. Pass the routeVersionId returned by route creation unchanged.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8305,8 +8862,13 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Select workflow LLM model",
   },
   {
-    "annotations": undefined,
-    "description": "Create and enqueue a workflow run for a dataset or one item.",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "description": "Create and enqueue a workflow run for a dataset or one item. Choose a stable idempotencyKey before the first request and reuse it for retries of the same intent.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -8483,7 +9045,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Create workflow run",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "List runs for a workflow.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8511,7 +9078,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "List workflow runs",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "Return workflow run detail, cells, review state, scores, and aggregates.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8545,7 +9117,123 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Get workflow run",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Return compact workflow run status and aggregate progress. Use list_workflow_run_cells for bounded cell pages; get_workflow_run retains the full legacy response.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "description": "Project to operate in.",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "workflowId": {
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "workflowRunId": {
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+      },
+      "required": [
+        "projectId",
+        "workflowId",
+        "workflowRunId",
+      ],
+      "type": "object",
+    },
+    "name": "get_workflow_run_summary",
+    "title": "Get workflow run summary",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Read a stable, bounded page of workflow cells, optionally filtered by item, node, or status. Input text and outputs are omitted unless requested.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+        },
+        "includeInputText": {
+          "type": "boolean",
+        },
+        "includeOutput": {
+          "type": "boolean",
+        },
+        "itemId": {
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "nodeKey": {
+          "minLength": 1,
+          "type": "string",
+        },
+        "projectId": {
+          "description": "Project to operate in.",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "running",
+            "succeeded",
+            "failed",
+            "cached",
+          ],
+          "type": "string",
+        },
+        "workflowId": {
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+        "workflowRunId": {
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "type": "string",
+        },
+      },
+      "required": [
+        "projectId",
+        "workflowId",
+        "workflowRunId",
+      ],
+      "type": "object",
+    },
+    "name": "list_workflow_run_cells",
+    "title": "List workflow run cells",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Create or update the note attached to a workflow run.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8577,7 +9265,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Save workflow run note",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
     "description": "Mark a workflow run cell as approved, needing review, issue, or unreviewed.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8619,7 +9312,12 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
     "title": "Annotate workflow run cell",
   },
   {
-    "annotations": undefined,
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
     "description": "Return current aggregate progress for a workflow run.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",

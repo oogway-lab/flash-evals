@@ -1209,12 +1209,151 @@ export async function workflowRunProgressPayload(
 ): Promise<IWorkflowRunProgressResponse> {
     const row = (
         await db.query<IWorkflowRunProgressResponse>(
-            `select r.status,count(c.*)::int total,count(*) filter(where c.status in ('succeeded','cached'))::int done,count(*) filter(where c.status='failed')::int failed,count(*) filter(where c.status in ('pending','running'))::int pending from workflow_runs r join workflow_run_cells c on c.workflow_run_id=r.id where r.id=$1 and r.workflow_id=$2 and r.team_id=$3 and r.project_id=$4 group by r.status`,
+            `select r.status,count(c.id)::int total,
+                    count(c.id) filter(where c.status in ('succeeded','cached'))::int done,
+                    count(c.id) filter(where c.status='failed')::int failed,
+                    count(c.id) filter(where c.status in ('pending','running'))::int pending
+             from workflow_runs r
+             left join workflow_run_cells c on c.workflow_run_id=r.id
+             where r.id=$1 and r.workflow_id=$2 and r.team_id=$3 and r.project_id=$4
+             group by r.status`,
             [runId, workflowId, teamId, projectId],
         )
     ).rows[0];
     if (!row) throw new ApiNotFoundError("Workflow run not found.");
     return row;
+}
+
+export async function workflowRunSummaryPayload(
+    db: IDb,
+    teamId: string,
+    projectId: string,
+    workflowId: string,
+    runId: string,
+) {
+    const run = (
+        await db.query<{
+            id: string;
+            dataset_id: string;
+            target_item_id: string | null;
+            status: RunStatus;
+            run_target: WorkflowRunTarget;
+            created_at: Date | string;
+        }>(
+            `select id,dataset_id,target_item_id,status,run_target,created_at
+             from workflow_runs
+             where id=$1 and workflow_id=$2 and team_id=$3 and project_id=$4
+             limit 1`,
+            [runId, workflowId, teamId, projectId],
+        )
+    ).rows[0];
+    if (!run) throw new ApiNotFoundError("Workflow run not found.");
+    const progress = await workflowRunProgressPayload(
+        db,
+        teamId,
+        projectId,
+        workflowId,
+        runId,
+    );
+    return {
+        run: {
+            id: run.id,
+            datasetId: run.dataset_id,
+            targetItemId: run.target_item_id,
+            status: run.status,
+            runTarget: run.run_target,
+            createdAt: iso(run.created_at),
+        },
+        progress,
+    };
+}
+
+export async function listWorkflowRunCellsPagePayload(
+    db: IDb,
+    input: {
+        teamId: string;
+        projectId: string;
+        workflowId: string;
+        runId: string;
+        limit: number;
+        cursor?: { createdAt: string; id: string };
+        itemId?: string;
+        nodeKey?: string;
+        status?: CellStatus;
+        includeInputText?: boolean;
+        includeOutput?: boolean;
+    },
+) {
+    const run = await db.query<{ id: string }>(
+        `select id from workflow_runs
+         where id=$1 and workflow_id=$2 and team_id=$3 and project_id=$4 limit 1`,
+        [input.runId, input.workflowId, input.teamId, input.projectId],
+    );
+    if (!run.rows[0]) throw new ApiNotFoundError("Workflow run not found.");
+    const inputTextSelect = input.includeInputText
+        ? "c.input_text"
+        : "null::text";
+    const outputSelect = input.includeOutput ? "c.output_json" : "null::jsonb";
+    const result = await db.query<{
+        id: string;
+        dataset_item_id: string;
+        node_key: string;
+        status: CellStatus;
+        input_text: string | null;
+        output_json: unknown;
+        latency_ms: number | null;
+        cost_usd: number | null;
+        error: string | null;
+        created_at: Date | string;
+    }>(
+        `select c.id,c.dataset_item_id,c.node_key,c.status,
+                ${inputTextSelect} as input_text,${outputSelect} as output_json,
+                c.latency_ms,c.cost_usd,c.error,c.created_at
+         from workflow_run_cells c
+         where c.workflow_run_id=$1
+           and ($2::uuid is null or c.dataset_item_id=$2)
+           and ($3::text is null or c.node_key=$3)
+           and ($4::cell_status is null or c.status=$4::cell_status)
+           and ($5::timestamptz is null or (c.created_at,c.id)>($5::timestamptz,$6::uuid))
+         order by c.created_at asc,c.id asc
+         limit $7`,
+        [
+            input.runId,
+            input.itemId ?? null,
+            input.nodeKey ?? null,
+            input.status ?? null,
+            input.cursor?.createdAt ?? null,
+            input.cursor?.id ?? null,
+            input.limit + 1,
+        ],
+    );
+    const complete = result.rows.length <= input.limit;
+    const rows = result.rows.slice(0, input.limit);
+    return {
+        cells: rows.map((row) => ({
+            id: row.id,
+            itemId: row.dataset_item_id,
+            nodeKey: row.node_key,
+            status: row.status,
+            latencyMs: row.latency_ms,
+            costUsd: row.cost_usd,
+            error: row.error,
+            ...(input.includeInputText ? { inputText: row.input_text } : {}),
+            ...(input.includeOutput ? { output: row.output_json } : {}),
+        })),
+        complete,
+        ...(complete || rows.length === 0
+            ? {}
+            : {
+                  nextCursor: {
+                      createdAt:
+                          rows.at(-1)!.created_at instanceof Date
+                              ? (rows.at(-1)!.created_at as Date).toISOString()
+                              : new Date(rows.at(-1)!.created_at).toISOString(),
+                      id: rows.at(-1)!.id,
+                  },
+              }),
+    };
 }
 
 export async function listWorkflowRunsPayload(

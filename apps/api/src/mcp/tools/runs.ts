@@ -5,9 +5,11 @@ import {
     createRunFromSelectionPayload,
     deleteRunPayload,
     listRunsPayload,
+    listRunCellsPagePayload,
     retryRunPayload,
     runDetailPayload,
     runProgressPayload,
+    runSummaryPayload,
     saveCellAnnotationPayload,
     saveRunNotePayload,
 } from "../../routes/runs.js";
@@ -20,6 +22,11 @@ import {
     ReasoningEffort,
 } from "../schemas.js";
 import { resolveProjectId, type IMcpContext } from "./context.js";
+import {
+    boundedMcpPageSize,
+    decodeMcpPageCursor,
+    encodeMcpPageCursor,
+} from "../pagination.js";
 
 export function registerRunTools(
     server: McpServer,
@@ -100,11 +107,134 @@ export function registerRunTools(
     );
 
     server.registerTool(
+        "get_run_summary",
+        {
+            title: "Get eval run summary",
+            description:
+                "Return compact run status, aggregate progress, and model IDs. Use list_run_cells for bounded cell pages; get_run retains the full legacy matrix.",
+            inputSchema: z.object({
+                projectId: ProjectId,
+                runId: z.string().uuid(),
+            }),
+            outputSchema: {
+                data: z.object({
+                    run: z.object({
+                        id: z.string().uuid(),
+                        datasetId: z.string().uuid(),
+                        status: z.string(),
+                        createdAt: z.string(),
+                    }),
+                    progress: z.object({
+                        total: z.number(),
+                        done: z.number(),
+                        failed: z.number(),
+                        pending: z.number(),
+                    }),
+                    modelIds: z.array(z.string()),
+                }),
+            },
+        },
+        async ({ projectId, runId }) =>
+            ok(
+                "Loaded eval run summary.",
+                await runSummaryPayload(
+                    runtime.db,
+                    principal.teamId,
+                    await resolveProjectId(context, projectId),
+                    runId,
+                ),
+            ),
+    );
+
+    server.registerTool(
+        "list_run_cells",
+        {
+            title: "List eval run cells",
+            description:
+                "Read a stable, bounded page of eval cells, optionally filtered by item, model, or status. Input text and outputs are omitted unless requested.",
+            inputSchema: z.object({
+                projectId: ProjectId,
+                runId: z.string().uuid(),
+                limit: z.number().int().min(1).max(100).optional(),
+                cursor: z.string().optional(),
+                itemId: z.string().uuid().optional(),
+                modelId: z.string().min(1).optional(),
+                status: z
+                    .enum([
+                        "pending",
+                        "running",
+                        "succeeded",
+                        "failed",
+                        "cached",
+                    ])
+                    .optional(),
+                includeInputText: z.boolean().optional(),
+                includeOutput: z.boolean().optional(),
+            }),
+            outputSchema: {
+                data: z.object({
+                    cells: z.array(
+                        z.object({
+                            id: z.string().uuid(),
+                            itemId: z.string().uuid(),
+                            modelId: z.string(),
+                            status: z.string(),
+                            latencyMs: z.number().nullable(),
+                            costUsd: z.number().nullable(),
+                            promptTokens: z.number().nullable(),
+                            completionTokens: z.number().nullable(),
+                            error: z.string().nullable(),
+                            inputText: z.string().nullable().optional(),
+                            output: z.unknown().optional(),
+                        }),
+                    ),
+                    complete: z.boolean(),
+                    nextCursor: z.string().optional(),
+                }),
+            },
+        },
+        async (input) => {
+            const projectId = await resolveProjectId(context, input.projectId);
+            const limit = boundedMcpPageSize(input.limit);
+            const scope = JSON.stringify([
+                input.runId,
+                input.itemId ?? null,
+                input.modelId ?? null,
+                input.status ?? null,
+            ]);
+            const page = await listRunCellsPagePayload(runtime.db, {
+                teamId: principal.teamId,
+                projectId,
+                runId: input.runId,
+                limit,
+                cursor: decodeMcpPageCursor(input.cursor, scope),
+                itemId: input.itemId,
+                modelId: input.modelId,
+                status: input.status,
+                includeInputText: input.includeInputText,
+                includeOutput: input.includeOutput,
+            });
+            return ok("Loaded eval run cell page.", {
+                cells: page.cells,
+                complete: page.complete,
+                ...(page.nextCursor
+                    ? {
+                          nextCursor: encodeMcpPageCursor(
+                              scope,
+                              page.nextCursor,
+                          ),
+                      }
+                    : {}),
+            });
+        },
+    );
+
+    server.registerTool(
         "create_eval_run",
         {
             title: "Create eval run",
             description:
-                "Create an eval run and durably enqueue it. Supply a stable idempotencyKey when retrying the same request; pending_enqueue means publication will be retried automatically.",
+                "Create an eval run and durably enqueue it. Choose a stable idempotencyKey before the first request and reuse it for retries of the same intent; pending_enqueue means publication will be retried automatically.",
             inputSchema: z.object({
                 projectId: ProjectId,
                 datasetId: z.string().uuid(),

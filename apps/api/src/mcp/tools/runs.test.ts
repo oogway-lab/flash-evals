@@ -3,17 +3,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
     createRunFromSelectionPayload: vi.fn(),
     deleteRunPayload: vi.fn(),
+    listRunCellsPagePayload: vi.fn(),
     publishRunEnqueue: vi.fn(),
     retryRunPayload: vi.fn(),
+    runSummaryPayload: vi.fn(),
 }));
 
 vi.mock("../../routes/runs.js", () => ({
     createRunFromSelectionPayload: mocks.createRunFromSelectionPayload,
     deleteRunPayload: mocks.deleteRunPayload,
     listRunsPayload: vi.fn(),
+    listRunCellsPagePayload: mocks.listRunCellsPagePayload,
     retryRunPayload: mocks.retryRunPayload,
     runDetailPayload: vi.fn(),
     runProgressPayload: vi.fn(),
+    runSummaryPayload: mocks.runSummaryPayload,
     saveCellAnnotationPayload: vi.fn(),
     saveRunNotePayload: vi.fn(),
 }));
@@ -22,6 +26,7 @@ vi.mock("../../runEnqueue.js", () => ({
 }));
 
 import { registerRunTools } from "./runs.js";
+import { decodeMcpPageCursor, encodeMcpPageCursor } from "../pagination.js";
 import {
     createToolHarness,
     expectConfirmationGate,
@@ -111,6 +116,90 @@ describe("MCP run lifecycle tools", () => {
             projectId: PROJECT_ID,
             runId: RUN_ID,
         });
+    });
+
+    it("returns run summaries and bounded, filter-bound cell pages", async () => {
+        const { tools, runtime } = registerTools();
+        const summary = {
+            run: {
+                id: RUN_ID,
+                datasetId: "33333333-3333-4333-8333-333333333333",
+                status: "completed",
+                createdAt: "2026-10-10T00:00:00.000Z",
+            },
+            progress: { total: 25, done: 25, failed: 0, pending: 0 },
+            modelIds: ["model-a"],
+        };
+        mocks.runSummaryPayload.mockResolvedValue(summary);
+        const summaryResult = (await tools.get("get_run_summary")!.handler({
+            projectId: PROJECT_ID,
+            runId: RUN_ID,
+        })) as { structuredContent: { data: unknown } };
+        expect(summaryResult.structuredContent.data).toEqual(summary);
+
+        const nextCursor = {
+            createdAt: "2026-10-10T00:00:00.000Z",
+            id: "44444444-4444-4444-8444-444444444444",
+        };
+        mocks.listRunCellsPagePayload.mockResolvedValue({
+            cells: [
+                {
+                    id: nextCursor.id,
+                    itemId: "55555555-5555-4555-8555-555555555555",
+                    modelId: "model-a",
+                    status: "succeeded",
+                    latencyMs: null,
+                    costUsd: null,
+                    promptTokens: null,
+                    completionTokens: null,
+                    error: null,
+                    inputText: "sample",
+                    output: { answer: "ok" },
+                },
+            ],
+            complete: false,
+            nextCursor,
+        });
+        const pageResult = (await tools.get("list_run_cells")!.handler({
+            projectId: PROJECT_ID,
+            runId: RUN_ID,
+            limit: 1,
+            modelId: "model-a",
+            status: "succeeded",
+            includeInputText: true,
+            includeOutput: true,
+        })) as { structuredContent: { data: Record<string, unknown> } };
+        expect(
+            decodeMcpPageCursor(
+                pageResult.structuredContent.data.nextCursor as string,
+                JSON.stringify([RUN_ID, null, "model-a", "succeeded"]),
+            ),
+        ).toEqual(nextCursor);
+        expect(mocks.listRunCellsPagePayload).toHaveBeenCalledWith(
+            runtime.db,
+            expect.objectContaining({
+                teamId: "team-1",
+                projectId: PROJECT_ID,
+                runId: RUN_ID,
+                limit: 1,
+                modelId: "model-a",
+                status: "succeeded",
+                includeOutput: true,
+            }),
+        );
+        const wrongFilterCursor = encodeMcpPageCursor(
+            JSON.stringify([RUN_ID, null, "model-b", "succeeded"]),
+            nextCursor,
+        );
+        await expect(
+            tools.get("list_run_cells")!.handler({
+                projectId: PROJECT_ID,
+                runId: RUN_ID,
+                modelId: "model-a",
+                status: "succeeded",
+                cursor: wrongFilterCursor,
+            }),
+        ).rejects.toMatchObject({ status: 400 });
     });
 });
 

@@ -181,6 +181,7 @@ describe("MCP HTTP OAuth", () => {
                 tokenType: "oauth_token",
                 clientId: "oauth-client",
                 userId: "clerk-user-1",
+                scopes: [],
             }),
         });
         const db: IDb = {
@@ -222,6 +223,7 @@ describe("MCP HTTP OAuth", () => {
                 tokenType: "oauth_token",
                 clientId: "oauth-client",
                 userId: "clerk-user-1",
+                scopes: [],
             }),
         });
 
@@ -310,6 +312,7 @@ describe("MCP HTTP OAuth", () => {
                 tokenType: "oauth_token",
                 clientId: "oauth-client",
                 userId: "clerk-user-1",
+                scopes: [],
             }),
         });
 
@@ -332,7 +335,8 @@ describe("MCP HTTP OAuth", () => {
             { config, db: dbWithLinkedUser() },
         );
         expect(listResponse.status).toBe(200);
-        await expect(listResponse.json()).resolves.toMatchObject({
+        const listed = await listResponse.json();
+        expect(listed).toMatchObject({
             result: {
                 tools: expect.arrayContaining([
                     expect.objectContaining({ name: "get_current_user" }),
@@ -356,6 +360,11 @@ describe("MCP HTTP OAuth", () => {
                 ]),
             },
         });
+        const listedToolNames = listed.result.tools.map(
+            (tool: { name: string }) => tool.name,
+        );
+        expect(listedToolNames).not.toContain("set_provider_key");
+        expect(listedToolNames).not.toContain("clear_workflow_llm_default");
 
         const callResponse = await handleMcpRequest(
             new Request("https://api.example.com/mcp", {
@@ -420,6 +429,38 @@ describe("MCP HTTP OAuth", () => {
             result: { isError: true },
             id: 3,
         });
+
+        const invalidInput = await handleMcpRequest(
+            new Request("https://api.example.com/mcp", {
+                method: "POST",
+                headers: {
+                    authorization: "Bearer header.payload.signature",
+                    origin: "https://claude.example.com",
+                    "content-type": "application/json",
+                    accept: "application/json, text/event-stream",
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    id: 4,
+                    method: "tools/call",
+                    params: {
+                        name: "list_dataset_items",
+                        arguments: {
+                            projectId: "11111111-1111-4111-8111-111111111111",
+                            datasetId: "22222222-2222-4222-8222-222222222222",
+                            limit: 101,
+                        },
+                    },
+                }),
+            }),
+            { config, db: dbWithLinkedUser() },
+        );
+        expect(invalidInput.status).toBe(200);
+        const invalidBody = await invalidInput.json();
+        expect(
+            invalidBody.error?.code === -32602 ||
+                invalidBody.result?.isError === true,
+        ).toBe(true);
     });
 
     it("rejects disallowed origins before auth work", async () => {

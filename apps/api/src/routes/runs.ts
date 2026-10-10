@@ -456,6 +456,128 @@ export async function runDetailPayload(
     };
 }
 
+export async function runSummaryPayload(
+    db: IDb,
+    teamId: string,
+    projectId: string,
+    runId: string,
+) {
+    const run = await getTeamRun(db, teamId, projectId, runId);
+    if (!run) throw new ApiNotFoundError();
+    const [progress, models] = await Promise.all([
+        runProgressPayload(db, teamId, projectId, runId),
+        db.query<{ model_id: string }>(
+            `select distinct model_id from run_models where run_id=$1 order by model_id`,
+            [runId],
+        ),
+    ]);
+    return {
+        run: {
+            id: run.id,
+            datasetId: run.dataset_id,
+            status: run.status,
+            createdAt: isoDate(run.created_at),
+        },
+        progress,
+        modelIds: models.rows.map((row) => row.model_id),
+    };
+}
+
+export async function listRunCellsPagePayload(
+    db: IDb,
+    input: {
+        teamId: string;
+        projectId: string;
+        runId: string;
+        limit: number;
+        cursor?: { createdAt: string; id: string };
+        itemId?: string;
+        modelId?: string;
+        status?: "pending" | "running" | "succeeded" | "failed" | "cached";
+        includeInputText?: boolean;
+        includeOutput?: boolean;
+    },
+) {
+    const run = await getTeamRun(
+        db,
+        input.teamId,
+        input.projectId,
+        input.runId,
+    );
+    if (!run) throw new ApiNotFoundError();
+    const inputTextSelect = input.includeInputText
+        ? "i.input_text"
+        : "null::text";
+    const outputSelect = input.includeOutput ? "c.output_json" : "null::jsonb";
+    const result = await db.query<{
+        id: string;
+        dataset_item_id: string;
+        model_id: string;
+        status: "pending" | "running" | "succeeded" | "failed" | "cached";
+        input_text: string | null;
+        output_json: unknown;
+        latency_ms: number | null;
+        cost_usd: number | null;
+        prompt_tokens: number | null;
+        completion_tokens: number | null;
+        error: string | null;
+        created_at: Date | string;
+    }>(
+        `select c.id,c.dataset_item_id,m.model_id,c.status,
+                ${inputTextSelect} as input_text,${outputSelect} as output_json,
+                c.latency_ms,c.cost_usd,c.prompt_tokens,c.completion_tokens,
+                c.error,c.created_at
+         from run_cells c
+         inner join run_models m on m.id=c.run_model_id
+         inner join dataset_items i on i.id=c.dataset_item_id
+         where c.run_id=$1
+           and ($2::uuid is null or c.dataset_item_id=$2)
+           and ($3::text is null or m.model_id=$3)
+           and ($4::cell_status is null or c.status=$4::cell_status)
+           and ($5::timestamptz is null or (c.created_at,c.id)>($5::timestamptz,$6::uuid))
+         order by c.created_at asc,c.id asc
+         limit $7`,
+        [
+            input.runId,
+            input.itemId ?? null,
+            input.modelId ?? null,
+            input.status ?? null,
+            input.cursor?.createdAt ?? null,
+            input.cursor?.id ?? null,
+            input.limit + 1,
+        ],
+    );
+    const complete = result.rows.length <= input.limit;
+    const rows = result.rows.slice(0, input.limit);
+    return {
+        cells: rows.map((row) => ({
+            id: row.id,
+            itemId: row.dataset_item_id,
+            modelId: row.model_id,
+            status: row.status,
+            latencyMs: row.latency_ms,
+            costUsd: row.cost_usd,
+            promptTokens: row.prompt_tokens,
+            completionTokens: row.completion_tokens,
+            error: row.error,
+            ...(input.includeInputText ? { inputText: row.input_text } : {}),
+            ...(input.includeOutput ? { output: row.output_json } : {}),
+        })),
+        complete,
+        ...(complete || rows.length === 0
+            ? {}
+            : {
+                  nextCursor: {
+                      createdAt:
+                          rows.at(-1)!.created_at instanceof Date
+                              ? (rows.at(-1)!.created_at as Date).toISOString()
+                              : new Date(rows.at(-1)!.created_at).toISOString(),
+                      id: rows.at(-1)!.id,
+                  },
+              }),
+    };
+}
+
 /** The dataset and judge a run was created with (needs only the run id). */
 async function runContextRow(
     db: IDb,

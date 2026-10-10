@@ -19,7 +19,7 @@ const FieldMatcherSpec = z.union([
     z.object({ matcher: z.literal("exact") }),
     z.object({
         matcher: z.literal("numeric_tolerance"),
-        tolerance: z.number(),
+        tolerance: z.number().nonnegative(),
         relative: z.boolean().optional(),
     }),
     z.object({ matcher: z.literal("set_overlap") }),
@@ -57,12 +57,19 @@ export const JudgeDeclaredInput = z.enum([
     "candidate_output",
     "reference",
 ]);
-export const PromptSampleInput = z.object({
-    name: z.string().min(1),
-    inputText: z.string().optional(),
-    imageStorageKey: z.string().optional(),
-    imageMimeType: z.string().optional(),
-});
+export const PromptSampleInput = z
+    .object({
+        name: z.string().min(1),
+        inputText: z.string().optional(),
+        imageStorageKey: z.string().min(1).optional(),
+        imageMimeType: z.string().optional(),
+    })
+    .refine(
+        (sample) =>
+            sample.inputText !== undefined ||
+            sample.imageStorageKey !== undefined,
+        { message: "Provide inputText or imageStorageKey for each sample." },
+    );
 
 const WorkflowNodeEvalConfig = z.discriminatedUnion("type", [
     z.object({ type: z.literal("none") }),

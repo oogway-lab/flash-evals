@@ -81,11 +81,21 @@ describe("MCP prompt management tools", () => {
 
     it("duplicates a version without accepting client-owned scope", async () => {
         const { tools, runtime } = registerTools();
-        mocks.duplicatePromptVersionPayload.mockResolvedValue(undefined);
+        mocks.duplicatePromptVersionPayload.mockResolvedValue({
+            sourcePromptVersionId: VERSION_ID,
+            promptId: PROMPT_ID,
+            promptVersionId: "33333333-3333-4333-8333-333333333333",
+        });
 
-        await tools.get("duplicate_prompt_version")!.handler({
+        const result = (await tools.get("duplicate_prompt_version")!.handler({
             projectId: PROJECT_ID,
             sourcePromptVersionId: VERSION_ID,
+        })) as { structuredContent: { data: Record<string, unknown> } };
+
+        expect(result.structuredContent.data).toEqual({
+            sourcePromptVersionId: VERSION_ID,
+            promptId: PROMPT_ID,
+            promptVersionId: "33333333-3333-4333-8333-333333333333",
         });
 
         expect(mocks.duplicatePromptVersionPayload).toHaveBeenCalledWith(
@@ -106,6 +116,63 @@ describe("MCP prompt management tools", () => {
             projectId: PROJECT_ID,
             promptId: PROMPT_ID,
         });
+    });
+
+    it.each([
+        [
+            "test_prompt_draft",
+            {
+                prompt: "Answer the question.",
+                jsonSchema: { type: "object" },
+                targetModelId: "gpt-4o",
+            },
+        ],
+        [
+            "validate_runnable_prompt",
+            {
+                projectId: PROJECT_ID,
+                prompt: "Answer the question.",
+                jsonSchema: { type: "object" },
+                targetModelId: "gpt-4o",
+            },
+        ],
+        [
+            "create_runnable_prompt",
+            {
+                projectId: PROJECT_ID,
+                name: "Answer prompt",
+                content: "Answer the question.",
+                jsonSchema: { type: "object" },
+                fieldConfigs: [],
+                targetModelId: "gpt-4o",
+            },
+        ],
+    ] as const)("requires an input for each sample in %s", (name, base) => {
+        const schema = registerTools().tools.get(name)!.config.inputSchema!;
+        const withText = {
+            ...base,
+            samples: [{ name: "Question", inputText: "What is 2+2?" }],
+        };
+        const withImage = {
+            ...base,
+            samples: [
+                { name: "Receipt", imageStorageKey: "datasets/item/image.png" },
+            ],
+        };
+        const withoutInput = {
+            ...base,
+            samples: [{ name: "Empty" }],
+        };
+
+        expect(schema.safeParse(withText).success).toBe(true);
+        expect(schema.safeParse(withImage).success).toBe(true);
+        expect(
+            schema.safeParse({
+                ...base,
+                samples: [{ name: "Blank text", inputText: "" }],
+            }).success,
+        ).toBe(true);
+        expect(schema.safeParse(withoutInput).success).toBe(false);
     });
 });
 

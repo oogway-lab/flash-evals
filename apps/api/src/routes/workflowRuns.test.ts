@@ -1086,7 +1086,10 @@ function dbForWorkflowRunDetail(): IDb {
                         },
                     ],
                 } as never;
-            if (sql.includes("from workflow_runs r join workflow_run_cells"))
+            if (
+                sql.includes("from workflow_runs r") &&
+                sql.includes("group by r.status")
+            )
                 return {
                     rows: [
                         {

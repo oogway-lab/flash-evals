@@ -2,15 +2,31 @@ import {
     ResourceTemplate,
     type McpServer,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ApiError } from "../errors.js";
+import { randomUUID } from "node:crypto";
+import {
+    ApiError,
+    ApiBadRequestError,
+    ApiFieldValidationError,
+    ApiRateLimitedError,
+    ApiForbiddenError,
+} from "../errors.js";
 import { logApiEvent } from "../observability/logger.js";
-import { datasetDetailPayload } from "../routes/datasets.js";
+import {
+    datasetDetailPayload,
+    datasetSummaryPayload,
+    listDatasetItemsPagePayload,
+} from "../routes/datasets.js";
 import {
     promptDetailPayload,
     promptWorkbenchSetupPayload,
 } from "../routes/prompts.js";
-import { runDetailPayload } from "../routes/runs.js";
-import { resourceJson } from "./responses.js";
+import {
+    listRunCellsPagePayload,
+    runDetailPayload,
+    runSummaryPayload,
+} from "../routes/runs.js";
+import { recoverableError, resourceJson } from "./responses.js";
+import { canMcpProfileCallTool, mcpToolEffect } from "./effects.js";
 import {
     registerContextTools,
     resolveProjectId,
@@ -22,6 +38,11 @@ import { registerRunTools } from "./tools/runs.js";
 import { registerSettingsTools } from "./tools/settings.js";
 import { registerWorkflowTools } from "./tools/workflows.js";
 import { enforceRateLimit, mcpToolRateLimitCategory } from "../rateLimit.js";
+import {
+    boundedMcpPageSize,
+    decodeMcpPageCursor,
+    encodeMcpPageCursor,
+} from "./pagination.js";
 
 export function registerMosaicMcpCapabilities(
     server: McpServer,
@@ -50,6 +71,19 @@ function withSanitizedHandlerErrors(
         (handler: IAnyHandler, toolName?: string): IAnyHandler =>
         async (...handlerArgs: unknown[]) => {
             try {
+                if (toolName) {
+                    const effect = mcpToolEffect(toolName);
+                    if (
+                        !canMcpProfileCallTool(
+                            context.principal.profile,
+                            effect,
+                        )
+                    ) {
+                        throw new ApiForbiddenError(
+                            `The ${context.principal.profile} MCP profile cannot call ${toolName}; this tool requires the ${effect.minimumProfile} profile.`,
+                        );
+                    }
+                }
                 const category = toolName
                     ? mcpToolRateLimitCategory(toolName)
                     : undefined;
@@ -62,13 +96,41 @@ function withSanitizedHandlerErrors(
                     );
                 return await handler(...handlerArgs);
             } catch (err) {
-                if (err instanceof ApiError) throw err;
+                const requestId = randomUUID();
+                if (err instanceof ApiError) {
+                    return recoverableError(
+                        {
+                            status: err.status,
+                            code: err.code,
+                            message: err.message,
+                            ...(err instanceof ApiRateLimitedError
+                                ? { retryAfterSeconds: err.retryAfterSeconds }
+                                : {}),
+                            ...(err instanceof ApiFieldValidationError
+                                ? {
+                                      field: err.path,
+                                      remediation: err.remediation,
+                                  }
+                                : {}),
+                        },
+                        requestId,
+                    );
+                }
                 logApiEvent("error", "mcp.handler.failed", {
                     teamId: context.principal.teamId,
                     userId: context.principal.userId,
+                    requestId,
                     errorName: err instanceof Error ? err.name : "UnknownError",
                 });
-                throw new Error("Internal server error");
+                return recoverableError(
+                    {
+                        status: 500,
+                        code: "internal_error",
+                        message:
+                            "Internal server error. Check the request ID before retrying.",
+                    },
+                    requestId,
+                );
             }
         };
     return new Proxy(server, {
@@ -80,6 +142,34 @@ function withSanitizedHandlerErrors(
                 return bound;
             }
             return (...args: unknown[]) => {
+                if (
+                    prop === "registerTool" &&
+                    typeof args[0] === "string" &&
+                    args[1] !== null &&
+                    typeof args[1] === "object"
+                ) {
+                    const effect = mcpToolEffect(args[0]);
+                    const config = args[1] as {
+                        annotations?: Record<string, unknown>;
+                        _meta?: Record<string, unknown>;
+                    };
+                    args[1] = {
+                        ...config,
+                        annotations: {
+                            ...config.annotations,
+                            readOnlyHint: effect.readOnly,
+                            destructiveHint: effect.destructive,
+                            idempotentHint: effect.idempotent,
+                            openWorldHint: effect.openWorld,
+                        },
+                        _meta: {
+                            ...config._meta,
+                            "com.oogway.flash-evals/effect": effect.kind,
+                            "com.oogway.flash-evals/minimum-profile":
+                                effect.minimumProfile,
+                        },
+                    };
+                }
                 const last = args.length - 1;
                 if (typeof args[last] === "function") {
                     args[last] = wrapHandler(
@@ -89,7 +179,22 @@ function withSanitizedHandlerErrors(
                             : undefined,
                     );
                 }
-                return bound(...args);
+                const registered = bound(...args);
+                if (
+                    prop === "registerTool" &&
+                    typeof args[0] === "string" &&
+                    !canMcpProfileCallTool(
+                        context.principal.profile,
+                        mcpToolEffect(args[0]),
+                    ) &&
+                    registered !== null &&
+                    typeof registered === "object" &&
+                    "disable" in registered &&
+                    typeof registered.disable === "function"
+                ) {
+                    registered.disable();
+                }
+                return registered;
             };
         },
     });
@@ -106,7 +211,7 @@ function registerResources(server: McpServer, context: IMcpContext): void {
         {
             title: "Flash Evals dataset",
             description:
-                "Dataset metadata, items, labels, and schema context from an explicit project.",
+                "Legacy full dataset response from an explicit project. For bounded context use mosaic-dataset-summary and mosaic-dataset-items.",
             mimeType: "application/json",
         },
         async (uri, variables) =>
@@ -158,7 +263,7 @@ function registerResources(server: McpServer, context: IMcpContext): void {
         {
             title: "Flash Evals eval run",
             description:
-                "Run detail, progress, scores, notes, and annotations from an explicit project.",
+                "Legacy full run matrix from an explicit project. For bounded context use mosaic-run-summary and mosaic-run-cells.",
             mimeType: "application/json",
         },
         async (uri, variables) =>
@@ -201,6 +306,186 @@ function registerResources(server: McpServer, context: IMcpContext): void {
                 ),
             ),
     );
+
+    server.registerResource(
+        "mosaic-dataset-summary",
+        new ResourceTemplate(
+            "mosaic://projects/{projectId}/datasets/{id}/summary",
+            { list: undefined },
+        ),
+        {
+            title: "Flash Evals dataset summary",
+            description:
+                "Compact dataset metadata and counts with a discoverable link to bounded item pages.",
+            mimeType: "application/json",
+        },
+        async (uri, variables) => {
+            const projectId = await resolveProjectId(
+                context,
+                String(variables.projectId),
+            );
+            const datasetId = String(variables.id);
+            const summary = await datasetSummaryPayload(
+                runtime.db,
+                principal.teamId,
+                projectId,
+                datasetId,
+            );
+            return resourceJson(uri.href, {
+                ...summary,
+                related: {
+                    itemsUri: `mosaic://projects/${projectId}/datasets/${datasetId}/items/50/first`,
+                    tool: {
+                        name: "list_dataset_items",
+                        arguments: { projectId, datasetId, limit: 50 },
+                    },
+                },
+            });
+        },
+    );
+
+    server.registerResource(
+        "mosaic-dataset-items",
+        new ResourceTemplate(
+            "mosaic://projects/{projectId}/datasets/{id}/items/{limit}/{cursor}",
+            { list: undefined },
+        ),
+        {
+            title: "Flash Evals dataset item page",
+            description:
+                "Read a bounded dataset item page at /items/{limit}/{cursor}. Start with cursor 'first'; follow nextPageUri until complete. Use list_dataset_items for filters or opt-in details.",
+            mimeType: "application/json",
+        },
+        async (uri, variables) => {
+            const projectId = await resolveProjectId(
+                context,
+                String(variables.projectId),
+            );
+            const datasetId = String(variables.id);
+            const limit = boundedMcpPageSize(
+                resourcePageLimit(variables.limit),
+            );
+            const cursorValue = String(variables.cursor);
+            const scope = JSON.stringify([datasetId, null, null]);
+            const page = await listDatasetItemsPagePayload(runtime.db, {
+                teamId: principal.teamId,
+                projectId,
+                datasetId,
+                limit,
+                cursor:
+                    cursorValue === "first"
+                        ? undefined
+                        : decodeMcpPageCursor(cursorValue, scope),
+            });
+            const nextCursor = page.nextCursor
+                ? encodeMcpPageCursor(scope, page.nextCursor)
+                : undefined;
+            const data = {
+                items: page.items,
+                complete: page.complete,
+                ...(nextCursor
+                    ? {
+                          nextCursor,
+                          nextPageUri: `mosaic://projects/${projectId}/datasets/${datasetId}/items/${limit}/${nextCursor}`,
+                      }
+                    : {}),
+            };
+            return resourceJson(uri.href, data);
+        },
+    );
+
+    server.registerResource(
+        "mosaic-run-summary",
+        new ResourceTemplate(
+            "mosaic://projects/{projectId}/runs/{id}/summary",
+            { list: undefined },
+        ),
+        {
+            title: "Flash Evals run summary",
+            description:
+                "Compact run status, progress, and model IDs with a discoverable link to bounded cell pages.",
+            mimeType: "application/json",
+        },
+        async (uri, variables) => {
+            const projectId = await resolveProjectId(
+                context,
+                String(variables.projectId),
+            );
+            const runId = String(variables.id);
+            const summary = await runSummaryPayload(
+                runtime.db,
+                principal.teamId,
+                projectId,
+                runId,
+            );
+            return resourceJson(uri.href, {
+                ...summary,
+                related: {
+                    cellsUri: `mosaic://projects/${projectId}/runs/${runId}/cells/50/first`,
+                    tool: {
+                        name: "list_run_cells",
+                        arguments: { projectId, runId, limit: 50 },
+                    },
+                },
+            });
+        },
+    );
+
+    server.registerResource(
+        "mosaic-run-cells",
+        new ResourceTemplate(
+            "mosaic://projects/{projectId}/runs/{id}/cells/{limit}/{cursor}",
+            { list: undefined },
+        ),
+        {
+            title: "Flash Evals run cell page",
+            description:
+                "Read a bounded run cell page at /cells/{limit}/{cursor}. Start with cursor 'first'; follow nextPageUri until complete. Use list_run_cells for filters or opt-in details.",
+            mimeType: "application/json",
+        },
+        async (uri, variables) => {
+            const projectId = await resolveProjectId(
+                context,
+                String(variables.projectId),
+            );
+            const runId = String(variables.id);
+            const limit = boundedMcpPageSize(
+                resourcePageLimit(variables.limit),
+            );
+            const cursorValue = String(variables.cursor);
+            const scope = JSON.stringify([runId, null, null, null]);
+            const page = await listRunCellsPagePayload(runtime.db, {
+                teamId: principal.teamId,
+                projectId,
+                runId,
+                limit,
+                cursor:
+                    cursorValue === "first"
+                        ? undefined
+                        : decodeMcpPageCursor(cursorValue, scope),
+            });
+            const nextCursor = page.nextCursor
+                ? encodeMcpPageCursor(scope, page.nextCursor)
+                : undefined;
+            return resourceJson(uri.href, {
+                cells: page.cells,
+                complete: page.complete,
+                ...(nextCursor
+                    ? {
+                          nextCursor,
+                          nextPageUri: `mosaic://projects/${projectId}/runs/${runId}/cells/${limit}/${nextCursor}`,
+                      }
+                    : {}),
+            });
+        },
+    );
+}
+
+function resourcePageLimit(value: unknown): number {
+    if (typeof value !== "string" || !/^\d+$/.test(value)) {
+        throw new ApiBadRequestError("limit must be an integer from 1 to 100.");
+    }
+    return Number(value);
 }
 
 function registerPrompts(server: McpServer): void {
@@ -217,7 +502,7 @@ function registerPrompts(server: McpServer): void {
                     role: "user",
                     content: {
                         type: "text",
-                        text: "Create a complete Flash Evals eval. First call get_current_user and list_eval_context. Create or select a dataset, then import text, image, audio, golden-answer, or paired items as appropriate. Generate or provide a prompt schema, test the prompt draft, validate it, create a runnable prompt, create_eval_run, poll get_run_progress, inspect get_run, then save_run_note and annotate_run_cell for review findings. For multi-step prompt graphs, use list_eval_context to choose explicit llmExecutionSelection values for every model-backed node. Pass a stable idempotencyKey to create_workflow_run and reuse that same key on every retry, then poll get_workflow_run_progress. Destructive delete and archive tools require confirm: true; inspect the target before confirming.",
+                        text: "Create a complete Flash Evals eval. First call get_current_user and list_eval_context. Create or select a dataset, then import text, image, audio, golden-answer, or paired items as appropriate. Generate or provide a prompt schema, then call create_runnable_prompt once with representative samples; it validates and saves the version on success. Use test_prompt_draft or validate_runnable_prompt only for a separate exploratory check, since create_runnable_prompt validates again when saving. Create_eval_run, poll get_run_progress, inspect get_run, then save_run_note and annotate_run_cell for review findings. For multi-step prompt graphs, use list_eval_context to choose explicit llmExecutionSelection values for every model-backed node. Pass a stable idempotencyKey to create_workflow_run before the first request and reuse that same key on every retry, then poll get_workflow_run_progress. Destructive delete and archive tools require confirm: true; inspect the target before confirming.",
                     },
                 },
             ],

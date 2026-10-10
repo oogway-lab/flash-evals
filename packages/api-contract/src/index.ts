@@ -996,6 +996,11 @@ export interface IDuplicateDatasetRequest {
     createdBy: string;
 }
 
+export interface IDuplicateDatasetResponse {
+    sourceDatasetId: string;
+    createdDatasetId: string;
+}
+
 export interface IDeleteDatasetRequest {
     teamId: string;
     projectId: string;
@@ -1392,6 +1397,12 @@ export interface IDuplicatePromptVersionRequest {
     projectId: string;
     sourcePromptVersionId: string;
     createdBy: string;
+}
+
+export interface IDuplicatePromptVersionResponse {
+    sourcePromptVersionId: string;
+    promptId: string;
+    promptVersionId: string;
 }
 
 export interface ICreateJudgePromptRequest {
@@ -2598,8 +2609,13 @@ export class MosaicApiClient {
         await this.postJson("/api/datasets/archive", input);
     }
 
-    async duplicateDataset(input: IDuplicateDatasetRequest): Promise<void> {
-        await this.postJson("/api/datasets/duplicate", input);
+    async duplicateDataset(
+        input: IDuplicateDatasetRequest,
+    ): Promise<IDuplicateDatasetResponse> {
+        return this.postJson<IDuplicateDatasetResponse>(
+            "/api/datasets/duplicate",
+            input,
+        );
     }
 
     async deleteDataset(input: IDeleteDatasetRequest): Promise<void> {
@@ -2672,8 +2688,11 @@ export class MosaicApiClient {
 
     async duplicatePromptVersion(
         input: IDuplicatePromptVersionRequest,
-    ): Promise<void> {
-        await this.postJson("/api/prompts/duplicate-version", input);
+    ): Promise<IDuplicatePromptVersionResponse> {
+        return this.postJson<IDuplicatePromptVersionResponse>(
+            "/api/prompts/duplicate-version",
+            input,
+        );
     }
 
     async createJudgePrompt(

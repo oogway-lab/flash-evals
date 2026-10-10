@@ -50,6 +50,7 @@ export function createToolHarness(
         runtime,
         principal: {
             authMode: "oauth",
+            profile: "admin",
             userId: options.userId ?? "user-1",
             teamId: options.teamId ?? TEST_TEAM_ID,
             email: "user@example.com",

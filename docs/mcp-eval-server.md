@@ -76,8 +76,8 @@ node docs/examples/mcp-read-only.mjs
 
 The [example source](examples/mcp-read-only.mjs) negotiates the protocol, lists
 tools, resource templates, and prompts, and reads your user, workspaces, and
-projects. It does not create datasets or run evaluations. It reports **78 tools,
-4 resource templates, and 1 prompt** on this revision. It also gives you the
+projects. It does not create datasets or run evaluations. It reports **84 tools,
+8 resource templates, and 1 prompt** on this revision. It also gives you the
 workspace and project IDs needed for subsequent calls.
 
 An optional first argument selects another local API address:
@@ -135,6 +135,19 @@ The token determines `userId` and `teamId`. Supplying those fields in a tool cal
 does not change the caller's identity. Projects organize data within the tenant;
 they do not grant per-project privacy.
 
+MCP also enforces a server-side profile for every tool call. OAuth clients may
+request `flash-evals:read`, `flash-evals:eval`, or `flash-evals:admin`; admin
+includes the lower profile capabilities. Existing OAuth clients without a
+Flash Evals profile scope keep the evaluation profile. `read` allows read-only
+tools, `eval` adds evaluation and ordinary project writes, and `admin` adds
+destructive actions and provider-key configuration. Existing raw-token clients
+retain admin access for compatibility; use OAuth profiles for routine agents.
+The server omits tools above the caller's profile from `tools/list` and rejects
+direct calls to them. Tool annotations describe effects for clients but do not
+grant permission. A routine evaluation agent therefore cannot see or submit the
+raw `key` field on `set_provider_key`; configure provider credentials through
+the admin profile or the web app.
+
 ### A successful HTTP request can contain a failed tool call
 
 For a successful tool call, the JSON-RPC response contains:
@@ -171,16 +184,18 @@ tool with the JSON arguments shown. Replace uppercase ID placeholders with
 returned UUIDs and `MODEL_ID` with an available, structured-output-capable model
 from your own `list_eval_context` response.
 
-**Steps 3–5 make provider calls and may cost money.** Prompt creation validates
-samples again; it is not just a database save. This example uses the configured
-default transport throughout. Review the selected provider before proceeding.
+**Steps 3–4 make provider calls and may cost money.** The default path calls
+`create_runnable_prompt` once; it validates the supplied samples and saves the
+prompt only when validation passes. This example uses the configured default
+transport throughout. Review the selected provider before proceeding.
 
-For explicit provider selection during draft testing and validation, pass the
-same optional `transport` to `test_prompt_draft`, `validate_runnable_prompt`, and
-`create_runnable_prompt`. Accepted values are `openai`, `gateway`, `openrouter`,
-and `bifrost`. Omitting it keeps the configured default. This selects the provider
-for the sample/validation call; saving a prompt does not pin the provider for
-future runs. Workflow routes provide explicit execution-time routing.
+For explicit provider selection, pass the same optional `transport` to each
+prompt operation you choose. Accepted values are `openai`, `gateway`,
+`openrouter`, and `bifrost`. Omitting it keeps the configured default. Use
+`test_prompt_draft` or `validate_runnable_prompt` as separate exploratory checks
+only when useful; `create_runnable_prompt` validates again because it creates a
+new validation record for the saved version. Workflow routes provide explicit
+execution-time routing.
 
 ### 1. Discover the project and available models
 
@@ -220,41 +235,11 @@ Keep the returned `id` as `DATASET_UUID`. Call `add_dataset_item`:
 }
 ```
 
-### 3. Validate the task and output schema
+### 3. Validate and save a runnable prompt
 
-Call `validate_runnable_prompt`:
-
-```json
-{
-    "projectId": "PROJECT_UUID",
-    "prompt": "Classify the sentiment of the input as positive, negative, or neutral. Return the requested JSON object.",
-    "targetModelId": "MODEL_ID",
-    "jsonSchema": {
-        "type": "object",
-        "properties": {
-            "sentiment": {
-                "type": "string",
-                "enum": ["positive", "negative", "neutral"]
-            }
-        },
-        "required": ["sentiment"],
-        "additionalProperties": false
-    },
-    "samples": [
-        {
-            "name": "positive",
-            "inputText": "The delivery was fast and everything worked."
-        }
-    ]
-}
-```
-
-Continue only when `data.passed` is `true`. Otherwise inspect `failureMessage`
-and the validation evidence, change the draft or schema, and validate again.
-
-### 4. Save a runnable prompt
-
-Call `create_runnable_prompt` with the same schema and sample:
+Call `create_runnable_prompt` once with the prompt, schema, and representative
+sample. It returns validation evidence and saves a version only when the sample
+passes:
 
 ```json
 {
@@ -283,10 +268,12 @@ Call `create_runnable_prompt` with the same schema and sample:
 }
 ```
 
-Keep the returned `promptVersionId` as `PROMPT_VERSION_UUID`. Notice that this
-tool calls the prompt text `content`; the validation tool calls it `prompt`.
+Keep the returned `promptVersionId` as `PROMPT_VERSION_UUID`. If validation
+fails, inspect its evidence and revise the prompt or schema before retrying.
+`create_runnable_prompt` calls the prompt text `content`; the standalone
+validation tool calls it `prompt`.
 
-### 5. Create a run and inspect its results
+### 4. Create a run and inspect its results
 
 Choose an `idempotencyKey` once for this logical run, such as
 `sentiment-example-001`, and retain it with the request. Reuse the same key and
@@ -359,19 +346,27 @@ Poll `get_workflow_run_progress` with the project, workflow, and workflow-run ID
 
 ## Resources and the setup prompt
 
-Discover the four **resource templates** with `resources/templates/list`.
+Discover the eight **resource templates** with `resources/templates/list`.
 `resources/list` is not the inventory of these parameterized resources.
 
-| Resource      | URI template                                  |
-| ------------- | --------------------------------------------- |
-| Dataset       | `mosaic://projects/{projectId}/datasets/{id}` |
-| Prompt        | `mosaic://projects/{projectId}/prompts/{id}`  |
-| Eval run      | `mosaic://projects/{projectId}/runs/{id}`     |
-| Model options | `mosaic://projects/{projectId}/models`        |
+| Resource          | URI template                                          |
+| ----------------- | ----------------------------------------------------- |
+| Dataset           | `mosaic://projects/{projectId}/datasets/{id}`         |
+| Prompt            | `mosaic://projects/{projectId}/prompts/{id}`          |
+| Eval run          | `mosaic://projects/{projectId}/runs/{id}`             |
+| Model options     | `mosaic://projects/{projectId}/models`                |
+| Dataset summary   | `mosaic://projects/{projectId}/datasets/{id}/summary` |
+| Dataset item page | `mosaic://projects/{projectId}/datasets/{id}/items`   |
+| Run summary       | `mosaic://projects/{projectId}/runs/{id}/summary`     |
+| Run cell page     | `mosaic://projects/{projectId}/runs/{id}/cells`       |
 
 Replace the braces with actual IDs, then call `resources/read` with a `uri`.
-The content is JSON text. The `mosaic://` prefix is an existing protocol
-identifier and should not be renamed to `flash-evals://`.
+The content is JSON text. The original dataset and run resources retain their
+full v1 responses. Use the summary resources for compact context and item/cell
+resources for pages. Start at `/items/{limit}/first` or `/cells/{limit}/first`,
+then follow `nextPageUri` until `complete` is true. Use the page tools when you
+need filters or opt-in item/cell detail. The `mosaic://` prefix is an existing
+protocol identifier and should not be renamed to `flash-evals://`.
 
 `prompts/list` exposes one prompt, `create_eval_happy_path`. Retrieve it with
 `prompts/get` and `{"name":"create_eval_happy_path"}` for a suggested sequence.
@@ -379,20 +374,21 @@ It is guidance for the client, not an operation that creates a run by itself.
 
 ## Tool reference
 
-The current catalog contains **78 tools** across six groups. `tools/list` is the
+The current catalog contains **84 tools** across six groups. `tools/list` is the
 authoritative source for each tool's input schema, description, and annotations.
 The [registry snapshot test](../apps/api/src/mcp/registry.test.ts) checks the
 catalog; listing a tool does not establish that every provider or execution path
-has been tested.
+has been tested. See the [MCP audit coverage matrix](mcp-audit-coverage.md) for
+the suite evidence and integration boundaries.
 
 | Group                               | Tools |
 | ----------------------------------- | ----- |
 | Identity, workspaces, and projects  | 9     |
-| Datasets                            | 21    |
+| Datasets                            | 23    |
 | Prompts                             | 12    |
-| Runs and review                     | 8     |
+| Runs and review                     | 10    |
 | Provider settings and model routing | 15    |
-| Workflows                           | 13    |
+| Workflows                           | 15    |
 
 See the [complete tool index](mcp-tool-reference.md) for every name.
 
@@ -433,7 +429,9 @@ already operate. It is not a complete hosted-deployment walkthrough.
    you want to allow. Avoid copying another deployment's allowlist. Review
    `CLERK_AUTHORIZED_PARTIES` if you use additional token restrictions.
 5. In the MCP client, select Streamable HTTP, enter your API's `/mcp` URL, and
-   complete OAuth. Client support for discovery, registration, scopes, and
+   complete OAuth. Grant a profile scope explicitly when the client supports
+   custom scopes; do not grant `flash-evals:admin` to routine evaluation agents.
+   Client support for discovery, registration, scopes, and
    redirects varies; use the client's and Clerk's current instructions.
 
 Production requires an HTTPS resource URL and refuses raw-token fallback.
