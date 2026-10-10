@@ -1647,7 +1647,7 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
         });
     });
 
-    it("roundtrips the eight resource templates, one setup prompt, HTTP 403, and resource 404 protocol errors", async () => {
+    it("roundtrips resources, the setup prompt, tool/resource HTTP 403, and resource 404 protocol errors", async () => {
         const { projectId } = fixture;
         const promptId = randomUUID();
         const promptVersionId = randomUUID();
@@ -1906,6 +1906,12 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
             { origin: "https://blocked.example" },
         );
         expect(blockedOrigin.status).toBe(403);
+        const blockedResourceOrigin = await requestRpc(
+            "resources/read",
+            { uri: uris[0] },
+            { origin: "https://blocked.example" },
+        );
+        expect(blockedResourceOrigin.status).toBe(403);
 
         const createdEvalRun = data(
             await tool("create_eval_run", {
