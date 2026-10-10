@@ -118,6 +118,16 @@ use the same local PostgreSQL URI as `DATABASE_URL`. In a Worker request,
 missing `HYPERDRIVE` fails closed even if a legacy database URL remains in the
 environment.
 
+The Cloudflare Worker sets `MOSAIC_DEFAULT_TEAM_ID` to the bootstrapped pilot
+team `64b8c0bb-4e39-469b-be96-00b0071251ef`, matching the API's single-org
+configuration. Keep the exact Next.js `16.3.8` pin in `apps/web/package.json`
+until the Cloudflare adapter supports Next.js 16.4's `preview-props.json`
+manifest. Next.js 16.4 requests that manifest through
+`loadManifest(/.next/server/preview-props.json)`, which currently throws
+`Unexpected loadManifest(/.next/server/preview-props.json) call!` in the
+Cloudflare Worker. The 16.3.8 pin avoids that unsupported manifest request.
+See [upstream issue #1355](https://github.com/opennextjs/opennextjs-cloudflare/issues/1355).
+
 Hyperdrive is included in Cloudflare Workers Free and Paid plans. The Free plan
 allows 100,000 database statements per day; the allowance resets daily at
 00:00 UTC and requests over the limit fail. Paid Workers plans list unlimited

@@ -75,6 +75,9 @@ jobs:
           test -s apps/web/.open-next/worker.js
           test -d apps/web/.open-next/assets
 
+      - name: Smoke test the local Cloudflare Worker runtime
+        run: pnpm run web:smoke:cloudflare
+
   package-tests:
     name: Package and API tests
     runs-on: ubuntu-latest
