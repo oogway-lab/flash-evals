@@ -202,6 +202,23 @@ test("local check rejects noncanonical Supabase prefixes even when services agre
     );
 });
 
+test("local check rejects mismatched internal tokens without disclosure", () => {
+    const api = makeR2Env("api");
+    const web = makeR2Env("web");
+    api.INTERNAL_API_TOKEN = "api-only-synthetic-token";
+    web.INTERNAL_API_TOKEN = "web-only-synthetic-token";
+    const result = runLocal(api, web);
+    assert.notEqual(result.status, 0);
+    assert.match(
+        result.stdout + result.stderr,
+        /apps\/api\/\.env and apps\/web\/\.env INTERNAL_API_TOKEN values do not match/,
+    );
+    assert.doesNotMatch(
+        result.stdout + result.stderr,
+        /api-only-synthetic-token|web-only-synthetic-token/,
+    );
+});
+
 test("local check reports missing R2 keys without printing configured secrets", () => {
     const api = makeR2Env("api");
     delete api.R2_SECRET_ACCESS_KEY;
@@ -279,6 +296,18 @@ test("live check accepts consistent Supabase configuration", () => {
         makeSupabaseEnv("web"),
     );
     assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test("live check rejects a Supabase API prefix that only matches after normalization", () => {
+    const api = makeSupabaseEnv("api", "/flash-evals/");
+    const worker = makeSupabaseEnv("api", "flash-evals");
+    const web = makeSupabaseEnv("web", "flash-evals");
+    const { result } = runLive(api, worker, web);
+    assert.notEqual(result.status, 0);
+    assert.match(
+        result.stderr,
+        /Railway API service SUPABASE_STORAGE_PREFIX must be canonical/,
+    );
 });
 
 test("live check requires matching API and web internal tokens without disclosure", () => {
