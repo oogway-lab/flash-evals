@@ -54,6 +54,17 @@ the web server. An API health response alone does not verify that a worker is
 running or can call a provider. Use the private `pnpm worker:status` command and
 the process supervisor; see the [worker operations runbook](worker-operations.md).
 
+For a split Railway topology, configure the API service with
+`pnpm run api:start:railway` and `MOSAIC_API_START_WORKER=false`; configure a
+separate worker service with `pnpm run worker` and no HTTP health check. The
+worker's process supervisor and `worker.ready` event establish liveness. The
+repository readiness scripts validate supported package commands and the API
+flag, but the actual start and healthcheck settings are per-service Railway
+settings and must be checked there. Railway has deprecated `railway.json` and
+`railway.toml`: new services cannot opt in, and existing services can use these
+files until the 2026-12-01 cutoff. See [Railway Config as Code](https://docs.railway.com/config-as-code)
+for current configuration options.
+
 ## Model providers
 
 The local setup selects `MOSAIC_LLM_PROVIDER=openrouter` and leaves its key blank.
@@ -98,6 +109,8 @@ The Supabase adapter uses `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
 `SUPABASE_STORAGE_BUCKET`; the bucket must remain private. Set
 `MOSAIC_CSP_STORAGE_ORIGIN` on the web build to the relevant storage origin when
 restricting browser uploads. Do not expose the service-role key to browser code.
+The web server also needs those three Supabase storage variables when that
+adapter is selected; the service-role key stays server-side.
 
 The `r2` adapter uses Cloudflare R2's S3 API through the AWS SDK for JavaScript
 v3. Set `MOSAIC_STORAGE_ADAPTER=r2` and provide `R2_ACCOUNT_ID`,
@@ -125,6 +138,24 @@ authorization check. `R2_ENDPOINT` is reserved for loopback
 S3-compatible tests and is rejected outside `localhost`, `127.0.0.1`, or `::1`
 and in production.
 
+`pnpm run deploy:check` validates the selected storage adapter in
+`apps/api/.env` and `apps/web/.env`, requires that adapter's credentials, and
+checks that adapters, bucket/project, and storage prefixes match. It verifies
+that `MOSAIC_CSP_STORAGE_ORIGIN` matches the selected endpoint. R2 deployments
+do not need Supabase storage variables. Local storage, local-only R2 endpoints,
+and insecure development bypass settings fail this deployment check.
+
+`pnpm run deploy:check:live` reads variables for separate Railway API and worker
+services with `railway variable list`. Set `RAILWAY_PROJECT_ID`,
+`RAILWAY_API_SERVICE`, and `RAILWAY_WORKER_SERVICE`; the service names must be
+distinct. Set `CLOUDFLARE_WEB_ENV` to a private, ignored dotenv file containing
+the current Cloudflare web build/runtime settings used for the check, including
+`MOSAIC_STORAGE_ADAPTER`, the selected backend's values, and
+`MOSAIC_CSP_STORAGE_ORIGIN`. The script checks those values but does not fetch
+Cloudflare variable values or inspect Railway's per-service start commands or
+healthchecks. Railway output and diagnostics do not print credential values.
+Never commit the Cloudflare env file.
+
 An upload that reaches R2 but is abandoned or rejected before its database row
 is created can remain as an unreferenced object. There is no automatic orphan
 deletion. For manual cleanup, pause new uploads, wait for upload URLs and
@@ -140,6 +171,11 @@ operational plan; no hosted backup schedule or restore drill is configured by
 this change.
 
 ## Authentication and tenancy
+
+Clerk remains the application identity provider and MCP OAuth issuer. The
+hosted Supabase baseline validation is complete; Supabase provides Postgres and
+optional object storage in this setup. Supabase Auth and a separate OAuth
+client are not prerequisites for the current Clerk-based configuration.
 
 Local development bypasses web sign-in only when `AUTH_DEV=true` and
 `AUTH_DEV_ALLOW_INSECURE=1`, with valid default user/team IDs. The root development

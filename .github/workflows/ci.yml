@@ -198,10 +198,7 @@ jobs:
         run: pnpm run docs:api
 
       - name: Split deployment readiness
-        env:
-          API_ENV: apps/api/.env.example
-          WEB_ENV: apps/web/.env.example
-        run: pnpm run deploy:check
+        run: node --test scripts/check-split-deployment-readiness.test.mjs
 
   security-scans:
     name: Secret and SAST scans

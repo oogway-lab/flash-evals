@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+umask 077
 FAILED=0
-WRANGLER_OUTPUT=$(mktemp "${TMPDIR:-/tmp}/mosaic-wrangler-whoami.XXXXXX")
+TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/mosaic-live-readiness.XXXXXX")
 
 cleanup() {
-    rm -f "$WRANGLER_OUTPUT"
+    rm -rf "$TMP_DIR"
 }
 
 trap cleanup EXIT
@@ -26,8 +27,7 @@ require_command() {
 
 require_value() {
     local name="$1"
-    local value="${!name:-}"
-    if [ -z "$value" ]; then
+    if [ -z "${!name:-}" ]; then
         fail "$name is required"
         return 1
     fi
@@ -36,85 +36,72 @@ require_value() {
 
 RAILWAY_PROJECT_ID="${RAILWAY_PROJECT_ID:-}"
 RAILWAY_ENVIRONMENT="${RAILWAY_ENVIRONMENT:-production}"
-RAILWAY_SERVICE="${RAILWAY_SERVICE:-}"
+RAILWAY_API_SERVICE="${RAILWAY_API_SERVICE:-${RAILWAY_SERVICE:-}}"
+RAILWAY_WORKER_SERVICE="${RAILWAY_WORKER_SERVICE:-}"
+CLOUDFLARE_WEB_ENV="${CLOUDFLARE_WEB_ENV:-}"
 WRANGLER_BIN="${WRANGLER_BIN:-apps/web/node_modules/.bin/wrangler}"
 
 require_value RAILWAY_PROJECT_ID
-require_value RAILWAY_SERVICE
+require_value RAILWAY_API_SERVICE
+require_value RAILWAY_WORKER_SERVICE
+require_value CLOUDFLARE_WEB_ENV
+
+if [ -n "$RAILWAY_API_SERVICE" ] && [ "$RAILWAY_API_SERVICE" = "$RAILWAY_WORKER_SERVICE" ]; then
+    fail "RAILWAY_API_SERVICE and RAILWAY_WORKER_SERVICE must identify separate services"
+fi
+
+if [ -n "$CLOUDFLARE_WEB_ENV" ] && [ ! -f "$CLOUDFLARE_WEB_ENV" ]; then
+    fail "CLOUDFLARE_WEB_ENV must point to a private file of current Cloudflare build/runtime variables"
+fi
 
 if [ -x "$WRANGLER_BIN" ]; then
-    if ! "$WRANGLER_BIN" whoami >"$WRANGLER_OUTPUT" 2>&1; then
+    if ! "$WRANGLER_BIN" whoami >"$TMP_DIR/wrangler-whoami.out" 2>&1; then
         fail "Wrangler is not authenticated; run wrangler login before Cloudflare deploy"
-    elif grep -q "not authenticated" "$WRANGLER_OUTPUT"; then
+    elif grep -qi "not authenticated" "$TMP_DIR/wrangler-whoami.out"; then
         fail "Wrangler is not authenticated; run wrangler login before Cloudflare deploy"
     fi
 else
     fail "$WRANGLER_BIN is missing or not executable"
 fi
 
-if require_command railway; then
-    if ! variables_json=$(
-        railway variable list \
+if require_command railway &&
+    [ -n "$RAILWAY_PROJECT_ID" ] &&
+    [ -n "$RAILWAY_API_SERVICE" ] &&
+    [ -n "$RAILWAY_WORKER_SERVICE" ] &&
+    [ "$RAILWAY_API_SERVICE" != "$RAILWAY_WORKER_SERVICE" ]; then
+    for role in api worker; do
+        if [ "$role" = "api" ]; then
+            service="$RAILWAY_API_SERVICE"
+        else
+            service="$RAILWAY_WORKER_SERVICE"
+        fi
+        variables_path="$TMP_DIR/railway-$role.json"
+        if ! railway variable list \
             --project "$RAILWAY_PROJECT_ID" \
             --environment "$RAILWAY_ENVIRONMENT" \
-            --service "$RAILWAY_SERVICE" \
-            --json
-    ); then
-        fail "Could not read Railway variables for service $RAILWAY_SERVICE in $RAILWAY_ENVIRONMENT"
-        variables_json="{}"
-    fi
-    missing=$(
-        VARIABLES_JSON="$variables_json" node - <<'NODE'
-const raw = JSON.parse(process.env.VARIABLES_JSON || "{}");
-const keys = Array.isArray(raw)
-  ? raw.map((entry) => entry.name || entry.key).filter(Boolean)
-  : Object.keys(raw);
-const required = [
-  "DATABASE_URL",
-  "SUPABASE_URL",
-  "SUPABASE_SERVICE_ROLE_KEY",
-  "SUPABASE_STORAGE_BUCKET",
-  "CLERK_SECRET_KEY",
-  "CORS_ORIGINS",
-  "INTERNAL_API_TOKEN",
-];
-for (const key of required) {
-  if (!keys.includes(key)) console.log(key);
-}
-NODE
-    )
-    if [ -n "$missing" ]; then
-        while IFS= read -r key; do
-            [ -n "$key" ] && fail "Railway service is missing $key"
-        done <<< "$missing"
-    fi
+            --service "$service" \
+            --json >"$variables_path" 2>"$TMP_DIR/railway-$role.stderr"; then
+            fail "Could not read Railway variables for the $role service in $RAILWAY_ENVIRONMENT"
+            rm -f "$variables_path"
+        fi
+    done
+fi
 
-    forbidden=$(
-        VARIABLES_JSON="$variables_json" node - <<'NODE'
-const raw = JSON.parse(process.env.VARIABLES_JSON || "{}");
-const keys = Array.isArray(raw)
-  ? raw.map((entry) => entry.name || entry.key).filter(Boolean)
-  : Object.keys(raw);
-const forbidden = [
-  "UPLOAD_DIR",
-  "RAILWAY_VOLUME_ID",
-  "RAILWAY_VOLUME_MOUNT_PATH",
-  "RAILWAY_VOLUME_NAME",
-];
-for (const key of forbidden) {
-  if (keys.includes(key)) console.log(key);
-}
-NODE
-    )
-    if [ -n "$forbidden" ]; then
-        while IFS= read -r key; do
-            [ -n "$key" ] && fail "Railway service still has legacy volume variable $key"
-        done <<< "$forbidden"
+if [ -f "$TMP_DIR/railway-api.json" ] &&
+    [ -f "$TMP_DIR/railway-worker.json" ] &&
+    [ -f "$CLOUDFLARE_WEB_ENV" ]; then
+    if ! node scripts/validate-split-storage-readiness.mjs live \
+        "$TMP_DIR/railway-api.json" \
+        "$TMP_DIR/railway-worker.json" \
+        "$CLOUDFLARE_WEB_ENV"; then
+        FAILED=1
     fi
 fi
 
 if [ "$FAILED" -eq 0 ]; then
     echo "Live split deployment readiness check passed."
+    echo "This check reads API and worker variables from Railway and web build/runtime variables from CLOUDFLARE_WEB_ENV. It does not inspect per-service Railway start or healthcheck settings."
+    echo "Expected topology: API uses pnpm run api:start:railway with MOSAIC_API_START_WORKER=false; worker uses pnpm run worker with no HTTP health check. This check does not inspect those Railway service settings."
 else
     exit 1
 fi
