@@ -84,6 +84,8 @@ export async function POST(req: Request) {
             targets: targets.map((target) => ({
                 storageKey: target.storageKey,
                 signedUrl: target.signedUrl,
+                // R2 binds its create-only condition to the signed request.
+                ...(target.headers ? { headers: target.headers } : {}),
                 ...(target.expiresAt ? { expiresAt: target.expiresAt } : {}),
             })),
         });
