@@ -44,6 +44,28 @@ function syntheticToken(
 }
 
 describe("MCP OAuth validation with the real Clerk SDK", () => {
+    it.each([
+        undefined,
+        "",
+        "https://different.example.com",
+        "https://clerk.example.com/",
+        "https://clerk.example.com.attacker.test",
+        123,
+        ["https://clerk.example.com"],
+    ])("rejects a trusted-key OAuth JWT with issuer %s", async (iss) => {
+        await expect(
+            resolveClerkOAuthSubject(syntheticToken({ iss }), oauthConfig),
+        ).rejects.toMatchObject({ reason: "issuer_mismatch" });
+    });
+
+    it("accepts the other RFC 9068 access-JWT header type with the exact issuer", async () => {
+        await expect(
+            resolveClerkOAuthSubject(
+                syntheticToken({}, "application/at+jwt"),
+                oauthConfig,
+            ),
+        ).resolves.toBe("user_synthetic");
+    });
     it("accepts a signed OAuth JWT with client_id and no session azp", async () => {
         await expect(
             resolveClerkOAuthSubject(syntheticToken(), oauthConfig),
