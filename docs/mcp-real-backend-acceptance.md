@@ -9,8 +9,9 @@ This ledger distinguishes catalog/profile checks from operations that reached th
 - The HTTP resource checks read all eight registered resource templates against synthetic PostgreSQL rows. `prompts/get` is a real protocol request to the registered setup prompt, whose text is static. The bearer token and all tenant rows/files are synthetic.
 - Test commit `89637fdf984ef76fd78cb96bc6bb6a136557d50b`, against implementation head `5d99bc73ecbb6e0937a4466181f3565869bc6aa0`, passed all 10 scenarios and exercised all 88 registered tools. That run confirmed the `.123456Z`/`.654321Z` cursor regression and cross-tenant resource protocol fixes.
 - The provider adapter intercepts only OpenAI model listing, chat completions, and audio transcriptions; all unexpected provider/network endpoints throw. Prompt validation/generation, optimization, judge generation/testing, STT probe persistence, and LLM route discovery/mutations therefore run through the real shared business code without outbound provider requests or charges.
-- Review-hardening assertions added after `89637fd` cover the required `create_workflow_run.idempotencyKey`, zero-cell workflow summaries, nonempty run review/score projections, multi-page encoded summary/resource cursors, and destructive/tenant denials. The current implementation head makes `idempotencyKey` optional; these additions await the implementation owner's required-key fix before the final DB run.
-- Before those new assertions were added, the real-backend run reported 10/10 scenarios on Node 24.21.0. The no-DB MCP test directory reported 17 files passed, 2 skipped; 169 tests passed, 12 skipped. The no-DB invocation skips the DB-gated suite and predates the new required-key assertion.
+- Review-hardening assertions added after `89637fd` cover the required `create_workflow_run.idempotencyKey`, zero-cell workflow summaries, nonempty run review/score projections, multi-page encoded summary/resource cursors, and destructive/tenant denials. Implementation head `c5b57d4` restores the required key and updates the catalog snapshot. The hardened DB acceptance rerun against that exact head is still pending.
+- On the combined implementation and acceptance-test head before the final DB rerun, `pnpm --filter @mosaic/api exec vitest run src/mcp/` reported 17 files passed and 2 skipped; 172 passed and 12 skipped. The database-gated real-backend scenarios are among the skips because this checkout has no acceptance database URL configured.
+- `pnpm test` passed on the combined head: 174 files passed, 3 skipped; 1,273 passed, 5 skipped. The disposable-Postgres integration tests were skipped without `MOSAIC_TEST_DATABASE_URL`; the existing R2 loopback integration required the approved local-network escalation.
 
 ## Run the real-backend suite
 
@@ -26,22 +27,22 @@ The test refuses non-loopback hosts and any database name other than `flash_eval
 
 ## Real-backend scenario ledger
 
-| Scenario                                                                                                     | Result                                                                                                |
-| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| Creates and reads tenant-owned workspaces, projects, and datasets; cursor paging and copy idempotency        | Prior run passed; summary-page cursor traversal was added and awaits rerun.                           |
-| Reads tenant workspace, eval setup, and dashboard state from PostgreSQL                                      | Pass                                                                                                  |
-| Exercises workflow CRUD, durable run creation, readers, summaries, and review mutations                      | Prior run passed; zero-cell summary and nonempty review/score projections were added and await rerun. |
-| Sets and clears only a synthetic provider key and reads routing metadata                                     | Pass                                                                                                  |
-| Exercises provider-backed tools with deterministic local responses and no outbound provider requests         | Pass                                                                                                  |
-| Imports golden answers and exercises dataset rename, archive, label, item, and delete operations             | Pass                                                                                                  |
-| Imports image/audio fixtures and previews and commits mapped audio answers                                   | Pass                                                                                                  |
-| Persists synthetic image bytes to temporary local storage and verifies byte-for-byte contents                | Pass                                                                                                  |
-| Reads all resource URIs and the setup prompt; checks blocked-origin HTTP 403 and cross-tenant resource error | Prior run passed; encoded resource cursor continuation was added and awaits rerun.                    |
-| Checks invalid schema input and tenant-scoped tool not-found errors                                          | Prior run passed; missing-key and destructive tenant/confirmation denials were added and await rerun. |
+| Scenario                                                                                                     | Result                                                                                 |
+| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| Creates and reads tenant-owned workspaces, projects, and datasets; cursor paging and copy idempotency        | Prior run passed; hardened summary-page cursor traversal awaits rerun.                 |
+| Reads tenant workspace, eval setup, and dashboard state from PostgreSQL                                      | Prior run passed                                                                       |
+| Exercises workflow CRUD, durable run creation, readers, summaries, and review mutations                      | Prior run passed; zero-cell summary and review/score projections await rerun.          |
+| Sets and clears only a synthetic provider key and reads routing metadata                                     | Prior run passed                                                                       |
+| Exercises provider-backed tools with deterministic local responses and no outbound provider requests         | Prior run passed                                                                       |
+| Imports golden answers and exercises dataset rename, archive, label, item, and delete operations             | Prior run passed                                                                       |
+| Imports image/audio fixtures and previews and commits mapped audio answers                                   | Prior run passed                                                                       |
+| Persists synthetic image bytes to temporary local storage and verifies byte-for-byte contents                | Prior run passed                                                                       |
+| Reads all resource URIs and the setup prompt; checks blocked-origin HTTP 403 and cross-tenant resource error | Prior run passed; encoded resource cursor continuation awaits rerun.                   |
+| Checks invalid schema input and tenant-scoped tool not-found errors                                          | Prior run passed; missing-key and destructive tenant/confirmation denials await rerun. |
 
 ## Tool-level real-backend ledger
 
-| Tool                                  | Scenario                                                                                              | Evidence on exact head `5d99bc73`                                                                                      |
+| Tool                                  | Scenario                                                                                              | Evidence on baseline acceptance head `5d99bc73`                                                                        |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `list_workspaces`                     | reads tenant workspace, eval setup, and dashboard state from PostgreSQL                               | Pass; positive result/output state or persisted rows asserted through real tools/call.                                 |
 | `create_workspace`                    | creates and reads tenant-owned workspaces, projects, and datasets through tools/call                  | Pass; positive result/output state or persisted rows asserted through real tools/call.                                 |

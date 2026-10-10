@@ -131,7 +131,7 @@ Successful tools keep the compact JSON text fallback for results up to 24,000 ch
 | HTTP auth, compatibility, errors, and protocol            | `apps/api/src/mcp/http.test.ts`, plus the HTTP matrix above                                              | Real streamable HTTP transport; OAuth resolution is stubbed only in the exhaustive fixture matrix                                                                                                                       |
 | stdio registration and protocol                           | `apps/api/src/mcp/stdio.test.ts`, plus the stdio matrix above                                            | Real MCP `StdioServerTransport` and SDK client connected through in-memory byte streams                                                                                                                                 |
 
-Test enumeration or the fixture-only transport matrix alone is not a full business-logic pass. The full workspace run and disposable-Postgres results will be recorded after reconciliation with the current main branch.
+The combined implementation and acceptance-test head passes the full workspace suite (`pnpm test`: 174 files passed, 3 skipped; 1,273 passed, 5 skipped). The API Postgres integrations are opt-in and were skipped because no `MOSAIC_TEST_DATABASE_URL` is configured in this checkout. The separate [real-backend acceptance ledger](mcp-real-backend-acceptance.md) records the prior successful DB run on `5d99bc7`, the hardened cases awaiting a rerun on fixed head `c5b57d4`, and the exact distinction between HTTP/Postgres and stdio profile coverage.
 
 ## Catalog-size note
 
