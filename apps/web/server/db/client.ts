@@ -38,3 +38,9 @@ const lazyPool = new Proxy({} as Pool, {
 
 export const db = drizzle(lazyPool, { schema });
 export { schema };
+
+export async function closeDatabasePool(): Promise<void> {
+    const current = pool;
+    pool = undefined;
+    if (current) await current.end();
+}

@@ -15,6 +15,7 @@
         "test": "pnpm --filter @mosaic/object-storage build && pnpm --filter @mosaic/api-contract build && pnpm --filter @mosaic/llm-core build && pnpm --filter @mosaic/secrets build && vitest run",
         "test:coverage": "pnpm --filter @mosaic/object-storage build && pnpm --filter @mosaic/api-contract build && pnpm --filter @mosaic/llm-core build && pnpm --filter @mosaic/secrets build && MOSAIC_COVERAGE_RUN=1 vitest run --coverage",
         "worker": "../../scripts/build-packages.mjs && ../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=../api/.env --env-file-if-exists=.env --import tsx scripts/worker.ts",
+        "worker:status": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=../api/.env --env-file-if-exists=.env --import tsx scripts/worker-status.ts",
         "db:generate": "drizzle-kit generate",
         "db:migrate": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=../api/.env --env-file-if-exists=.env ./node_modules/drizzle-kit/bin.cjs migrate",
         "seed": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=../api/.env --env-file-if-exists=.env --import tsx scripts/seed.ts"

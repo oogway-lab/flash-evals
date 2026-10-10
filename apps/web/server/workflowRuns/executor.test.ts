@@ -590,10 +590,16 @@ describe("executeWorkflowRun", () => {
             true,
         );
         expect(consoleError).toHaveBeenCalledTimes(3);
-        expect(consoleError).toHaveBeenCalledWith(
-            expect.stringContaining("scoring failed:"),
-            expect.objectContaining({ message: "judge unavailable" }),
-        );
+        for (const [line] of consoleError.mock.calls) {
+            const payload = JSON.parse(String(line)) as Record<string, unknown>;
+            expect(payload).toMatchObject({
+                service: "mosaic-worker",
+                event: "workflow_cell.scoring_failed",
+                errorName: "Error",
+            });
+            expect(payload).not.toHaveProperty("message");
+            expect(String(line)).not.toContain("judge unavailable");
+        }
         consoleError.mockRestore();
     });
 
