@@ -59,7 +59,6 @@ function shutdown(signal: string): void {
     }, drainTimeoutMs + SHUTDOWN_BUFFER_MS);
 
     void (async () => {
-        await startupPromise;
         const stopResults = await Promise.allSettled([
             stopRunWorker(drainTimeoutMs),
             stopWorkflowRunWorker(drainTimeoutMs),
@@ -108,11 +107,11 @@ function shutdown(signal: string): void {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-const startupPromise = main().catch((error: unknown) => {
+void main().catch((error: unknown) => {
     startupFailed = true;
     process.exitCode = 1;
     logWorkerEvent("error", "worker.startup_failed", {
         ...safeWorkerError(error),
     });
-    shutdown("startup_failure");
+    if (!shuttingDown) shutdown("startup_failure");
 });

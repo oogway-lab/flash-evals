@@ -407,10 +407,13 @@ describe("loadJudgePromptForRun", () => {
             }),
         ).resolves.toBeUndefined();
 
-        expect(errorSpy).toHaveBeenCalledWith(
-            "failed to load judge prompt version judge-pv-1:",
-            expect.stringContaining("database unavailable"),
-        );
+        const logged = String(errorSpy.mock.calls[0]?.[0]);
+        expect(JSON.parse(logged)).toMatchObject({
+            service: "mosaic-worker",
+            event: "judge_prompt.load_failed",
+            errorName: "Error",
+        });
+        expect(logged).not.toContain("database unavailable");
         errorSpy.mockRestore();
     });
 
@@ -430,8 +433,13 @@ describe("loadJudgePromptForRun", () => {
         });
 
         const logged = errorSpy.mock.calls.flat().map(String).join(" ");
-        expect(logged).toContain("fetch failed");
         expect(logged).not.toContain("sk-live-abcdef123456");
+        expect(logged).not.toContain("fetch failed");
+        expect(JSON.parse(String(errorSpy.mock.calls[0]?.[0]))).toMatchObject({
+            service: "mosaic-worker",
+            event: "judge_prompt.load_failed",
+            errorName: "Error",
+        });
         errorSpy.mockRestore();
     });
 });

@@ -16,10 +16,12 @@ Run `pnpm worker:status` with the same `DATABASE_URL` to print one local JSON
 snapshot. It checks the database and pg-boss tables, then reports pending,
 active, and failed queue jobs; oldest queue age; pending/running/failed/stale
 eval and workflow runs; and persisted provider/model usage and estimated costs
-from the last 24 hours. It does not read or print prompts, inputs, outputs,
-provider keys, or stored error text. The command is intended for a trusted
-operator shell and must not be exposed through a public route or copied into a
-public issue.
+for non-cached cells created in the last 24 hours. Cell creation time is not
+provider execution time, and cached rows are excluded so a prior paid result is
+not counted again for each cache hit. It does not read or print prompts, inputs,
+outputs, provider keys, or stored error text. The command is intended for a
+trusted operator shell and must not be exposed through a public route or copied
+into a public issue.
 
 The status command reports `readiness: "queue_backend_ready"` when the database
 and queue backend queries succeed. Confirm process liveness separately in the
@@ -73,18 +75,22 @@ pg-boss or run/cell rows as a first response.
 ## Errors, costs, and pilot review
 
 Worker stdout uses JSON events with service, event, timestamp, queue, job/run or
-cell IDs, duration, attempt count, and safe error name/code. Logs intentionally
-omit exception messages and stacks because provider or database errors can echo
-request content. Detailed, redacted cell errors remain in the app's existing
-authenticated run views. API error-tracking configuration is currently a
-placeholder shell; a configured DSN does not mean an external SDK is receiving
-events. This worker path uses the private runtime logs as its error surface.
+cell IDs, duration, attempt count, allowlisted runtime error names, and known
+network/SQLSTATE codes. Unknown provider-supplied names or codes collapse to a
+generic category or are omitted. Logs omit exception messages and stacks because
+provider or database errors can echo request content. Detailed, redacted cell
+errors remain in the app's existing authenticated run views. API error-tracking
+configuration is currently a placeholder shell; a configured DSN does not mean
+an external SDK is receiving events. This worker path uses the private runtime
+logs as its error surface.
 
 The status report sums persisted usage and cost estimates by provider/model and
-cost source. A missing cost stays unavailable; catalog estimates and provider
-reported values are not billing records. Compare costs with provider dashboards
-when investigating discrepancies. The report and local logs do not implement
-spend limits, billing, or entitlements.
+cost source for non-cached cells created in the prior 24 hours. Because the
+schema does not record provider execution time for every cell, this is a
+cell-creation-time window. A missing cost stays unavailable; catalog estimates
+and provider-reported values are not billing records. Compare costs with
+provider dashboards when investigating discrepancies. The report and local
+logs do not implement spend limits, billing, or entitlements.
 
 For this pilot, the pilot owner/reviewer, Soumyo Dey, reviews the status and
 daily record once per day. Review a failed job immediately before retrying it;

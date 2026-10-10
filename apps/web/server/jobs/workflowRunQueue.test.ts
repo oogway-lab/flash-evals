@@ -5,17 +5,25 @@ const mocks = vi.hoisted(() => ({
     updatePayloads: [] as Array<Record<string, unknown>>,
     send: vi.fn(),
     work: vi.fn(),
+    offWork: vi.fn(async () => undefined),
     stop: vi.fn(async () => undefined),
+    bossConstructions: 0,
+    selectGate: undefined as Promise<Array<{ id: string }>> | undefined,
+    selectStarted: vi.fn(),
     executeWorkflowRun: vi.fn(),
 }));
 
 vi.mock("pg-boss", () => ({
     default: class PgBossMock {
+        constructor() {
+            mocks.bossConstructions += 1;
+        }
         on = vi.fn();
         start = vi.fn(async () => undefined);
         createQueue = vi.fn(async () => undefined);
         send = mocks.send;
         work = mocks.work;
+        offWork = mocks.offWork;
         stop = mocks.stop;
     },
 }));
@@ -25,7 +33,11 @@ vi.mock("../db/client", () => ({
         selectDistinct: vi.fn(() => ({
             from: vi.fn(() => ({
                 innerJoin: vi.fn(() => ({
-                    where: vi.fn(async () => mocks.staleRuns),
+                    where: vi.fn(async () => {
+                        mocks.selectStarted();
+                        if (mocks.selectGate) return await mocks.selectGate;
+                        return mocks.staleRuns;
+                    }),
                 })),
             })),
         })),
@@ -37,6 +49,14 @@ vi.mock("../db/client", () => ({
         })),
     },
 }));
+
+function deferred<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    const promise = new Promise<T>((done) => {
+        resolve = done;
+    });
+    return { promise, resolve };
+}
 
 vi.mock("../workflowRuns/executor", () => ({
     executeWorkflowRun: mocks.executeWorkflowRun,
@@ -57,7 +77,10 @@ describe("workflow run queue", () => {
         mocks.updatePayloads.length = 0;
         mocks.send.mockReset();
         mocks.work.mockReset();
+        mocks.offWork.mockReset();
         mocks.stop.mockReset();
+        mocks.selectGate = undefined;
+        mocks.selectStarted.mockReset();
         mocks.executeWorkflowRun.mockReset();
     });
 
@@ -143,5 +166,64 @@ describe("workflow run queue", () => {
             graceful: true,
             timeout: 1_500,
         });
+    });
+
+    it("quiesces before recovery and closes the same pg-boss instance", async () => {
+        vi.useFakeTimers();
+        await startWorkflowRunWorker();
+        const constructionCount = mocks.bossConstructions;
+
+        const recovery = deferred<Array<{ id: string }>>();
+        const recoveryStarted = deferred<void>();
+        mocks.selectGate = recovery.promise;
+        mocks.selectStarted.mockImplementationOnce(() =>
+            recoveryStarted.resolve(),
+        );
+
+        const sweep = vi.advanceTimersByTimeAsync(300_000);
+        await recoveryStarted.promise;
+        const stopping = stopWorkflowRunWorker(10_000);
+        expect(mocks.offWork).toHaveBeenCalledWith("workflow-run");
+        expect(mocks.stop).not.toHaveBeenCalled();
+
+        recovery.resolve([{ id: "workflow-stale" }]);
+        await sweep;
+        await expect(stopping).resolves.toEqual({ remainingInFlight: 0 });
+
+        expect(mocks.send).toHaveBeenCalledWith(
+            "workflow-run",
+            { workflowRunId: "workflow-stale" },
+            expect.any(Object),
+        );
+        expect(mocks.bossConstructions).toBe(constructionCount);
+        expect(mocks.stop).toHaveBeenCalledOnce();
+        expect(mocks.offWork.mock.invocationCallOrder[0]).toBeLessThan(
+            mocks.send.mock.invocationCallOrder[0]!,
+        );
+    });
+
+    it("does not register a consumer when shutdown interrupts startup recovery", async () => {
+        const constructionCount = mocks.bossConstructions;
+        const recovery = deferred<Array<{ id: string }>>();
+        const recoveryStarted = deferred<void>();
+        mocks.selectGate = recovery.promise;
+        mocks.selectStarted.mockImplementationOnce(() =>
+            recoveryStarted.resolve(),
+        );
+
+        const starting = startWorkflowRunWorker();
+        await recoveryStarted.promise;
+        const stopping = stopWorkflowRunWorker(10_000);
+        recovery.resolve([{ id: "workflow-startup-stale" }]);
+        await Promise.all([starting, stopping]);
+
+        expect(mocks.work).not.toHaveBeenCalled();
+        expect(mocks.send).toHaveBeenCalledWith(
+            "workflow-run",
+            { workflowRunId: "workflow-startup-stale" },
+            expect.any(Object),
+        );
+        expect(mocks.bossConstructions).toBe(constructionCount + 1);
+        expect(mocks.stop).toHaveBeenCalledOnce();
     });
 });

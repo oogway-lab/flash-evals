@@ -18,6 +18,7 @@ let workerStarted = false;
 let stopping = false;
 let recoveryTimer: ReturnType<typeof setInterval> | undefined;
 let recoveryInFlight: Promise<void> | undefined;
+let startPromise: Promise<void> | undefined;
 let stopPromise: Promise<{ remainingInFlight: number }> | undefined;
 let activeJobs = 0;
 const staleClaimMs = parseStaleClaimMs(process.env.RUN_STALE_CLAIM_MS);
@@ -45,14 +46,16 @@ export async function enqueueRun(runId: string): Promise<void> {
     await b.send(RUN_QUEUE, { runId });
 }
 
-export async function startRunWorker(): Promise<void> {
-    if (workerStarted) return;
+export function startRunWorker(): Promise<void> {
+    if (workerStarted) return startPromise ?? Promise.resolve();
     stopping = false;
     stopPromise = undefined;
     workerStarted = true;
-    try {
+    startPromise = (async () => {
         await recoverOrphanedRuns();
+        if (stopping) return;
         const b = await getBoss();
+        if (stopping) return;
         await b.work<RunJob>(
             RUN_QUEUE,
             { includeMetadata: true },
@@ -93,12 +96,17 @@ export async function startRunWorker(): Promise<void> {
                 }
             },
         );
+        if (stopping) {
+            await b.offWork(RUN_QUEUE);
+            return;
+        }
         startRecoverySweep();
         logWorkerEvent("info", "worker.queue_ready", { queue: RUN_QUEUE });
-    } catch (error) {
+    })().catch((error: unknown) => {
         workerStarted = false;
         throw error;
-    }
+    });
+    return startPromise;
 }
 
 function startRecoverySweep(): void {
@@ -131,15 +139,41 @@ export async function stopRunWorker(
     stopping = true;
     if (recoveryTimer) clearInterval(recoveryTimer);
     recoveryTimer = undefined;
-    const instance = boss;
-    boss = undefined;
-    workerStarted = false;
+    const deadline = Date.now() + timeoutMs;
+    const starting = startPromise;
+    const instanceAtStop = boss;
 
     stopPromise = (async () => {
+        let quiesceError: unknown;
+        const quiesce = async (instance: PgBoss | undefined) => {
+            if (!instance) return;
+            try {
+                // Stop polling immediately, while keeping this instance available
+                // to the recovery sweep until its durable requeues have finished.
+                await instance.offWork(RUN_QUEUE);
+            } catch (error) {
+                quiesceError = error;
+                logWorkerEvent("error", "queue.quiesce_failed", {
+                    queue: RUN_QUEUE,
+                    ...safeWorkerError(error),
+                });
+            }
+        };
+        await quiesce(instanceAtStop);
+        await starting?.catch(() => undefined);
+        const instance = boss;
+        if (instance !== instanceAtStop) await quiesce(instance);
         await recoveryInFlight;
         if (instance) {
-            await instance.stop({ graceful: true, timeout: timeoutMs });
+            if (boss === instance) boss = undefined;
+            await instance.stop({
+                graceful: true,
+                timeout: Math.max(1_000, deadline - Date.now()),
+            });
         }
+        startPromise = undefined;
+        workerStarted = false;
+        if (quiesceError) throw quiesceError;
         return { remainingInFlight: activeJobs };
     })();
     return stopPromise;

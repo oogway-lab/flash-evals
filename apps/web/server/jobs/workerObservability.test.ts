@@ -16,6 +16,15 @@ describe("worker observability", () => {
         });
     });
 
+    it("collapses provider-supplied names and codes outside the allowlists", () => {
+        const error = Object.assign(
+            new Error("request contained private provider data"),
+            { name: "ProviderError_sk-live-secret", code: "sk-live-secret" },
+        );
+
+        expect(safeWorkerError(error)).toEqual({ errorName: "Error" });
+    });
+
     it("writes correlated structured events without message fields", () => {
         const info = vi.spyOn(console, "info").mockImplementation(() => {});
         logWorkerEvent("info", "job.started", {

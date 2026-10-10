@@ -17,6 +17,7 @@ let workerStarted = false;
 let stopping = false;
 let recoveryTimer: ReturnType<typeof setInterval> | undefined;
 let recoveryInFlight: Promise<void> | undefined;
+let startPromise: Promise<void> | undefined;
 let stopPromise: Promise<{ remainingInFlight: number }> | undefined;
 let activeJobs = 0;
 
@@ -96,16 +97,17 @@ export async function recoverOrphanedWorkflowRuns() {
     });
 }
 
-export async function startWorkflowRunWorker() {
-    if (workerStarted) return;
+export function startWorkflowRunWorker(): Promise<void> {
+    if (workerStarted) return startPromise ?? Promise.resolve();
     stopping = false;
     stopPromise = undefined;
     workerStarted = true;
-    try {
+    startPromise = (async () => {
         await recoverOrphanedWorkflowRuns();
-        await (
-            await getBoss()
-        ).work<IWorkflowRunJob>(
+        if (stopping) return;
+        const b = await getBoss();
+        if (stopping) return;
+        await b.work<IWorkflowRunJob>(
             WORKFLOW_RUN_QUEUE,
             { includeMetadata: true },
             async (jobs) => {
@@ -184,14 +186,19 @@ export async function startWorkflowRunWorker() {
                 }
             },
         );
+        if (stopping) {
+            await b.offWork(WORKFLOW_RUN_QUEUE);
+            return;
+        }
         startRecoverySweep();
         logWorkerEvent("info", "worker.queue_ready", {
             queue: WORKFLOW_RUN_QUEUE,
         });
-    } catch (error) {
+    })().catch((error: unknown) => {
         workerStarted = false;
         throw error;
-    }
+    });
+    return startPromise;
 }
 
 function startClaimHeartbeat(
@@ -252,15 +259,41 @@ export async function stopWorkflowRunWorker(
     stopping = true;
     if (recoveryTimer) clearInterval(recoveryTimer);
     recoveryTimer = undefined;
-    const instance = boss;
-    boss = undefined;
-    workerStarted = false;
+    const deadline = Date.now() + timeoutMs;
+    const starting = startPromise;
+    const instanceAtStop = boss;
 
     stopPromise = (async () => {
+        let quiesceError: unknown;
+        const quiesce = async (instance: PgBoss | undefined) => {
+            if (!instance) return;
+            try {
+                // Stop polling immediately, while keeping this instance available
+                // to the recovery sweep until its durable requeues have finished.
+                await instance.offWork(WORKFLOW_RUN_QUEUE);
+            } catch (error) {
+                quiesceError = error;
+                logWorkerEvent("error", "queue.quiesce_failed", {
+                    queue: WORKFLOW_RUN_QUEUE,
+                    ...safeWorkerError(error),
+                });
+            }
+        };
+        await quiesce(instanceAtStop);
+        await starting?.catch(() => undefined);
+        const instance = boss;
+        if (instance !== instanceAtStop) await quiesce(instance);
         await recoveryInFlight;
         if (instance) {
-            await instance.stop({ graceful: true, timeout: timeoutMs });
+            if (boss === instance) boss = undefined;
+            await instance.stop({
+                graceful: true,
+                timeout: Math.max(1_000, deadline - Date.now()),
+            });
         }
+        startPromise = undefined;
+        workerStarted = false;
+        if (quiesceError) throw quiesceError;
         return { remainingInFlight: activeJobs };
     })();
     return stopPromise;

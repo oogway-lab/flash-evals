@@ -2,6 +2,7 @@ import { Pool } from "pg";
 import { RUN_QUEUE, WORKFLOW_RUN_QUEUE } from "../server/jobs/queueNames";
 import { parseStaleClaimMs } from "../server/jobs/claimLease";
 import { safeWorkerError } from "../server/jobs/workerObservability";
+import { loadWorkerCostSummary } from "../server/jobs/workerStatusCostSummary";
 
 interface IQueueRow {
     name: string;
@@ -17,16 +18,6 @@ interface IRunSummaryRow {
     failed: number;
     stalled: number;
     oldestPendingAt: Date | null;
-}
-
-interface ICostRow {
-    workflow: boolean;
-    providerOrModel: string;
-    costSource: string;
-    cells: number;
-    estimatedCostUsd: number | null;
-    inputTokens: number;
-    outputTokens: number;
 }
 
 async function main(): Promise<void> {
@@ -85,52 +76,7 @@ async function main(): Promise<void> {
              left join workflow_run_cells c on c.workflow_run_id = r.id`,
             [parseStaleClaimMs(process.env.WORKFLOW_STALE_CLAIM_MS)],
         );
-        const costs = await pool.query<ICostRow>(
-            `select false as workflow,
-                    coalesce(c.provider_metadata->>'provider', m.model_id, 'unknown') as "providerOrModel",
-                    coalesce(c.cost_source::text, 'unavailable') as "costSource",
-                    count(*)::int as cells,
-                    sum(c.cost_usd) as "estimatedCostUsd",
-                    coalesce(sum(c.prompt_tokens), 0)::int as "inputTokens",
-                    coalesce(sum(c.completion_tokens), 0)::int as "outputTokens"
-             from run_cells c
-             join run_models m on m.id = c.run_model_id
-             where c.created_at >= now() - interval '24 hours'
-             group by 2, 3
-             union all
-             select true as workflow,
-                    coalesce(
-                        c.output_json #>> '{executionProvenance,actual,upstreamProvider}',
-                        c.output_json #>> '{providerMetadata,provider}',
-                        c.output_json #>> '{executionProvenance,actual,modelId}',
-                        'unknown'
-                    ) as "providerOrModel",
-                    coalesce(
-                        c.output_json #>> '{executionProvenance,currentCost,source}',
-                        c.output_json #>> '{providerMetadata,costSource}',
-                        'unavailable'
-                    ) as "costSource",
-                    count(*)::int as cells,
-                    sum(c.cost_usd) as "estimatedCostUsd",
-                    coalesce(sum(
-                        case
-                            when coalesce(c.output_json #>> '{usage,promptTokens}', c.output_json #>> '{usage,inputTokens}') ~ '^[0-9]+$'
-                            then coalesce(c.output_json #>> '{usage,promptTokens}', c.output_json #>> '{usage,inputTokens}')::bigint
-                            else 0
-                        end
-                    ), 0)::int as "inputTokens",
-                    coalesce(sum(
-                        case
-                            when coalesce(c.output_json #>> '{usage,completionTokens}', c.output_json #>> '{usage,outputTokens}') ~ '^[0-9]+$'
-                            then coalesce(c.output_json #>> '{usage,completionTokens}', c.output_json #>> '{usage,outputTokens}')::bigint
-                            else 0
-                        end
-                    ), 0)::int as "outputTokens"
-             from workflow_run_cells c
-             where c.created_at >= now() - interval '24 hours'
-             group by 2, 3
-             order by 1, 2, 3`,
-        );
+        const costs = await loadWorkerCostSummary(pool);
 
         const queueRows = new Map(queues.rows.map((row) => [row.name, row]));
         const run = runSummary.rows[0];
@@ -161,9 +107,9 @@ async function main(): Promise<void> {
                     eval: summary(run, checkedAt),
                     workflow: summary(workflow, checkedAt),
                 },
-                costsLast24Hours: costs.rows,
+                usageForCellsCreatedLast24Hours: costs,
                 costBasis:
-                    "Persisted provider-reported or catalog-estimated values; missing costs stay unavailable.",
+                    "Non-cached persisted usage/cost for cells created in the last 24 hours. Cell creation time is not provider execution time; provider-reported and catalog-estimated values are not billing records.",
             }),
         );
     } finally {
