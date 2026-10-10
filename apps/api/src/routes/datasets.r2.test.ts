@@ -118,6 +118,7 @@ describe("R2 dataset media routes", () => {
             r2Storage,
             result.targets[0]?.storageKey,
             "image/png",
+            { contentLength: PNG_HEAD.byteLength },
         );
     });
 

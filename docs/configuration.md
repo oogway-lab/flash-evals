@@ -106,19 +106,32 @@ application namespace. The web server and Railway job worker use these settings
 to read/write media; the API uses them to sign uploads, verify objects, serve
 tenant-checked images, and delete media. Do not put R2 credentials in
 `NEXT_PUBLIC_*` variables. Keep the bucket private; the browser receives only a
-10-minute, object-specific upload URL signed for the declared content type.
+10-minute, object-specific upload URL signed for the declared content type and
+byte length.
 
 Browser PUTs also need `MOSAIC_CSP_STORAGE_ORIGIN` set at web build time to the
 exact signed URL origin, `https://<bucket>.<account-id>.r2.cloudflarestorage.com`.
 The R2 bucket's later CORS policy must allow the exact deployed web origin, the
 `PUT` method, and the `Content-Type` and `If-None-Match` request headers. The
 upload URL requires `If-None-Match: *`, which makes the random object key
-create-only while the short-lived bearer URL remains valid. Treat signed URLs
-as credentials and keep them out of logs. The app does not need public bucket
+create-only while the short-lived bearer URL remains valid. Its signed
+`Content-Length` must match the browser file size, and the API verifies the
+stored size and media signature before linking it. Treat signed URLs as
+credentials and keep them out of logs. R2 requests time out after 15 seconds
+(5 seconds for the API health check). The app does not need public bucket
 access for downloads; image reads pass through the API's team/project
 authorization check. `R2_ENDPOINT` is reserved for loopback
 S3-compatible tests and is rejected outside `localhost`, `127.0.0.1`, or `::1`
 and in production.
+
+An upload that reaches R2 but is abandoned or rejected before its database row
+is created can remain as an unreferenced object. There is no automatic orphan
+deletion. For manual cleanup, pause new uploads, wait for upload URLs and
+in-flight imports to expire, take a paired database/object snapshot, and
+compare exact candidate keys under the app prefix against `dataset_items`.
+Review a dry-run manifest before deleting only individually confirmed
+unreferenced keys. Do not apply lifecycle expiration to the live dataset prefix
+or use recursive bucket/prefix deletion.
 
 For object and PostgreSQL backup/restore operations, see
 [storage recovery](storage-backup-restore.md). The documented procedure is an

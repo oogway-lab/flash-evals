@@ -15,4 +15,5 @@ export {
     isR2ObjectNotFound,
     r2ObjectKey,
     type IR2StorageConfig,
+    type IR2SignedUploadOptions,
 } from "./r2.js";

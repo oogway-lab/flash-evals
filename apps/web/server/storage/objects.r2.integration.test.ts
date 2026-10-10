@@ -30,14 +30,37 @@ interface IStoredObject {
 
 interface ISignedUpload {
     contentType: string;
+    contentLength: number;
     ifNoneMatch: string;
 }
 
 function createS3Fixture() {
     const objects = new Map<string, IStoredObject>();
     const signedUploads = new Map<string, ISignedUpload>();
+    const headerStallKeys = new Set<string>();
+    const bodyStallKeys = new Set<string>();
     let denyAccess = false;
+    let chunkedResponses = false;
+    let incompleteResponses = 0;
+    let stalledResponseCount = 0;
+    const sendObjectBody = (response: ServerResponse, bytes: Buffer) => {
+        response.setHeader("Content-Length", bytes.byteLength);
+        if (!chunkedResponses) return response.end(bytes);
+        let offset = 0;
+        const writeNextChunk = () => {
+            if (response.destroyed) return;
+            if (offset >= bytes.byteLength) return response.end();
+            const nextOffset = Math.min(offset + 64 * 1024, bytes.byteLength);
+            response.write(bytes.subarray(offset, nextOffset));
+            offset = nextOffset;
+            setTimeout(writeNextChunk, 2);
+        };
+        writeNextChunk();
+    };
     const server = createServer(async (request, response) => {
+        response.once("close", () => {
+            if (!response.writableFinished) incompleteResponses++;
+        });
         const url = new URL(
             request.url ?? "/",
             "http://" + request.headers.host,
@@ -67,10 +90,13 @@ function createS3Fixture() {
                 !signature ||
                 !credential.startsWith(ACCESS_KEY + "/") ||
                 !signedHeaders.split(";").includes("content-type") ||
+                !signedHeaders.split(";").includes("content-length") ||
                 !signedHeaders.split(";").includes("if-none-match") ||
                 expired ||
                 !registration ||
                 request.headers["content-type"] !== registration.contentType ||
+                Number(request.headers["content-length"]) !==
+                    registration.contentLength ||
                 request.headers["if-none-match"] !== registration.ifNoneMatch
             ) {
                 return sendError(response, 403, "SignatureDoesNotMatch");
@@ -118,6 +144,32 @@ function createS3Fixture() {
 
         if (request.method === "GET") {
             if (!stored) return sendError(response, 404, "NoSuchKey");
+            if (headerStallKeys.has(key)) {
+                stalledResponseCount++;
+                await new Promise<void>((resolve) => {
+                    const timer = setTimeout(resolve, 60_000);
+                    response.once("close", () => {
+                        clearTimeout(timer);
+                        resolve();
+                    });
+                });
+                if (response.destroyed) return;
+            }
+            if (bodyStallKeys.has(key)) {
+                stalledResponseCount++;
+                response.statusCode = 200;
+                response.setHeader("Content-Length", stored.bytes.byteLength);
+                response.setHeader("Content-Type", stored.contentType);
+                response.write(stored.bytes.subarray(0, 64 * 1024));
+                await new Promise<void>((resolve) => {
+                    const timer = setTimeout(resolve, 60_000);
+                    response.once("close", () => {
+                        clearTimeout(timer);
+                        resolve();
+                    });
+                });
+                return;
+            }
             const range = request.headers.range;
             if (range) {
                 const end = Number(/bytes=0-(\d+)/.exec(range)?.[1] ?? 0);
@@ -127,14 +179,12 @@ function createS3Fixture() {
                     "Content-Range",
                     "bytes 0-" + (bytes.length - 1) + "/" + stored.bytes.length,
                 );
-                response.setHeader("Content-Length", bytes.length);
                 response.setHeader("Content-Type", stored.contentType);
-                return response.end(bytes);
+                return sendObjectBody(response, bytes);
             }
             response.statusCode = 200;
-            response.setHeader("Content-Length", stored.bytes.byteLength);
             response.setHeader("Content-Type", stored.contentType);
-            return response.end(stored.bytes);
+            return sendObjectBody(response, stored.bytes);
         }
 
         if (request.method === "DELETE") {
@@ -152,6 +202,24 @@ function createS3Fixture() {
         server,
         setDenyAccess(value: boolean) {
             denyAccess = value;
+        },
+        setChunkedResponses(value: boolean) {
+            chunkedResponses = value;
+        },
+        stallHeadersFor(key: string) {
+            headerStallKeys.add(key);
+        },
+        stallBodyFor(key: string) {
+            bodyStallKeys.add(key);
+        },
+        resetIncompleteResponses() {
+            incompleteResponses = 0;
+        },
+        incompleteResponseCount() {
+            return incompleteResponses;
+        },
+        stalledResponseCount() {
+            return stalledResponseCount;
         },
     };
 }
@@ -222,7 +290,7 @@ afterAll(async () => {
     }
 });
 
-describe("R2 object adapter against a disposable local S3-compatible fixture", () => {
+describe("R2 object adapter against a custom loopback S3-compatible HTTP fixture", () => {
     it("shares namespaced object bytes, type, and size across upload, worker read, and delete", async () => {
         const bytes = Buffer.from([
             0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00,
@@ -253,20 +321,93 @@ describe("R2 object adapter against a disposable local S3-compatible fixture", (
         await expect(deleteObject(STORAGE_KEY)).resolves.toBeUndefined();
     });
 
+    it("consumes chunked full and range responses before destroying the SDK client", async () => {
+        const key =
+            "datasets/synthetic-dataset/55555555-5555-4555-8555-555555555555.bin";
+        const bytes = Buffer.alloc(2 * 1024 * 1024, 0x5a);
+        const config = getObjectStorageConfig();
+        fixture.objects.set(PREFIX + "/" + key, {
+            bytes,
+            contentType: "application/octet-stream",
+        });
+        fixture.resetIncompleteResponses();
+        fixture.setChunkedResponses(true);
+        try {
+            await expect(loadObjectBytes(key)).resolves.toEqual(bytes);
+            await expect(
+                getR2ObjectPrefix(config.r2Storage!, key, 256 * 1024),
+            ).resolves.toEqual(new Uint8Array(bytes.subarray(0, 256 * 1024)));
+            expect(fixture.incompleteResponseCount()).toBe(0);
+        } finally {
+            fixture.setChunkedResponses(false);
+            fixture.objects.delete(PREFIX + "/" + key);
+        }
+    }, 30_000);
+
+    it("bounds stalled response headers and bodies and closes incomplete reads", async () => {
+        const headerKey =
+            "datasets/synthetic-dataset/66666666-6666-4666-8666-666666666666.bin";
+        const bodyKey =
+            "datasets/synthetic-dataset/77777777-7777-4777-8777-777777777777.bin";
+        const bytes = Buffer.alloc(1024 * 1024, 0x5a);
+        fixture.objects.set(PREFIX + "/" + headerKey, {
+            bytes,
+            contentType: "application/octet-stream",
+        });
+        fixture.objects.set(PREFIX + "/" + bodyKey, {
+            bytes,
+            contentType: "application/octet-stream",
+        });
+        fixture.stallHeadersFor(PREFIX + "/" + headerKey);
+        fixture.stallBodyFor(PREFIX + "/" + bodyKey);
+        fixture.resetIncompleteResponses();
+        try {
+            const results = await Promise.all([
+                loadObjectBytes(headerKey).then(
+                    () => undefined,
+                    (error: unknown) => error,
+                ),
+                loadObjectBytes(bodyKey).then(
+                    () => undefined,
+                    (error: unknown) => error,
+                ),
+            ]);
+            expect(results).toHaveLength(2);
+            for (const result of results) {
+                expect(result).toBeInstanceOf(R2StorageError);
+                expect(result).toMatchObject({ status: 504 });
+                expect((result as Error).message).toContain("timed out");
+            }
+            expect(fixture.stalledResponseCount()).toBe(2);
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            expect(fixture.incompleteResponseCount()).toBeGreaterThanOrEqual(2);
+        } finally {
+            fixture.objects.delete(PREFIX + "/" + headerKey);
+            fixture.objects.delete(PREFIX + "/" + bodyKey);
+        }
+    }, 30_000);
+
     it("limits signed upload URLs to one key, declared type, and expiry", async () => {
         const config = getObjectStorageConfig().r2Storage!;
         const key =
             "datasets/synthetic-dataset/22222222-2222-4222-8222-222222222222.png";
+        const uploadedBytes = Buffer.from("synthetic png");
         fixture.signedUploads.set(PREFIX + "/" + key, {
             contentType: "image/png",
+            contentLength: uploadedBytes.byteLength,
             ifNoneMatch: "*",
         });
-        const url = await createR2SignedUploadUrl(config, key, "image/png");
+        const url = await createR2SignedUploadUrl(config, key, "image/png", {
+            contentLength: uploadedBytes.byteLength,
+        });
         const parsed = new URL(url);
         expect(parsed.searchParams.get("X-Amz-Expires")).toBe("600");
         expect(parsed.searchParams.get("X-Amz-Signature")).toBeTruthy();
         expect(parsed.searchParams.get("X-Amz-SignedHeaders")).toContain(
             "content-type",
+        );
+        expect(parsed.searchParams.get("X-Amz-SignedHeaders")).toContain(
+            "content-length",
         );
         expect(parsed.searchParams.get("X-Amz-SignedHeaders")).toContain(
             "if-none-match",
@@ -279,7 +420,7 @@ describe("R2 object adapter against a disposable local S3-compatible fixture", (
                 "Content-Type": "image/png",
                 "If-None-Match": "*",
             },
-            body: Buffer.from("synthetic png"),
+            body: uploadedBytes,
         });
         expect(accepted.status).toBe(200);
         const reused = await fetch(url, {
@@ -288,7 +429,7 @@ describe("R2 object adapter against a disposable local S3-compatible fixture", (
                 "Content-Type": "image/png",
                 "If-None-Match": "*",
             },
-            body: Buffer.from("replacement png"),
+            body: Buffer.from("different png"),
         });
         expect(reused.status).toBe(412);
         const rejectedType = await fetch(url, {
@@ -297,21 +438,33 @@ describe("R2 object adapter against a disposable local S3-compatible fixture", (
                 "Content-Type": "image/jpeg",
                 "If-None-Match": "*",
             },
-            body: Buffer.from("synthetic jpg"),
+            body: uploadedBytes,
         });
         expect(rejectedType.status).toBe(403);
 
+        const oversized = await fetch(url, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "image/png",
+                "If-None-Match": "*",
+            },
+            body: Buffer.concat([uploadedBytes, Buffer.from("!")]),
+        });
+        expect(oversized.status).toBe(403);
+
         const expiringKey =
             "datasets/synthetic-dataset/33333333-3333-4333-8333-333333333333.png";
+        const expiredBytes = Buffer.from("expired");
         fixture.signedUploads.set(PREFIX + "/" + expiringKey, {
             contentType: "image/png",
+            contentLength: expiredBytes.byteLength,
             ifNoneMatch: "*",
         });
         const expiringUrl = await createR2SignedUploadUrl(
             config,
             expiringKey,
             "image/png",
-            1,
+            { contentLength: expiredBytes.byteLength, expiresIn: 1 },
         );
         await new Promise((resolve) => setTimeout(resolve, 1_100));
         const expired = await fetch(expiringUrl, {
@@ -320,7 +473,7 @@ describe("R2 object adapter against a disposable local S3-compatible fixture", (
                 "Content-Type": "image/png",
                 "If-None-Match": "*",
             },
-            body: Buffer.from("expired"),
+            body: expiredBytes,
         });
         expect(expired.status).toBe(403);
     });

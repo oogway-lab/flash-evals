@@ -5,11 +5,14 @@ import {
     HeadObjectCommand,
     PutObjectCommand,
     S3Client,
+    type GetObjectCommandOutput,
     type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export const R2_UPLOAD_URL_TTL_SECONDS = 10 * 60;
+const R2_OPERATION_TIMEOUT_MS = 15_000;
+const R2_HEALTH_CHECK_TIMEOUT_MS = 5_000;
 export const R2_CREATE_ONLY_UPLOAD_HEADER = "If-None-Match";
 export const R2_CREATE_ONLY_UPLOAD_VALUE = "*";
 
@@ -25,6 +28,11 @@ export interface IR2StorageConfig {
     bucket: string;
     prefix?: string;
     endpoint?: string;
+}
+
+export interface IR2SignedUploadOptions {
+    contentLength: number;
+    expiresIn?: number;
 }
 
 export class R2StorageError extends Error {
@@ -157,14 +165,21 @@ export async function createR2SignedUploadUrl(
     config: IR2StorageConfig,
     storageKey: string,
     contentType: string,
-    expiresIn = R2_UPLOAD_URL_TTL_SECONDS,
+    options: IR2SignedUploadOptions,
 ): Promise<string> {
+    const expiresIn = options.expiresIn ?? R2_UPLOAD_URL_TTL_SECONDS;
     if (
         !Number.isInteger(expiresIn) ||
         expiresIn < 1 ||
         expiresIn > MAX_PRESIGNED_URL_TTL_SECONDS
     ) {
         throw new R2StorageError("Invalid R2 signed URL expiry");
+    }
+    if (
+        !Number.isSafeInteger(options.contentLength) ||
+        options.contentLength < 1
+    ) {
+        throw new R2StorageError("Invalid R2 upload size");
     }
     const client = createR2StorageClient(config);
     try {
@@ -174,6 +189,7 @@ export async function createR2SignedUploadUrl(
                 Bucket: config.bucket,
                 Key: r2ObjectKey(config, storageKey),
                 ContentType: contentType,
+                ContentLength: options.contentLength,
                 IfNoneMatch: R2_CREATE_ONLY_UPLOAD_VALUE,
             }),
             {
@@ -183,6 +199,7 @@ export async function createR2SignedUploadUrl(
                 // header so a client cannot change the declared media type.
                 signableHeaders: new Set([
                     "content-type",
+                    "content-length",
                     R2_CREATE_ONLY_UPLOAD_HEADER.toLowerCase(),
                 ]),
             },
@@ -200,7 +217,7 @@ export async function putR2Object(
     bytes: Uint8Array,
     contentType: string,
 ): Promise<void> {
-    await runR2(config, "upload object", (client) =>
+    await runR2(config, "upload object", (client, signal) =>
         client.send(
             new PutObjectCommand({
                 Bucket: config.bucket,
@@ -208,6 +225,7 @@ export async function putR2Object(
                 Body: bytes,
                 ContentType: contentType,
             }),
+            { abortSignal: signal },
         ),
     );
 }
@@ -216,18 +234,19 @@ export async function getR2Object(
     config: IR2StorageConfig,
     storageKey: string,
 ): Promise<Buffer> {
-    const response = await runR2(config, "download object", (client) =>
-        client.send(
+    return runR2(config, "download object", async (client, signal) => {
+        const response = await client.send(
             new GetObjectCommand({
                 Bucket: config.bucket,
                 Key: r2ObjectKey(config, storageKey),
             }),
-        ),
-    );
-    if (!response.Body) {
-        throw new R2StorageError("R2 returned an empty object response");
-    }
-    return Buffer.from(await response.Body.transformToByteArray());
+            { abortSignal: signal },
+        );
+        if (!response.Body) {
+            throw new R2StorageError("R2 returned an empty object response");
+        }
+        return Buffer.from(await readR2Body(response.Body, signal));
+    });
 }
 
 export async function getR2ObjectPrefix(
@@ -238,31 +257,33 @@ export async function getR2ObjectPrefix(
     if (!Number.isInteger(byteCount) || byteCount < 1) {
         throw new R2StorageError("Invalid R2 object prefix length");
     }
-    const response = await runR2(config, "read object header", (client) =>
-        client.send(
+    return runR2(config, "read object header", async (client, signal) => {
+        const response = await client.send(
             new GetObjectCommand({
                 Bucket: config.bucket,
                 Key: r2ObjectKey(config, storageKey),
                 Range: `bytes=0-${byteCount - 1}`,
             }),
-        ),
-    );
-    if (!response.Body) {
-        throw new R2StorageError("R2 returned an empty object response");
-    }
-    return (await response.Body.transformToByteArray()).subarray(0, byteCount);
+            { abortSignal: signal },
+        );
+        if (!response.Body) {
+            throw new R2StorageError("R2 returned an empty object response");
+        }
+        return (await readR2Body(response.Body, signal)).subarray(0, byteCount);
+    });
 }
 
 export async function headR2Object(
     config: IR2StorageConfig,
     storageKey: string,
 ): Promise<{ byteSize: number; contentType?: string }> {
-    const response = await runR2(config, "verify object", (client) =>
+    const response = await runR2(config, "verify object", (client, signal) =>
         client.send(
             new HeadObjectCommand({
                 Bucket: config.bucket,
                 Key: r2ObjectKey(config, storageKey),
             }),
+            { abortSignal: signal },
         ),
     );
     if (response.ContentLength === undefined) {
@@ -278,34 +299,88 @@ export async function deleteR2Object(
     config: IR2StorageConfig,
     storageKey: string,
 ): Promise<void> {
-    await runR2(config, "delete object", (client) =>
+    await runR2(config, "delete object", (client, signal) =>
         client.send(
             new DeleteObjectCommand({
                 Bucket: config.bucket,
                 Key: r2ObjectKey(config, storageKey),
             }),
+            { abortSignal: signal },
         ),
     );
 }
 
 export async function checkR2Bucket(config: IR2StorageConfig): Promise<void> {
-    await runR2(config, "check bucket access", (client) =>
-        client.send(new HeadBucketCommand({ Bucket: config.bucket })),
+    await runR2(
+        config,
+        "check bucket access",
+        (client, signal) =>
+            client.send(new HeadBucketCommand({ Bucket: config.bucket }), {
+                abortSignal: signal,
+            }),
+        R2_HEALTH_CHECK_TIMEOUT_MS,
     );
 }
 
 async function runR2<T>(
     config: IR2StorageConfig,
     action: string,
-    operation: (client: S3Client) => Promise<T>,
+    operation: (client: S3Client, signal: AbortSignal) => Promise<T>,
+    timeoutMs = R2_OPERATION_TIMEOUT_MS,
 ): Promise<T> {
     const client = createR2StorageClient(config);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        return await operation(client);
+        return await operation(client, controller.signal);
     } catch (error) {
+        if (controller.signal.aborted) {
+            throw new R2StorageError(
+                `R2 ${action} timed out`,
+                504,
+                "RequestTimeout",
+            );
+        }
         throw toR2StorageError(action, error);
     } finally {
+        clearTimeout(timeout);
         client.destroy();
+    }
+}
+
+async function readR2Body(
+    body: NonNullable<GetObjectCommandOutput["Body"]>,
+    signal: AbortSignal,
+): Promise<Uint8Array> {
+    const stream = body as typeof body & {
+        destroy?: (error?: Error) => void;
+        cancel?: () => Promise<void>;
+    };
+    const abortRead = () => {
+        if (typeof stream.destroy === "function") {
+            stream.destroy(new Error("R2 response body read aborted"));
+        } else if (typeof stream.cancel === "function") {
+            void stream.cancel().catch(() => {});
+        }
+    };
+    if (signal.aborted) {
+        abortRead();
+        throw new Error("R2 response body read aborted");
+    }
+
+    let rejectOnAbort: ((reason: Error) => void) | undefined;
+    const aborted = new Promise<never>((_, reject) => {
+        rejectOnAbort = reject;
+    });
+    const onAbort = () => {
+        abortRead();
+        rejectOnAbort?.(new Error("R2 response body read aborted"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    try {
+        return await Promise.race([body.transformToByteArray(), aborted]);
+    } finally {
+        signal.removeEventListener("abort", onAbort);
     }
 }
 

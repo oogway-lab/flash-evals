@@ -442,6 +442,7 @@ export async function signUploadPayload(
                 config,
                 storageKey,
                 file.contentType,
+                file.byteSize,
             ),
         );
     }
@@ -2538,6 +2539,7 @@ async function createSignedUploadTarget(
     config: IApiConfig,
     storageKey: string,
     contentType: string,
+    byteSize: number,
 ): Promise<ISignedUploadTarget> {
     if (config.storageAdapter === "local") {
         // U8: local adapter parity. The browser PUTs bytes straight to the API's
@@ -2556,6 +2558,7 @@ async function createSignedUploadTarget(
             config.r2Storage!,
             storageKey,
             contentType,
+            { contentLength: byteSize },
         ).catch((error: unknown) => {
             const status = (error as { status?: number }).status;
             throw new ApiBadRequestError(
