@@ -178,8 +178,15 @@ describe("MCP independent profile policy over the protocol", () => {
                     arguments: {},
                 });
                 expect(currentUser.isError).not.toBe(true);
-                expect(currentUser.content[0]?.text).toContain(
-                    "policy@example.invalid",
+                expect(currentUser.content).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({
+                            type: "text",
+                            text: expect.stringContaining(
+                                "policy@example.invalid",
+                            ),
+                        }),
+                    ]),
                 );
 
                 if (profile !== "admin") {
