@@ -17,8 +17,8 @@
         "test:coverage": "pnpm --filter @mosaic/object-storage build && pnpm --filter @mosaic/api-contract build && pnpm --filter @mosaic/llm-core build && pnpm --filter @mosaic/secrets build && vitest run --coverage"
     },
     "dependencies": {
-        "@ai-sdk/gateway": "^4.0.103",
-        "@clerk/backend": "^3.22.0",
+        "@ai-sdk/gateway": "^4.0.106",
+        "@clerk/backend": "^3.23.0",
         "@modelcontextprotocol/sdk": "^1.32.1",
         "@mosaic/api-contract": "workspace:*",
         "@mosaic/object-storage": "workspace:*",
