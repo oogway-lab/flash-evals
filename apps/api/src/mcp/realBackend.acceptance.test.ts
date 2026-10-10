@@ -799,6 +799,11 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
         );
         const emptyDatasetId = emptyDataset.id as string;
         expect(emptyDatasetId).toMatch(UUID_PATTERN);
+        await tool("add_dataset_item", {
+            projectId,
+            datasetId: emptyDatasetId,
+            inputText: `zero-cell workflow fixture ${teamId}`,
+        });
         const emptyWorkflow = data(
             await tool("create_workflow", {
                 projectId,
@@ -831,6 +836,17 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
         );
         const zeroCellWorkflowRunId = zeroCellRun.workflowRunId as string;
         expect(zeroCellWorkflowRunId).toMatch(UUID_PATTERN);
+        // Run creation correctly requires selected items. Remove this owned
+        // synthetic cell to exercise readers against a persisted zero-cell
+        // run state without bypassing the actual create tool.
+        expect(
+            (
+                await pool.query(
+                    "delete from workflow_run_cells where workflow_run_id=$1",
+                    [zeroCellWorkflowRunId],
+                )
+            ).rowCount,
+        ).toBe(1);
         expect(
             (
                 await pool.query(
@@ -874,6 +890,18 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
                     datasetId,
                     total: 1,
                 }),
+            ]),
+        );
+        expect(workflowRunSummaries.complete).toBe(true);
+        const zeroCellWorkflowRunSummaries = data(
+            await tool("list_workflow_run_summaries_page", {
+                projectId,
+                workflowId: emptyWorkflowId,
+                limit: 100,
+            }),
+        );
+        expect(zeroCellWorkflowRunSummaries.workflowRuns).toEqual(
+            expect.arrayContaining([
                 expect.objectContaining({
                     id: zeroCellWorkflowRunId,
                     workflowId: emptyWorkflowId,
@@ -882,7 +910,7 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
                 }),
             ]),
         );
-        expect(workflowRunSummaries.complete).toBe(true);
+        expect(zeroCellWorkflowRunSummaries.complete).toBe(true);
         const detail = data(
             await tool("get_workflow_run", {
                 projectId,
