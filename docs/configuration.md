@@ -149,6 +149,11 @@ References: [Cloudflare's Hyperdrive Supabase guide](https://developers.cloudfla
 [OpenNext's database guide](https://opennext.js.org/cloudflare/howtos/db), and
 [Supabase's connection and SSL guide](https://supabase.com/docs/guides/database/connecting-to-postgres#ssl).
 
+The root `railway.json` selects Railpack for the API build and keeps the
+`@mosaic/api` workspace build command. Keep the root `packageManager` pin
+aligned with `pnpm-lock.yaml`; Railpack reads that field to select pnpm
+([Node package-manager detection](https://railpack.com/languages/node#package-managers)).
+
 For a split Railway topology, configure the API service with
 `pnpm run api:start:railway` and `MOSAIC_API_START_WORKER=false`; configure a
 separate worker service with `pnpm run worker` and no HTTP health check. The
