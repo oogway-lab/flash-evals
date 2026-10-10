@@ -166,13 +166,25 @@ aligned with `pnpm-lock.yaml`; Railpack reads that field to select pnpm
 
 For a split Railway topology, configure the API service with
 `pnpm run api:start:railway` and `MOSAIC_API_START_WORKER=false`; configure a
-separate worker service with `pnpm run worker` and no HTTP health check. The
+separate worker service with `pnpm run worker` and no HTTP health check. For a
+legacy service that reads Config as Code, set the worker's **Railway Config File**
+to `/railway.worker.json` and keep its source root at the repository root. The
+default `/railway.json` starts the API and checks `/health`; repository config
+overrides dashboard start and healthcheck settings. The separate worker file
+keeps the same Railpack build, starts the queue consumer, and allows 30 seconds
+for shutdown. If you increase `MOSAIC_WORKER_DRAIN_TIMEOUT_MS`, also increase the
+service's termination grace period above that window plus five seconds. The
+worker file has no migration or bootstrap command; those remain on the API.
+Keep the worker private with no public domain. The
 worker's process supervisor and `worker.ready` event establish liveness. The
 repository readiness scripts validate supported package commands and the API
 flag, but the actual start and healthcheck settings are per-service Railway
-settings and must be checked there. Railway has deprecated `railway.json` and
+settings and must be checked there. Check the effective config on the deployment
+details page before relying on the selected worker file. Railway has deprecated `railway.json` and
 `railway.toml`: new services cannot opt in, and existing services can use these
-files until the 2026-12-01 cutoff. See [Railway Config as Code](https://docs.railway.com/config-as-code)
+files until the 2026-12-01 cutoff. For a new service that does not read Config as
+Code, configure the same worker settings directly on the service; do not expect
+the JSON file to apply. See [Railway Config as Code](https://docs.railway.com/config-as-code)
 for current configuration options.
 
 ## Model providers
