@@ -1187,6 +1187,8 @@ export interface ICreateSignedUploadRequest {
 export interface ISignedUploadTarget {
     storageKey: string;
     signedUrl: string;
+    /** Additional headers required when PUTing to this signed URL. */
+    headers?: Record<string, string>;
     expiresAt?: string;
 }
 

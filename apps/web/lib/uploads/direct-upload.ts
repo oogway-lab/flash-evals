@@ -213,7 +213,7 @@ async function putFile(
             method: "PUT",
             headers: {
                 "Content-Type": file.type || "application/octet-stream",
-                "x-upsert": "false",
+                ...target.headers,
             },
             body: file,
         });

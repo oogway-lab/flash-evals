@@ -44,6 +44,17 @@ import type {
     SchemaFieldType,
 } from "@mosaic/api-contract";
 import {
+    createR2SignedUploadUrl,
+    deleteR2Object,
+    headR2Object,
+    getR2ObjectPrefix,
+    isR2ObjectNotFound,
+    putR2Object,
+    R2_CREATE_ONLY_UPLOAD_HEADER,
+    R2_CREATE_ONLY_UPLOAD_VALUE,
+    R2_UPLOAD_URL_TTL_SECONDS,
+} from "@mosaic/object-storage";
+import {
     ALLOWED_AUDIO_TYPES as CONTRACT_ALLOWED_AUDIO_TYPES,
     ALLOWED_IMAGE_TYPES as CONTRACT_ALLOWED_IMAGE_TYPES,
 } from "@mosaic/api-contract";
@@ -426,7 +437,14 @@ export async function signUploadPayload(
         // KTD3: storageKey is server-authoritative and dataset-scoped so a
         // client cannot choose or overwrite an arbitrary object path.
         const storageKey = `datasets/${input.datasetId}/${randomUUID()}${uploadFileExtension(file.fileName)}`;
-        targets.push(await createSignedUploadTarget(config, storageKey));
+        targets.push(
+            await createSignedUploadTarget(
+                config,
+                storageKey,
+                file.contentType,
+                file.byteSize,
+            ),
+        );
     }
     return { targets };
 }
@@ -614,9 +632,9 @@ export async function createDatasetItemFromFormPayload(
         // R7/KTD6: best-effort clean up any object we uploaded or the client
         // uploaded, since the item was not created.
         if (storageKey)
-            await deleteMediaFromSupabase(config, storageKey).catch(() => {});
+            await deleteMediaFromStorage(config, storageKey).catch(() => {});
         if (audioStorageKey) {
-            await deleteMediaFromSupabase(config, audioStorageKey).catch(
+            await deleteMediaFromStorage(config, audioStorageKey).catch(
                 () => {},
             );
         }
@@ -819,16 +837,16 @@ export async function updateDatasetItemFromFormPayload(
             existing.storage_key &&
             existing.storage_key !== replacementStorageKey
         ) {
-            await deleteMediaFromSupabase(config, existing.storage_key).catch(
+            await deleteMediaFromStorage(config, existing.storage_key).catch(
                 () => {},
             );
         }
         return updated;
     } catch (err) {
         if (storageKey)
-            await deleteMediaFromSupabase(config, storageKey).catch(() => {});
+            await deleteMediaFromStorage(config, storageKey).catch(() => {});
         if (audioStorageKey) {
-            await deleteMediaFromSupabase(config, audioStorageKey).catch(
+            await deleteMediaFromStorage(config, audioStorageKey).catch(
                 () => {},
             );
         }
@@ -1627,7 +1645,7 @@ export async function deleteDatasetPayload(
 
     await Promise.all(
         storageKeys.map((storageKey) =>
-            deleteMediaFromSupabase(config, storageKey).catch(() => {}),
+            deleteMediaFromStorage(config, storageKey).catch(() => {}),
         ),
     );
 }
@@ -1717,7 +1735,7 @@ export async function deleteDatasetItemPayload(
         [input.itemId, input.teamId, input.projectId],
     );
     if (row.storage_key) {
-        await deleteMediaFromSupabase(config, row.storage_key).catch(() => {});
+        await deleteMediaFromStorage(config, row.storage_key).catch(() => {});
     }
     return { datasetId: row.dataset_id };
 }
@@ -2119,7 +2137,7 @@ async function createMediaImportItem(
         } catch (err) {
             // R7/KTD6: the client uploaded this object but the row insert
             // failed — best-effort delete so the import does not leak storage.
-            await deleteMediaFromSupabase(config, storageKey).catch(() => {});
+            await deleteMediaFromStorage(config, storageKey).catch(() => {});
             return { ok: false, reason: importFailureReason(err) };
         }
     }
@@ -2130,7 +2148,7 @@ async function createMediaImportItem(
         if (!input.file.bytes) {
             throw new ApiBadRequestError("Media item is missing upload data.");
         }
-        await uploadMediaToSupabase(
+        await uploadMediaToStorage(
             config,
             storageKey,
             input.file.bytes,
@@ -2139,7 +2157,7 @@ async function createMediaImportItem(
         await insertMediaImportItem(db, input, storageKey);
         return { ok: true };
     } catch (err) {
-        await deleteMediaFromSupabase(config, storageKey).catch(() => {});
+        await deleteMediaFromStorage(config, storageKey).catch(() => {});
         return { ok: false, reason: importFailureReason(err) };
     }
 }
@@ -2184,13 +2202,29 @@ async function verifyStorageObject(
     assertStorageKey(storageKey);
     if (config.storageAdapter === "local") {
         // U8: best-effort existence check against the same local object store
-        // uploadMediaToSupabase's local branch writes to.
+        // uploadMediaToStorage's local branch writes to.
         try {
             const stat = await fs.stat(localMediaPath(storageKey));
             return stat.size;
         } catch {
             throw new ApiBadRequestError(
                 "Uploaded object not found. Re-upload the file and try again.",
+            );
+        }
+    }
+
+    if (config.storageAdapter === "r2") {
+        try {
+            return (await headR2Object(config.r2Storage!, storageKey)).byteSize;
+        } catch (error) {
+            if (isR2ObjectNotFound(error)) {
+                throw new ApiBadRequestError(
+                    "Uploaded object not found. Re-upload the file and try again.",
+                );
+            }
+            const status = (error as { status?: number }).status;
+            throw new ApiBadRequestError(
+                `Uploaded object could not be verified${status ? ` (status ${status})` : ""}.`,
             );
         }
     }
@@ -2269,6 +2303,26 @@ async function readStorageObjectHead(
             );
         } finally {
             await handle?.close();
+        }
+    }
+
+    if (config.storageAdapter === "r2") {
+        try {
+            return await getR2ObjectPrefix(
+                config.r2Storage!,
+                storageKey,
+                MEDIA_SNIFF_BYTES,
+            );
+        } catch (error) {
+            if (isR2ObjectNotFound(error)) {
+                throw new ApiBadRequestError(
+                    "Uploaded object not found. Re-upload the file and try again.",
+                );
+            }
+            const status = (error as { status?: number }).status;
+            throw new ApiBadRequestError(
+                `Uploaded object content could not be verified${status ? ` (status ${status})` : ""}.`,
+            );
         }
     }
 
@@ -2359,11 +2413,11 @@ async function persistDecodedMedia(
         throw new ApiBadRequestError("Media item is missing upload data.");
     }
     const storageKey = randomUUID();
-    await uploadMediaToSupabase(config, storageKey, file.bytes, file.mimeType);
+    await uploadMediaToStorage(config, storageKey, file.bytes, file.mimeType);
     return storageKey;
 }
 
-async function uploadMediaToSupabase(
+async function uploadMediaToStorage(
     config: IApiConfig,
     storageKey: string,
     bytes: Buffer,
@@ -2375,6 +2429,18 @@ async function uploadMediaToSupabase(
         await fs.mkdir(path.dirname(filePath), { recursive: true });
         await fs.writeFile(filePath, bytes);
         return;
+    }
+
+    if (config.storageAdapter === "r2") {
+        try {
+            await putR2Object(config.r2Storage!, storageKey, bytes, mimeType);
+            return;
+        } catch (error) {
+            const status = (error as { status?: number }).status;
+            throw new ApiBadRequestError(
+                `R2 Storage upload failed${status ? ` with ${status}` : ""}`,
+            );
+        }
     }
 
     const response = await fetchWithTimeout(
@@ -2472,16 +2538,42 @@ function encodeObjectPath(objectPath: string): string {
 async function createSignedUploadTarget(
     config: IApiConfig,
     storageKey: string,
+    contentType: string,
+    byteSize: number,
 ): Promise<ISignedUploadTarget> {
     if (config.storageAdapter === "local") {
         // U8: local adapter parity. The browser PUTs bytes straight to the API's
         // local-upload endpoint, which writes to the same on-disk object store
-        // `uploadMediaToSupabase`'s local branch and `verifyStorageObject` use.
+        // `uploadMediaToStorage`'s local branch and `verifyStorageObject` use.
         // The URL is absolute (API origin) so the browser reaches the API
         // directly, exactly like a Supabase signed upload URL.
         return {
             storageKey,
             signedUrl: `${apiPublicBaseUrl(config)}/api/datasets/upload/local/${encodeObjectPath(storageKey)}`,
+        };
+    }
+
+    if (config.storageAdapter === "r2") {
+        const signedUrl = await createR2SignedUploadUrl(
+            config.r2Storage!,
+            storageKey,
+            contentType,
+            { contentLength: byteSize },
+        ).catch((error: unknown) => {
+            const status = (error as { status?: number }).status;
+            throw new ApiBadRequestError(
+                `R2 signed upload URL request failed${status ? ` (${status})` : ""}`,
+            );
+        });
+        return {
+            storageKey,
+            signedUrl,
+            headers: {
+                [R2_CREATE_ONLY_UPLOAD_HEADER]: R2_CREATE_ONLY_UPLOAD_VALUE,
+            },
+            expiresAt: new Date(
+                Date.now() + R2_UPLOAD_URL_TTL_SECONDS * 1_000,
+            ).toISOString(),
         };
     }
 
@@ -3516,7 +3608,7 @@ async function assertEditableDataset(
     return dataset;
 }
 
-async function deleteMediaFromSupabase(
+async function deleteMediaFromStorage(
     config: IApiConfig,
     storageKey: string,
 ): Promise<void> {
@@ -3524,6 +3616,18 @@ async function deleteMediaFromSupabase(
     if (config.storageAdapter === "local") {
         await fs.rm(localMediaPath(storageKey), { force: true });
         return;
+    }
+
+    if (config.storageAdapter === "r2") {
+        try {
+            await deleteR2Object(config.r2Storage!, storageKey);
+            return;
+        } catch (error) {
+            const status = (error as { status?: number }).status;
+            throw new ApiBadRequestError(
+                `R2 Storage delete failed${status ? ` with ${status}` : ""}`,
+            );
+        }
     }
 
     const objectPath = config.supabaseStoragePrefix

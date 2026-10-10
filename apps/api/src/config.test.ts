@@ -59,6 +59,62 @@ describe("getApiConfig", () => {
         ]);
     });
 
+    it("loads server-only R2 settings when the adapter is selected", () => {
+        const config = getApiConfig({
+            ...baseEnv,
+            MOSAIC_STORAGE_ADAPTER: "r2",
+            R2_ACCOUNT_ID: "synthetic-account",
+            R2_ACCESS_KEY_ID: "synthetic-access",
+            R2_SECRET_ACCESS_KEY: "synthetic-secret",
+            R2_BUCKET: "synthetic-media",
+            R2_STORAGE_PREFIX: "tenant-media",
+            R2_ENDPOINT: "http://127.0.0.1:9000",
+        });
+
+        expect(config.storageAdapter).toBe("r2");
+        expect(config.r2Storage).toEqual({
+            accountId: "synthetic-account",
+            accessKeyId: "synthetic-access",
+            secretAccessKey: "synthetic-secret",
+            bucket: "synthetic-media",
+            prefix: "tenant-media",
+            endpoint: "http://127.0.0.1:9000",
+        });
+    });
+
+    it("requires complete R2 credentials and rejects test endpoints in production", () => {
+        expect(() =>
+            getApiConfig({ ...baseEnv, MOSAIC_STORAGE_ADAPTER: "r2" }),
+        ).toThrow(
+            /R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET/,
+        );
+
+        expect(() =>
+            getApiConfig({
+                ...baseEnv,
+                NODE_ENV: "production",
+                MOSAIC_STORAGE_ADAPTER: "r2",
+                R2_ACCOUNT_ID: "synthetic-account",
+                R2_ACCESS_KEY_ID: "synthetic-access",
+                R2_SECRET_ACCESS_KEY: "synthetic-secret",
+                R2_BUCKET: "synthetic-media",
+                R2_ENDPOINT: "http://127.0.0.1:9000",
+            }),
+        ).toThrow("R2_ENDPOINT is only allowed for local S3-compatible tests.");
+
+        expect(() =>
+            getApiConfig({
+                ...baseEnv,
+                MOSAIC_STORAGE_ADAPTER: "r2",
+                R2_ACCOUNT_ID: "synthetic-account",
+                R2_ACCESS_KEY_ID: "synthetic-access",
+                R2_SECRET_ACCESS_KEY: "synthetic-secret",
+                R2_BUCKET: "synthetic-media",
+                R2_ENDPOINT: "http://storage.example.test",
+            }),
+        ).toThrow("R2_ENDPOINT must be a loopback origin for local tests.");
+    });
+
     it("keeps workflow LLM writes off by default in production", () => {
         const config = getApiConfig({
             ...baseEnv,
