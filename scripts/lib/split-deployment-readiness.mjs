@@ -105,9 +105,9 @@ export function validateSplitStorage(services, { requireCspOrigin = true } = {})
         const adapter = comparable[0].adapter;
         const prefixKey =
             adapter === "r2" ? "R2_STORAGE_PREFIX" : "SUPABASE_STORAGE_PREFIX";
-        const expectedPrefix = normalizePrefix(comparable[0].env[prefixKey]);
+        const expectedPrefix = prefixValue(comparable[0].env[prefixKey], adapter);
         for (const service of comparable.slice(1)) {
-            if (normalizePrefix(service.env[prefixKey]) !== expectedPrefix) {
+            if (prefixValue(service.env[prefixKey], adapter) !== expectedPrefix) {
                 errors.push(
                     `${service.label} ${prefixKey} does not match ${comparable[0].label}.`,
                 );
@@ -226,6 +226,26 @@ function validateServiceStorage(service, errors) {
         }
     }
 
+    if (adapter === "supabase" && nonEmpty(env.SUPABASE_STORAGE_PREFIX)) {
+        const rawPrefix = env.SUPABASE_STORAGE_PREFIX;
+        const normalizedPrefix = normalizePrefix(rawPrefix);
+        const segments = normalizedPrefix.split("/");
+        if (
+            rawPrefix !== normalizedPrefix ||
+            segments.some(
+                (segment) =>
+                    !segment ||
+                    segment === "." ||
+                    segment === ".." ||
+                    segment.includes("\\"),
+            )
+        ) {
+            errors.push(
+                `${label} SUPABASE_STORAGE_PREFIX must be canonical, with no leading/trailing slash, empty, dot, or backslash path segments.`,
+            );
+        }
+    }
+
     if (adapter === "supabase" && nonEmpty(env.SUPABASE_URL)) {
         let parsed;
         try {
@@ -267,6 +287,10 @@ function storageOrigin(service) {
 
 function normalizePrefix(value) {
     return value?.trim().replace(/^\/+|\/+$/g, "") || "";
+}
+
+function prefixValue(value, adapter) {
+    return adapter === "r2" ? normalizePrefix(value) : value?.trim() || "";
 }
 
 function storageIdentity(service, key) {

@@ -187,6 +187,21 @@ test("local check keeps the Supabase adapter requirements", () => {
     assert.match(missing.stderr, /Web environment is missing SUPABASE_SERVICE_ROLE_KEY/);
 });
 
+test("local check rejects noncanonical Supabase prefixes even when services agree", () => {
+    const api = makeSupabaseEnv("api", "/flash-evals/");
+    const web = makeSupabaseEnv("web", "/flash-evals/");
+    const result = runLocal(api, web);
+    assert.notEqual(result.status, 0);
+    assert.match(
+        result.stderr,
+        /API environment SUPABASE_STORAGE_PREFIX must be canonical/,
+    );
+    assert.match(
+        result.stderr,
+        /Web environment SUPABASE_STORAGE_PREFIX must be canonical/,
+    );
+});
+
 test("local check reports missing R2 keys without printing configured secrets", () => {
     const api = makeR2Env("api");
     delete api.R2_SECRET_ACCESS_KEY;
@@ -194,6 +209,13 @@ test("local check reports missing R2 keys without printing configured secrets", 
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /API environment is missing R2_SECRET_ACCESS_KEY/);
     assert.doesNotMatch(result.stdout + result.stderr, /synthetic-secret-never-print-this/);
+
+    const blankApi = makeR2Env("api");
+    blankApi.R2_ACCESS_KEY_ID = "   ";
+    const blankResult = runLocal(blankApi, makeR2Env("web"));
+    assert.notEqual(blankResult.status, 0);
+    assert.match(blankResult.stderr, /API environment is missing R2_ACCESS_KEY_ID/);
+    assert.doesNotMatch(blankResult.stdout + blankResult.stderr, /synthetic-secret-never-print-this/);
 });
 
 test("local check rejects adapter, prefix, and CSP-origin mismatches", () => {
@@ -257,6 +279,55 @@ test("live check accepts consistent Supabase configuration", () => {
         makeSupabaseEnv("web"),
     );
     assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test("live check requires matching API and web internal tokens without disclosure", () => {
+    const web = makeR2Env("web");
+    web.INTERNAL_API_TOKEN = "different-synthetic-internal-token";
+    const { result } = runLive(makeR2Env("api"), makeR2Env("api"), web);
+    assert.notEqual(result.status, 0);
+    assert.match(
+        result.stderr,
+        /Railway API service and Cloudflare web environment INTERNAL_API_TOKEN values do not match/,
+    );
+    assert.doesNotMatch(
+        result.stdout + result.stderr,
+        /synthetic-internal-token|different-synthetic-internal-token/,
+    );
+});
+
+test("live check fails closed on malformed Railway JSON", () => {
+    return withTempDir((dir) => {
+        const fixture = makeLiveFixture(
+            dir,
+            makeR2Env("api"),
+            makeR2Env("api"),
+            makeR2Env("web"),
+        );
+        fs.writeFileSync(fixture.apiFile, "not-json", { mode: 0o600 });
+        const result = spawnSync("bash", [liveCheck], {
+            cwd: root,
+            encoding: "utf8",
+            env: {
+                ...process.env,
+                PATH: `${fixture.binDir}:${process.env.PATH}`,
+                RAILWAY_PROJECT_ID: "synthetic-project",
+                RAILWAY_ENVIRONMENT: "production",
+                RAILWAY_API_SERVICE: "api",
+                RAILWAY_WORKER_SERVICE: "worker",
+                CLOUDFLARE_WEB_ENV: fixture.webFile,
+                WRANGLER_BIN: fixture.wrangler,
+                MOCK_RAILWAY_API_FILE: fixture.apiFile,
+                MOCK_RAILWAY_WORKER_FILE: fixture.workerFile,
+            },
+        });
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /Railway API service returned malformed variable JSON/);
+        assert.doesNotMatch(
+            result.stdout + result.stderr,
+            /synthetic-internal-token|synthetic-secret-never-print-this/,
+        );
+    });
 });
 
 test("live check rejects missing, mismatched, and insecure Railway values without disclosure", () => {

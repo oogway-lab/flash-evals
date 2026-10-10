@@ -117,6 +117,15 @@ if (mode === "local") {
         ]);
         rejectLegacyVolumes(web, "Cloudflare web environment");
     }
+    if (
+        api?.INTERNAL_API_TOKEN?.trim() &&
+        web?.INTERNAL_API_TOKEN?.trim() &&
+        api.INTERNAL_API_TOKEN !== web.INTERNAL_API_TOKEN
+    ) {
+        errors.push(
+            "Railway API service and Cloudflare web environment INTERNAL_API_TOKEN values do not match.",
+        );
+    }
 
     const services = [];
     if (api) services.push({ label: "Railway API service", kind: "api", env: api });
