@@ -210,7 +210,7 @@ describe("MCP auth", () => {
             expect.objectContaining({
                 acceptsToken: "oauth_token",
                 audience: "https://api.example.com/mcp",
-                authorizedParties: ["oauth-client"],
+                authorizedParties: undefined,
             }),
         );
     });

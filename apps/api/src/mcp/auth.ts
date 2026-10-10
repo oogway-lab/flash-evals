@@ -214,9 +214,9 @@ export async function resolveClerkOAuthIdentity(
                 acceptsToken: "oauth_token",
                 audience: config.resourceUrl,
                 jwtKey: config.jwtKey,
-                authorizedParties:
-                    config.authorizedParties ??
-                    (config.clientId ? [config.clientId] : undefined),
+                // Clerk checks authorizedParties against azp (session origin),
+                // not OAuth client_id. Pin the verified OAuth client below.
+                authorizedParties: config.authorizedParties,
             },
         );
         rejectionReason = clerkRejectionReason(state.message);

@@ -18,10 +18,13 @@ const oauthConfig: IMcpOAuthConfig = {
     dynamicClients: false,
 };
 
-function syntheticToken(claims: Record<string, unknown> = {}): string {
+function syntheticToken(
+    claims: Record<string, unknown> = {},
+    typ = "at+jwt",
+): string {
     const now = Math.floor(Date.now() / 1000);
     const header = Buffer.from(
-        JSON.stringify({ alg: "RS256", typ: "at+jwt", kid: "synthetic" }),
+        JSON.stringify({ alg: "RS256", typ, kid: "synthetic" }),
     ).toString("base64url");
     const payload = Buffer.from(
         JSON.stringify({
@@ -40,34 +43,105 @@ function syntheticToken(claims: Record<string, unknown> = {}): string {
     return `${input}.${sign("RSA-SHA256", Buffer.from(input), privateKey).toString("base64url")}`;
 }
 
-describe("MCP OAuth diagnostics with the real Clerk SDK", () => {
-    it("identifies the client-ID-as-azp failure for a signed OAuth JWT", async () => {
+describe("MCP OAuth validation with the real Clerk SDK", () => {
+    it("accepts a signed OAuth JWT with client_id and no session azp", async () => {
         await expect(
             resolveClerkOAuthSubject(syntheticToken(), oauthConfig),
-        ).rejects.toMatchObject({ reason: "authorized_party_mismatch" });
+        ).resolves.toBe("user_synthetic");
     });
 
-    it("accepts a signed token satisfying the existing checks", async () => {
+    it("preserves explicitly configured azp admission", async () => {
+        const restricted = {
+            ...oauthConfig,
+            authorizedParties: ["https://web.example.com"],
+        };
+        await expect(
+            resolveClerkOAuthSubject(syntheticToken(), restricted),
+        ).rejects.toMatchObject({ reason: "authorized_party_mismatch" });
         await expect(
             resolveClerkOAuthSubject(
-                syntheticToken({ azp: oauthConfig.clientId }),
-                oauthConfig,
+                syntheticToken({ azp: "https://other.example.com" }),
+                restricted,
+            ),
+        ).rejects.toMatchObject({ reason: "authorized_party_mismatch" });
+        await expect(
+            resolveClerkOAuthSubject(
+                syntheticToken({ azp: "https://web.example.com" }),
+                restricted,
             ),
         ).resolves.toBe("user_synthetic");
     });
 
+    it.each(["other-client", "", undefined])(
+        "rejects a signed OAuth JWT whose client_id is %s",
+        async (client_id) => {
+            await expect(
+                resolveClerkOAuthSubject(
+                    syntheticToken({ client_id }),
+                    oauthConfig,
+                ),
+            ).rejects.toThrow(
+                "OAuth token was not issued for this Flash Evals MCP client.",
+            );
+        },
+    );
+
     it("identifies an audience rejection without disclosing claims", async () => {
         await expect(
             resolveClerkOAuthSubject(
-                syntheticToken({
-                    azp: oauthConfig.clientId,
-                    aud: "https://other.example/mcp",
-                }),
+                syntheticToken({ aud: "https://other.example/mcp" }),
                 oauthConfig,
             ),
         ).rejects.toMatchObject({
             reason: "audience_mismatch",
             message: "Invalid or expired Clerk OAuth token.",
         });
+    });
+
+    it.each([undefined, "", []])(
+        "rejects a missing or empty audience %s",
+        async (aud) => {
+            await expect(
+                resolveClerkOAuthSubject(syntheticToken({ aud }), oauthConfig),
+            ).rejects.toMatchObject({ reason: "audience_mismatch" });
+        },
+    );
+
+    it("rejects an expired signed OAuth JWT", async () => {
+        await expect(
+            resolveClerkOAuthSubject(
+                syntheticToken({ exp: Math.floor(Date.now() / 1000) - 30 }),
+                oauthConfig,
+            ),
+        ).rejects.toMatchObject({ reason: "expired_token" });
+    });
+
+    it("rejects a signed session JWT", async () => {
+        await expect(
+            resolveClerkOAuthSubject(syntheticToken({}, "JWT"), oauthConfig),
+        ).rejects.toThrow("Invalid or expired Clerk OAuth token.");
+    });
+
+    it("rejects a signed OAuth JWT with no subject", async () => {
+        await expect(
+            resolveClerkOAuthSubject(
+                syntheticToken({ sub: undefined }),
+                oauthConfig,
+            ),
+        ).rejects.toThrow("Invalid or expired Clerk OAuth token.");
+    });
+
+    it("rejects a JWT signed with another issuer's key", async () => {
+        const otherKey = generateKeyPairSync("rsa", {
+            modulusLength: 2048,
+        }).publicKey;
+        await expect(
+            resolveClerkOAuthSubject(syntheticToken(), {
+                ...oauthConfig,
+                jwtKey: otherKey
+                    .export({ type: "spki", format: "pem" })
+                    .toString(),
+            }),
+        ).rejects.toMatchObject({ reason: "invalid_signature" });
     });
 });
