@@ -1,12 +1,13 @@
 import { sql } from "drizzle-orm";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SUPABASE_ROOT_CA } from "./supabase-ca";
 
 const state = vi.hoisted(() => ({
     context: undefined as
-        { env: Record<string, string>; ctx: object } | undefined,
+        | {
+              env: { HYPERDRIVE?: { connectionString: string } };
+              ctx: object;
+          }
+        | undefined,
     pools: [] as Array<{
         options: unknown;
         query: ReturnType<typeof vi.fn>;
@@ -43,9 +44,12 @@ const cloudflareContextKey = Symbol.for("__cloudflare-context__");
 const originalWebDatabaseUrl = process.env.MOSAIC_WEB_DATABASE_URL;
 const originalDatabaseUrl = process.env.DATABASE_URL;
 
-function useCloudflareContext(url: string | undefined, request = {}): void {
+function useCloudflareContext(
+    connectionString: string | undefined,
+    request = {},
+): void {
     state.context = {
-        env: url ? { MOSAIC_WEB_DATABASE_URL: url } : {},
+        env: connectionString ? { HYPERDRIVE: { connectionString } } : {},
         ctx: request,
     };
     Object.defineProperty(globalThis, cloudflareContextKey, {
@@ -78,9 +82,9 @@ describe("web database client", () => {
         Reflect.deleteProperty(globalThis, cloudflareContextKey);
     });
 
-    it("uses a one-use pool bound to the current Worker request", async () => {
+    it("uses Hyperdrive through a one-use pool bound to the current Worker request", async () => {
         useCloudflareContext(
-            "postgres://db-user:db-password@pooler.example:6543/postgres?sslmode=require&application_name=web",
+            "postgres://hyperdrive.internal:5432/postgres",
             {},
         );
         const { db } = await import("./client");
@@ -90,59 +94,38 @@ describe("web database client", () => {
 
         expect(state.pools).toHaveLength(1);
         expect(state.pools[0]?.options).toEqual({
-            connectionString:
-                "postgres://db-user:db-password@pooler.example:6543/postgres?application_name=web",
-            ssl: { ca: SUPABASE_ROOT_CA, rejectUnauthorized: true },
+            connectionString: "postgres://hyperdrive.internal:5432/postgres",
             max: 1,
             maxUses: 1,
             idleTimeoutMillis: 0,
             connectionTimeoutMillis: 5_000,
         });
 
-        useCloudflareContext("postgres://web-request-two", {});
+        useCloudflareContext("postgres://hyperdrive.internal:5432/second", {});
         await db.execute(sql.raw("SELECT 3"));
 
         expect(state.pools).toHaveLength(2);
         expect(state.pools[1]?.options).toMatchObject({
             maxUses: 1,
-            ssl: { ca: SUPABASE_ROOT_CA, rejectUnauthorized: true },
+            connectionString: "postgres://hyperdrive.internal:5432/second",
         });
     });
 
-    it("uses the repository's Supabase root certificate for Worker TLS", async () => {
-        const certificate = await readFile(
-            resolve(process.cwd(), "config/supabase-root-2021-ca.pem"),
-            "utf8",
-        );
-
-        expect(SUPABASE_ROOT_CA.trim()).toBe(certificate.trim());
-    });
-
     it("fails closed when a Worker request has no database binding", async () => {
+        process.env.MOSAIC_WEB_DATABASE_URL = "postgres://must-not-fallback";
         process.env.DATABASE_URL = "postgres://must-not-fallback";
         useCloudflareContext(undefined);
         await expect(import("./client")).rejects.toThrow(
-            "MOSAIC_WEB_DATABASE_URL is not set",
+            "HYPERDRIVE binding is not configured",
         );
         expect(state.pools).toHaveLength(0);
     });
 
-    it("uses the web URL from process.env in the local Worker runner", async () => {
-        process.env.MOSAIC_WEB_DATABASE_URL = "postgres://local-worker";
-        useCloudflareContext(undefined);
-        const { db } = await import("./client");
-
-        await db.execute(sql.raw("SELECT 1"));
-
-        expect(state.pools).toHaveLength(1);
-        expect(state.pools[0]?.options).toMatchObject({
-            connectionString: "postgres://local-worker",
-            maxUses: 1,
-        });
-    });
-
     it("keeps a Drizzle transaction on one request-scoped client", async () => {
-        useCloudflareContext("postgres://web-request-transaction", {});
+        useCloudflareContext(
+            "postgres://hyperdrive.internal:5432/postgres",
+            {},
+        );
         const { db } = await import("./client");
 
         await db.transaction(async (transaction) => {
@@ -154,6 +137,7 @@ describe("web database client", () => {
     });
 
     it("keeps Node processes on the existing bounded pool", async () => {
+        process.env.MOSAIC_WEB_DATABASE_URL = "postgres://local-web-node";
         process.env.DATABASE_URL = "postgres://local-node";
         const { db } = await import("./client");
 
@@ -161,7 +145,7 @@ describe("web database client", () => {
 
         expect(state.pools).toHaveLength(1);
         expect(state.pools[0]?.options).toMatchObject({
-            connectionString: "postgres://local-node",
+            connectionString: "postgres://local-web-node",
             max: 4,
         });
     });

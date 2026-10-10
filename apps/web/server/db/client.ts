@@ -1,33 +1,15 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { SUPABASE_ROOT_CA } from "./supabase-ca";
 import * as schema from "./schema";
 
 let pool: Pool | undefined;
 const cloudflarePools = new WeakMap<object, Pool>();
 const cloudflareContextKey = Symbol.for("__cloudflare-context__");
 
-function getVerifiedWorkerConnectionString(url: string): string {
-    const connectionUrl = new URL(url);
-    for (const parameter of [
-        "ssl",
-        "sslmode",
-        "sslrootcert",
-        "sslcert",
-        "sslkey",
-        "sslpassword",
-        "sslnegotiation",
-        "uselibpqcompat",
-    ]) {
-        connectionUrl.searchParams.delete(parameter);
-    }
-    return connectionUrl.toString();
-}
-
 declare global {
     interface CloudflareEnv {
-        MOSAIC_WEB_DATABASE_URL?: string;
+        HYPERDRIVE?: { connectionString: string };
     }
 }
 
@@ -42,21 +24,17 @@ function getCloudflarePool(): Pool | undefined {
     const existing = cloudflarePools.get(request);
     if (existing) return existing;
 
-    // OpenNext's local Worker runner exposes .env values on process.env while
-    // production secrets are available as Worker bindings.
-    const url =
-        context.env.MOSAIC_WEB_DATABASE_URL?.trim() ||
-        process.env.MOSAIC_WEB_DATABASE_URL?.trim();
-    if (!url) throw new Error("MOSAIC_WEB_DATABASE_URL is not set");
+    const connectionString = context.env.HYPERDRIVE?.connectionString?.trim();
+    if (!connectionString) {
+        throw new Error("HYPERDRIVE binding is not configured");
+    }
 
-    // Workers cannot reuse TCP sockets across requests. The pool is keyed by
-    // this request's OpenNext execution context, and retires each connection
-    // after one use. Supabase transaction pooler supplies backend pooling.
+    // Workers cannot reuse TCP sockets across requests. The request-scoped
+    // client connects to Hyperdrive, which owns the upstream pool. Its resource
+    // must use verify-full for the Supabase origin. Do not configure driver TLS
+    // here: this socket terminates at Hyperdrive, not at Supabase.
     const requestPool = new Pool({
-        // Don't let URL query options replace the TLS config below. Workers
-        // verify the Supabase root and hostname for every Postgres connection.
-        connectionString: getVerifiedWorkerConnectionString(url),
-        ssl: { ca: SUPABASE_ROOT_CA, rejectUnauthorized: true },
+        connectionString,
         max: 1,
         maxUses: 1,
         idleTimeoutMillis: 0,

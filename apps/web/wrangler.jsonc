@@ -8,6 +8,12 @@
         "directory": ".open-next/assets",
         "binding": "ASSETS",
     },
+    "hyperdrive": [
+        {
+            "binding": "HYPERDRIVE",
+            "id": "9188f447e0c44054aee09df7465f0f6f",
+        },
+    ],
     "observability": {
         "enabled": true,
     },
