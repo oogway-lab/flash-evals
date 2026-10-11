@@ -1530,6 +1530,8 @@ a {
         position: static;
         display: inline-block;
         translate: none;
+        /* The slam grows into the receipt instead of past the viewport. */
+        transform-origin: right center;
     }
 }
 

@@ -71,11 +71,80 @@ test("reduced motion and no-JavaScript preserve the complete accessible marketin
         await page.goto(test.info().project.use.baseURL!);
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
         await expect(page.locator("html")).not.toHaveClass(/motion/);
+        for (const stamp of await page.locator(".stamp").all()) {
+            await expect(stamp).toHaveCSS("opacity", "0.88");
+        }
         await expect(
             page.getByRole("link", { name: "Open dashboard" }),
         ).toBeVisible();
         await context.close();
     }
+});
+
+test("mobile stamps stay within the viewport throughout their staggered animation", async ({
+    page,
+}) => {
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/");
+    const board = page.locator("[data-board]");
+    await expect(board).toHaveClass(/armed/);
+
+    const animation = await board.evaluate(async (element) => {
+        await document.fonts.ready;
+        const stamps = Array.from(element.querySelectorAll(".stamp"));
+        const animatedStamps = new Set<number>();
+        const overflow: number[] = [];
+        let animationFrames = 0;
+        element.scrollIntoView({ behavior: "instant", block: "center" });
+        const start = performance.now();
+        await new Promise<void>((resolve) => {
+            const sample = () => {
+                let active = false;
+                stamps.forEach((stamp, index) => {
+                    if (
+                        stamp.getAnimations().some((animation) => {
+                            const timing =
+                                animation.effect?.getComputedTiming();
+                            const delay =
+                                animation.effect?.getTiming().delay ?? 0;
+                            return (
+                                animation.playState === "running" &&
+                                typeof timing?.localTime === "number" &&
+                                timing.localTime >= delay &&
+                                timing.localTime < delay + timing.activeDuration
+                            );
+                        })
+                    ) {
+                        animatedStamps.add(index);
+                        active = true;
+                    }
+                });
+                if (active) {
+                    animationFrames++;
+                    const width = document.documentElement.scrollWidth;
+                    if (width > window.innerWidth) overflow.push(width);
+                }
+                if (performance.now() - start < 1_200) {
+                    requestAnimationFrame(sample);
+                } else {
+                    resolve();
+                }
+            };
+            requestAnimationFrame(sample);
+        });
+        return {
+            animatedStamps: animatedStamps.size,
+            stamps: stamps.length,
+            animationFrames,
+            overflow,
+        };
+    });
+
+    expect(animation.stamps).toBe(3);
+    expect(animation.animatedStamps).toBe(animation.stamps);
+    expect(animation.animationFrames).toBeGreaterThan(10);
+    expect(animation.overflow).toEqual([]);
 });
 
 test("anonymous dashboard and direct protected links require sign-in on every refresh", async ({
