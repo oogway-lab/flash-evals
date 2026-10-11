@@ -25,6 +25,10 @@ test("anonymous / serves marketing and its local assets without an auth or dashb
     expect(href).toMatch(/^\/marketing\/_astro\//);
     expect((await request.get(href!)).status()).toBe(200);
     expect((await request.get("/marketing/og.png")).status()).toBe(200);
+    await expect(page.locator(".mast .ln").last()).toHaveCSS(
+        "clip-path",
+        /^inset\(0(?:px|%)(?: 0(?:px|%))*\)$/,
+    );
     await page.screenshot({
         path: "test-results/marketing-desktop.png",
         fullPage: true,
@@ -45,6 +49,10 @@ test("mobile marketing keeps the headline and sign-in link accessible without ho
             () => document.documentElement.scrollWidth <= window.innerWidth,
         ),
     ).toBe(true);
+    await expect(page.locator(".mast .ln").last()).toHaveCSS(
+        "clip-path",
+        /^inset\(0(?:px|%)(?: 0(?:px|%))*\)$/,
+    );
     await page.screenshot({
         path: "test-results/marketing-mobile.png",
         fullPage: true,
