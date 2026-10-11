@@ -39,7 +39,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                     <header className="sticky top-0 z-40 border-b border-border bg-neutral">
                         <div className="mx-auto flex h-16 max-w-7xl items-center gap-2 px-4 sm:gap-4 sm:px-6">
                             <Link
-                                href="/"
+                                href="/dashboard"
                                 className="text-heading-16 text-on-surface hover:no-underline"
                             >
                                 Flash Evals
@@ -71,6 +71,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     if (!authEnabled) return content;
 
     return (
-        <ClerkProvider appearance={clerkAppearance}>{content}</ClerkProvider>
+        <ClerkProvider
+            appearance={clerkAppearance}
+            signInUrl="/sign-in"
+            signUpUrl="/sign-up"
+            signInForceRedirectUrl="/dashboard"
+            signUpForceRedirectUrl="/dashboard"
+            afterSignOutUrl="/"
+        >
+            {content}
+        </ClerkProvider>
     );
 }

@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
+import assert from "node:assert/strict";
 import { createServer } from "node:net";
 import { mkdtemp, rm, writeFile, access } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { URL, fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -135,6 +136,53 @@ try {
     }
     console.log(
         "Cloudflare Worker local smoke passed: GET /api/health returned 200.",
+    );
+
+    const origin = `http://127.0.0.1:${port}`;
+    const home = await globalThis.fetch(`${origin}/`, { redirect: "manual" });
+    assert.equal(
+        home.status,
+        200,
+        "anonymous / must serve marketing in the Worker",
+    );
+    assert.match(home.headers.get("content-type") ?? "", /text\/html/);
+    assert.match(home.headers.get("cache-control") ?? "", /no-store/);
+    const html = await home.text();
+    assert.match(html, /Pick your model on your data\. Keep the receipts\./);
+    assert.match(html, /href="\/sign-in"/);
+    const stylesheet = html.match(/href="(\/marketing\/_astro\/[^" ]+\.css)"/);
+    assert.ok(
+        stylesheet,
+        "the marketing stylesheet must use the asset namespace",
+    );
+    for (const asset of [stylesheet[1], "/marketing/og.png"]) {
+        const assetResponse = await globalThis.fetch(`${origin}${asset}`);
+        assert.equal(assetResponse.status, 200, `marketing asset ${asset}`);
+    }
+    for (const route of [
+        "/dashboard",
+        "/datasets/example",
+        "/runs/example?tab=cost",
+    ]) {
+        const protectedResponse = await globalThis.fetch(`${origin}${route}`, {
+            redirect: "manual",
+        });
+        assert.equal(
+            protectedResponse.status,
+            307,
+            `anonymous ${route} must require sign-in`,
+        );
+        assert.equal(
+            new URL(protectedResponse.headers.get("location"), origin).pathname,
+            "/sign-in",
+        );
+        assert.match(
+            protectedResponse.headers.get("cache-control") ?? "",
+            /no-store/,
+        );
+    }
+    console.log(
+        "Cloudflare Worker marketing smoke passed: public /, assets, no-store and protected deep links.",
     );
 } finally {
     wrangler.kill("SIGTERM");

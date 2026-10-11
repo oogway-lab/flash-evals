@@ -82,7 +82,9 @@ describe("ProjectSwitcher", () => {
         await vi.waitFor(() =>
             expect(mocks.switchProjectAction).toHaveBeenCalledWith("p-2"),
         );
-        await vi.waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/"));
+        await vi.waitFor(() =>
+            expect(mocks.push).toHaveBeenCalledWith("/dashboard"),
+        );
     });
 
     it("prevents another workspace or project switch while a switch is pending", async () => {
@@ -111,7 +113,9 @@ describe("ProjectSwitcher", () => {
         expect(mocks.switchProjectAction).toHaveBeenCalledTimes(1);
 
         switchResult.resolve({ ok: true });
-        await vi.waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/"));
+        await vi.waitFor(() =>
+            expect(mocks.push).toHaveBeenCalledWith("/dashboard"),
+        );
     });
 
     it("offers all workspaces and project creation", async () => {

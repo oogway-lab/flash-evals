@@ -10,7 +10,7 @@ export default function NotFound() {
                 title="Page not found"
                 description="The resource you are looking for does not exist or may have been removed."
                 action={
-                    <Link href="/" className={buttonVariants()}>
+                    <Link href="/dashboard" className={buttonVariants()}>
                         Go to dashboard
                     </Link>
                 }

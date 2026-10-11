@@ -13,21 +13,21 @@ vi.mock("@/server/projects/activeProject", () => ({
     requireActiveProject: mocks.requireActiveProject,
 }));
 // The async server body is covered in dashboard-content.test.tsx.
-vi.mock("./dashboard/dashboard-content", () => ({
+vi.mock("./dashboard-content", () => ({
     DashboardContent: ({ projectId }: { projectId: string }) => (
         <p>content for {projectId}</p>
     ),
 }));
 
 import { UserFacingError } from "@/server/lib/errors";
-import HomePage from "./page";
-import DashboardRedirect from "./dashboard/page";
+import { ForbiddenError } from "@/server/auth/session";
+import DashboardPage from "./page";
 
-describe("HomePage", () => {
+describe("DashboardPage", () => {
     afterEach(cleanup);
     beforeEach(() => vi.clearAllMocks());
 
-    it("renders the active project's dashboard at /", async () => {
+    it("renders the active project's dashboard at /dashboard", async () => {
         mocks.requireActiveProject.mockResolvedValue({
             teamId: "team-1",
             projectId: "project-2",
@@ -38,7 +38,7 @@ describe("HomePage", () => {
             ],
         });
 
-        render(await HomePage());
+        render(await DashboardPage());
 
         expect(
             screen.getByRole("heading", { level: 1, name: "Dashboard" }),
@@ -56,19 +56,24 @@ describe("HomePage", () => {
             new UserFacingError("No project is available for this workspace."),
         );
 
-        await expect(HomePage()).rejects.toThrow("NEXT_REDIRECT:/workspaces");
+        await expect(DashboardPage()).rejects.toThrow(
+            "NEXT_REDIRECT:/workspaces",
+        );
     });
 
     it("does not hide unexpected failures behind the workspace redirect", async () => {
         mocks.requireActiveProject.mockRejectedValue(new Error("API down"));
 
-        await expect(HomePage()).rejects.toThrow("API down");
+        await expect(DashboardPage()).rejects.toThrow("API down");
         expect(mocks.redirect).not.toHaveBeenCalled();
     });
-});
 
-describe("/dashboard", () => {
-    it("redirects to /", () => {
-        expect(() => DashboardRedirect()).toThrow("NEXT_REDIRECT:/");
+    it("sends a signed-in user rejected by company admission to access denied", async () => {
+        mocks.requireActiveProject.mockRejectedValue(
+            new ForbiddenError("A verified company email is required."),
+        );
+        await expect(DashboardPage()).rejects.toThrow(
+            "NEXT_REDIRECT:/access-denied",
+        );
     });
 });

@@ -73,7 +73,7 @@ a non-Docker database, stopping and restarting, and setup troubleshooting.
 | Understand runs, workflows, and model routing         | [Concepts](CONCEPTS.md)                               |
 | Change the code and run checks                        | [Contributing](CONTRIBUTING.md)                       |
 | Understand data isolation and security reporting      | [Security policy](SECURITY.md)                        |
-| Work on or deploy the flashevals.dev website          | [Site README](apps/site/README.md)                    |
+| Work on the integrated flashevals.dev website         | [Site README](apps/site/README.md)                    |
 
 ## Before using your own data
 

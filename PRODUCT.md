@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Product app: existing monorepo (Next.js web on Cloudflare Workers, Node API and worker, PostgreSQL). Marketing site: `apps/site`, static Astro build deployed to Cloudflare at `flashevals.dev` (confirmed by the user).
+Product app: existing monorepo (Next.js web on Cloudflare Workers, Node API and worker, PostgreSQL). Marketing site: `apps/site`, a static Astro build bundled into the existing Next/OpenNext Cloudflare Worker at `flashevals.dev`. The public root serves marketing; successful login opens `/dashboard`.
 
 ## Users
 
