@@ -140,8 +140,11 @@ export async function loadWorkflowScoringContext(
     needsTranscriptLabels = false,
 ): Promise<IWorkflowScoringContext> {
     const needsLabels =
-        nodes.some((node) => node.evalConfig.type === "field_diff") ||
-        needsTranscriptLabels;
+        nodes.some(
+            (node) =>
+                node.evalConfig.type === "field_diff" ||
+                node.nodeType === "metric_compare",
+        ) || needsTranscriptLabels;
     const labelRows =
         !needsLabels || itemIds.length === 0
             ? []

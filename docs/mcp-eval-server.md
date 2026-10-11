@@ -427,7 +427,11 @@ already operate. It is not a complete hosted-deployment walkthrough.
       does not restrict access to one application; review that trust decision.
 4. Set `MOSAIC_MCP_ALLOWED_ORIGINS` to the exact origins of browser-based clients
    you want to allow. Avoid copying another deployment's allowlist. Review
-   `CLERK_AUTHORIZED_PARTIES` if you use additional token restrictions.
+   `CLERK_AUTHORIZED_PARTIES` if you use additional token restrictions. Clerk
+   checks that explicit allowlist against the token's `azp` claim. OAuth JWTs
+   identify the client with `client_id`; Flash Evals checks the verified client
+   ID against `MOSAIC_MCP_OAUTH_CLIENT_ID` separately. The client ID is not an
+   implicit `azp` restriction.
 5. In the MCP client, select Streamable HTTP, enter your API's `/mcp` URL, and
    complete OAuth. Grant a profile scope explicitly when the client supports
    custom scopes; do not grant `flash-evals:admin` to routine evaluation agents.
@@ -435,6 +439,10 @@ already operate. It is not a complete hosted-deployment walkthrough.
    redirects varies; use the client's and Clerk's current instructions.
 
 Production requires an HTTPS resource URL and refuses raw-token fallback.
+MCP OAuth requires JWT access tokens with an `at+jwt` or `application/at+jwt`
+header type and an `iss` claim exactly equal to `CLERK_ISSUER`. Configure Clerk
+to issue JWT OAuth access tokens with the MCP resource as their audience.
+Opaque OAuth access tokens have no verifiable issuer claim and are rejected.
 Keep the server secret private. The publishable key, client ID, and JWT public
 key have different roles; they are not substitutes for an OAuth access token.
 
