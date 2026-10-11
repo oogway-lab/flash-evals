@@ -8,25 +8,46 @@ import { NextResponse } from "next/server";
 import { isDevAuthEnabled } from "@/server/auth/mode";
 
 const isPublicRoute = createRouteMatcher([
+    "/",
     "/api/health",
+    "/robots.txt",
     "/sign-in(.*)",
     "/sign-up(.*)",
     "/access-denied",
 ]);
 const isApiRoute = createRouteMatcher(["/api(.*)", "/trpc(.*)"]);
 
+function redirectWithoutCache(path: string, req: NextRequest) {
+    const response = NextResponse.redirect(new URL(path, req.url));
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
+}
+
+function isEntryRoute(req: NextRequest) {
+    return ["/", "/sign-in", "/sign-up"].includes(
+        req.nextUrl.pathname.replace(/\/$/, "") || "/",
+    );
+}
+
 const protectedMiddleware = clerkMiddleware(async (auth, req) => {
-    if (!isPublicRoute(req) && !isApiRoute(req)) {
-        const authState = await auth();
-        if (!authState.userId) {
-            return NextResponse.redirect(new URL("/sign-in", req.url));
+    // APIs keep their own bearer/session and company-admission checks.
+    if (isApiRoute(req)) return;
+    if (isEntryRoute(req) || !isPublicRoute(req)) {
+        const { userId } = await auth();
+        if (userId && isEntryRoute(req)) {
+            return redirectWithoutCache("/dashboard", req);
+        }
+        if (!userId && !isPublicRoute(req)) {
+            return redirectWithoutCache("/sign-in", req);
         }
     }
 });
 
 export default function middleware(req: NextRequest, event: NextFetchEvent) {
     if (isDevAuthEnabled()) {
-        return NextResponse.next();
+        return isEntryRoute(req)
+            ? redirectWithoutCache("/dashboard", req)
+            : NextResponse.next();
     }
     return protectedMiddleware(req, event);
 }

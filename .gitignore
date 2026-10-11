@@ -66,3 +66,11 @@ settings.local.json
 apps/web/scripts/current-db-data.sql
 
 .uploads/
+
+# Astro
+.astro/
+/.impeccable/
+
+# Astro output bundled by the Next/OpenNext build
+apps/web/generated/
+apps/web/public/marketing/

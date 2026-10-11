@@ -80,6 +80,8 @@ jobs:
       - name: Verify Cloudflare build output
         run: |
           test -s apps/web/.open-next/worker.js
+          test -s apps/web/.open-next/assets/marketing/og.png
+          test -d apps/web/.open-next/assets/marketing/_astro
           test -d apps/web/.open-next/assets
 
       - name: Smoke test the local Cloudflare Worker runtime
@@ -181,7 +183,9 @@ jobs:
       # Lint, knip and typedoc resolve the shared packages from dist/, which
       # the Build step produced when everything ran in one job.
       - name: Build shared packages
-        run: node scripts/build-packages.mjs
+        run: |
+          node scripts/build-packages.mjs
+          pnpm run marketing:build
 
       # A newly published high advisory fails every PR until it is handled.
       # Upgrade the dependency, or if no fix applies yet, record the advisory
@@ -275,6 +279,7 @@ jobs:
       - migrations
       - static-checks
       - security-scans
+      - browser-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -365,6 +370,9 @@ jobs:
 
       - name: Run web smoke tests
         run: pnpm exec playwright test tests/e2e/health.spec.ts
+
+      - name: Run anonymous marketing and login routing checks
+        run: pnpm exec playwright test --config playwright.marketing.config.ts
 
       - name: Upload Playwright report
         if: always()

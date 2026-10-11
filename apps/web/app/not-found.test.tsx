@@ -9,6 +9,6 @@ describe("NotFound", () => {
         render(<NotFound />);
         expect(
             screen.getByRole("link", { name: "Go to dashboard" }),
-        ).toHaveAttribute("href", "/");
+        ).toHaveAttribute("href", "/dashboard");
     });
 });

@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 
 const links: ReadonlyArray<{ href: Route; label: string }> = [
-    { href: "/", label: "Dashboard" },
+    { href: "/dashboard", label: "Dashboard" },
     { href: "/datasets", label: "Datasets" },
     { href: "/prompts", label: "Prompts" },
     // The product name is "Pipelines". The route, API and code identifiers
@@ -20,9 +20,7 @@ const links: ReadonlyArray<{ href: Route; label: string }> = [
     { href: "/settings", label: "Settings" },
 ];
 
-/** The dashboard lives at `/`; `/dashboard` renders the same page. */
 function isActiveLink(pathname: string, href: string) {
-    if (href === "/") return pathname === "/" || pathname === "/dashboard";
     return pathname === href || pathname.startsWith(`${href}/`);
 }
 

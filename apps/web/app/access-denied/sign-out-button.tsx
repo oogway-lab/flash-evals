@@ -15,7 +15,7 @@ export function AccessDeniedSignOutButton() {
             onClick={async () => {
                 setPending(true);
                 try {
-                    await signOut({ redirectUrl: "/sign-in" });
+                    await signOut({ redirectUrl: "/" });
                 } catch {
                     setPending(false);
                 }

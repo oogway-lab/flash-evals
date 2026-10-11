@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /api/
+Disallow: /datasets
+Disallow: /prompts
+Disallow: /multiworkflow
+Disallow: /runs
+Disallow: /settings
+Disallow: /workspaces
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /access-denied
