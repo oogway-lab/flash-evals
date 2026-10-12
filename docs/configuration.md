@@ -1,6 +1,6 @@
 # Configuration
 
-[Documentation home](../README.md#documentation) · [Getting started](getting-started.md)
+[Documentation home](../README.md#documentation) · [Getting started](getting-started.md) · [Deployment guide](deployment.md)
 
 For a fresh local instance, use `pnpm run setup:local`. It creates a small,
 working configuration without Clerk or Supabase. For other environments, use the
@@ -366,9 +366,12 @@ configuration, not a `MOSAIC_FLAG_*` feature flag checked by
 
 ## Before exposing an instance
 
-The public source release does not include a complete hosted-deployment guide.
-At minimum, use real authentication, disable every local bypass, choose the
-intended tenancy policy, keep storage private, configure HTTPS and exact origins,
+Follow the [deployment guide](deployment.md) for the Cloudflare web, Railway API
+and worker, Clerk, private R2, and PostgreSQL topology. Complete its
+[Supabase Data API exposure gate](deployment.md#data-api-exposure-gate--before-migrations-or-admitting-data)
+before migrations or admitting data. At minimum, use real authentication,
+disable every local bypass, choose the intended tenancy policy, keep storage
+private, configure HTTPS and exact origins,
 and keep secrets only in server environments. Back up the database, objects, and
 encryption key together. Read the [security policy](../SECURITY.md).
 
