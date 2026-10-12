@@ -148,7 +148,7 @@ try {
     assert.match(home.headers.get("content-type") ?? "", /text\/html/);
     assert.match(home.headers.get("cache-control") ?? "", /no-store/);
     const html = await home.text();
-    assert.match(html, /Pick your model on your data\. Keep the receipts\./);
+    assert.match(html, /Choose your model\. See the tradeoffs on your data\./);
     assert.match(html, /href="\/sign-in"/);
     const stylesheet = html.match(/href="(\/marketing\/_astro\/[^" ]+\.css)"/);
     assert.ok(
