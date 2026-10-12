@@ -88,4 +88,6 @@ The root document uses the existing web security headers. Marketing assets have
 security and immutable hashed-asset caching rules in
 [`../web/public/_headers`](../web/public/_headers). Fonts are self-hosted.
 The canonical URL is `https://flashevals.dev/`; its social image is
-`/marketing/og.png` (1200×630), with the original provenance embedded in the file.
+`/marketing/og.png` (1731×909), with image provenance embedded in the file.
+The social preview uses the same task-focused headline and anonymous sample
+model labels as the page; keep those labels and the sample-data disclosure intact.
