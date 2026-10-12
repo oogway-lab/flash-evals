@@ -67,6 +67,7 @@ a non-Docker database, stopping and restarting, and setup troubleshooting.
 | I want to…                                            | Read                                                  |
 | ----------------------------------------------------- | ----------------------------------------------------- |
 | Start from a fresh clone                              | [Getting started](docs/getting-started.md)            |
+| Deploy the Cloudflare, Railway, and PostgreSQL stack  | [Deployment guide](docs/deployment.md)                |
 | Connect an agent or call the MCP server               | [MCP guide](docs/mcp-eval-server.md)                  |
 | Set provider keys, storage, authentication, or limits | [Configuration](docs/configuration.md)                |
 | Evaluate audio and transcripts                        | [Speech-to-text evaluations](docs/stt-evaluations.md) |
