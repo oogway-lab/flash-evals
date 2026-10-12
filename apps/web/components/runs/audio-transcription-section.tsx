@@ -504,7 +504,7 @@ function transliterationConfigForSnapshot(input: {
         transliteration: {
             enabled: true,
             targetScript: "latin",
-            modelId: input.modelId.trim() || "gpt-4o-mini",
+            modelId: input.modelId.trim() || "gpt-6-luna",
             ...(input.targetLanguage.trim()
                 ? { targetLanguage: input.targetLanguage.trim() }
                 : {}),
@@ -524,7 +524,7 @@ function evaluatorConfigForSnapshot(input: {
     return {
         evaluator: {
             enabled: true,
-            modelId: input.modelId.trim() || "gpt-4o-mini",
+            modelId: input.modelId.trim() || "gpt-6-luna",
             rubricPrompt: input.rubricPrompt.trim(),
             ...(input.reasoningEffort !== "default"
                 ? { reasoningEffort: input.reasoningEffort }

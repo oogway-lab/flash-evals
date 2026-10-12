@@ -1076,7 +1076,7 @@ async function generateJudgeFromContext(
     const generatorModelId =
         input.generatorModelId ??
         process.env.PROMPT_OPTIMIZER_MODEL ??
-        "gpt-5.4-mini";
+        "gpt-6-luna";
     const provider = await evalProvider(db, config, teamId);
     const reasoning = registryEntryFor(generatorModelId)?.reasoning ?? false;
     const result = await provider.complete({
