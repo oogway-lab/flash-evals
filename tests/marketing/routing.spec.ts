@@ -9,13 +9,17 @@ test("anonymous / serves marketing and its local assets without an auth or dashb
     expect(response?.headers()["cache-control"]).toContain("no-store");
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-        "Pick your model on your data. Keep the receipts.",
+        "Choose your model. See the tradeoffs on your data.",
     );
     await expect(
-        page.getByRole("link", { name: "Sign in", exact: true }),
+        page
+            .locator(".topbar")
+            .getByRole("link", { name: "Pilot sign-in", exact: true }),
     ).toHaveAttribute("href", "/sign-in");
     await expect(
-        page.getByRole("link", { name: "Open dashboard" }),
+        page
+            .locator(".mast")
+            .getByRole("link", { name: "Pilot sign-in", exact: true }),
     ).toHaveAttribute("href", "/sign-in");
     await expect(
         page.getByRole("navigation", { name: "Primary" }),
@@ -24,7 +28,15 @@ test("anonymous / serves marketing and its local assets without an auth or dashb
     const href = await stylesheet.getAttribute("href");
     expect(href).toMatch(/^\/marketing\/_astro\//);
     expect((await request.get(href!)).status()).toBe(200);
-    expect((await request.get("/marketing/og.png")).status()).toBe(200);
+    const socialImage = await request.get("/marketing/og.png");
+    expect(socialImage.status()).toBe(200);
+    const png = await socialImage.body();
+    await expect(
+        page.locator('meta[property="og:image:width"]'),
+    ).toHaveAttribute("content", String(png.readUInt32BE(16)));
+    await expect(
+        page.locator('meta[property="og:image:height"]'),
+    ).toHaveAttribute("content", String(png.readUInt32BE(20)));
     await expect(page.locator(".mast .ln").last()).toHaveCSS(
         "clip-path",
         /^inset\(0(?:px|%)(?: 0(?:px|%))*\)$/,
@@ -42,7 +54,9 @@ test("mobile marketing keeps the headline and sign-in link accessible without ho
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(
-        page.getByRole("link", { name: "Sign in", exact: true }),
+        page
+            .locator(".topbar")
+            .getByRole("link", { name: "Pilot sign-in", exact: true }),
     ).toBeVisible();
     expect(
         await page.evaluate(
@@ -75,7 +89,9 @@ test("reduced motion and no-JavaScript preserve the complete accessible marketin
             await expect(stamp).toHaveCSS("opacity", "0.88");
         }
         await expect(
-            page.getByRole("link", { name: "Open dashboard" }),
+            page
+                .locator(".topbar")
+                .getByRole("link", { name: "Pilot sign-in", exact: true }),
         ).toBeVisible();
         await context.close();
     }
@@ -172,7 +188,10 @@ test("interrupted and repeated sign-in navigation can return to marketing throug
     // app's routing and loading UI; this is not a completed Clerk login.
     await page.route("https://clerk.example.test/**", (route) => route.abort());
     await page.goto("/");
-    await page.getByRole("link", { name: "Sign in", exact: true }).click();
+    await page
+        .locator(".topbar")
+        .getByRole("link", { name: "Pilot sign-in", exact: true })
+        .click();
     await expect(page).toHaveURL(/\/sign-in$/);
     await expect(
         page.getByRole("status", { name: "Loading sign-in" }),
@@ -184,10 +203,13 @@ test("interrupted and repeated sign-in navigation can return to marketing throug
     await page.reload();
     await expect(page).toHaveURL(/\/sign-in$/);
     await page.goto("/");
-    await page.getByRole("link", { name: "Open dashboard" }).click();
+    await page
+        .locator(".mast")
+        .getByRole("link", { name: "Pilot sign-in", exact: true })
+        .click();
     await expect(page).toHaveURL(/\/sign-in$/);
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-        "Pick your model on your data. Keep the receipts.",
+        "Choose your model. See the tradeoffs on your data.",
     );
 });

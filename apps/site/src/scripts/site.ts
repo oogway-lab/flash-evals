@@ -1,4 +1,4 @@
-// Copy buttons, the item-017 run demo, stamps, and the masthead clock.
+// Copy buttons, the item-017 sample replay, and stamps.
 // Everything is fully printed without this script.
 
 const motion = document.documentElement.classList.contains("motion");
@@ -19,22 +19,13 @@ for (const button of document.querySelectorAll<HTMLButtonElement>(
         try {
             await navigator.clipboard.writeText(text);
             button.dataset.copied = "";
-            setLcd("Copied · paste it in your terminal");
+            setLcd("Copied · paste in your terminal");
         } catch {
-            setLcd("Copy blocked · select the command instead", 3600);
+            setLcd("Copy unavailable · select the text", 3600);
             return;
         }
         window.setTimeout(() => delete button.dataset.copied, 2000);
     });
-}
-
-const clock = document.querySelector<HTMLElement>("[data-clock]");
-if (clock) {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    clock.textContent = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
-        now.getDate(),
-    )} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 
 function onceVisible(el: Element, threshold: number, run: () => void) {
