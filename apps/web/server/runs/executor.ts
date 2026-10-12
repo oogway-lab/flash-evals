@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getBareModelName, type ApiKeys } from "@mosaic/llm-core";
-import { redactSecrets, redactedErrorDetail } from "@mosaic/secrets";
+import { redactSecrets } from "@mosaic/secrets";
 import {
     canonicalJsonString,
     isSttMetricsModelId,
@@ -65,6 +65,7 @@ import {
 import { isRecord } from "../lib/objects";
 import { errorMessage } from "../lib/errors";
 import { forEachPool } from "../lib/concurrency";
+import { logWorkerEvent, safeWorkerError } from "../jobs/workerObservability";
 
 const CONCURRENCY = Math.max(1, Number(process.env.EVAL_CONCURRENCY ?? 5) || 1);
 
@@ -217,15 +218,22 @@ export async function executeRun(runId: string): Promise<void> {
                     responseSchemaForRunModel,
                 });
             } catch (err) {
-                await markCellFailed(cell.id, errorMessage(err));
+                logWorkerEvent("error", "run_cell.failed", {
+                    runId,
+                    cellId: cell.id,
+                    phase: "generation",
+                    ...safeWorkerError(err),
+                });
+                await markCellFailed(runId, cell.id, errorMessage(err));
             }
         });
     } catch (genErr) {
         // Log but continue to scoring + final status so we don't leave the run in limbo
-        console.error(
-            `generation phase error for run ${runId}:`,
-            redactedErrorDetail(genErr),
-        );
+        logWorkerEvent("error", "run.phase_failed", {
+            runId,
+            phase: "generation",
+            ...safeWorkerError(genErr),
+        });
     }
 
     // Phase 2: scoring — runs after all generations so the judge sees reference outputs.
@@ -307,21 +315,25 @@ export async function executeRun(runId: string): Promise<void> {
                     transcriptJudge,
                 });
             } catch (scoreErr) {
-                console.error(
-                    `scoring failed for cell ${cell.id}:`,
-                    redactedErrorDetail(scoreErr),
-                );
+                logWorkerEvent("error", "run_cell.failed", {
+                    runId,
+                    cellId: cell.id,
+                    phase: "scoring",
+                    ...safeWorkerError(scoreErr),
+                });
                 await markCellFailed(
+                    runId,
                     cell.id,
                     `scoring failed: ${errorMessage(scoreErr)}`,
                 );
             }
         });
     } catch (scorePhaseErr) {
-        console.error(
-            `scoring phase error for run ${runId}:`,
-            redactedErrorDetail(scorePhaseErr),
-        );
+        logWorkerEvent("error", "run.phase_failed", {
+            runId,
+            phase: "scoring",
+            ...safeWorkerError(scorePhaseErr),
+        });
     }
 
     const final = await getRunCells(runId);
@@ -339,7 +351,11 @@ export async function executeRun(runId: string): Promise<void> {
     }
 }
 
-async function markCellFailed(cellId: string, error: string): Promise<void> {
+async function markCellFailed(
+    runId: string,
+    cellId: string,
+    error: string,
+): Promise<void> {
     try {
         await db
             .update(runCells)
@@ -348,10 +364,11 @@ async function markCellFailed(cellId: string, error: string): Promise<void> {
             .set({ status: "failed", error: redactSecrets(error) })
             .where(eq(runCells.id, cellId));
     } catch (markError) {
-        console.error(
-            `failed to mark cell ${cellId} as failed:`,
-            redactedErrorDetail(markError),
-        );
+        logWorkerEvent("error", "run_cell.failure_persist_failed", {
+            runId,
+            cellId,
+            ...safeWorkerError(markError),
+        });
     }
 }
 
@@ -676,10 +693,9 @@ export async function loadJudgePromptForRun(run: {
     try {
         return await getJudgePromptVersion(judgePromptVersionId);
     } catch (err) {
-        console.error(
-            `failed to load judge prompt version ${judgePromptVersionId}:`,
-            redactedErrorDetail(err),
-        );
+        logWorkerEvent("error", "judge_prompt.load_failed", {
+            ...safeWorkerError(err),
+        });
         return undefined;
     }
 }

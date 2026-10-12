@@ -712,7 +712,9 @@ describe("runProgressPayload", () => {
             pending: 3,
         });
         expect(db.query).toHaveBeenCalledWith(
-            "select status from runs where id = $1 and team_id = $2 and project_id = $3 limit 1",
+            expect.stringContaining(
+                "from runs where id = $1 and team_id = $2 and project_id = $3",
+            ),
             ["run-1", "team-1", "project-1"],
         );
     });
@@ -773,7 +775,10 @@ describe("createRunPayload", () => {
                 fieldConfigs: [],
                 createdBy: "user-1",
             }),
-        ).resolves.toEqual({ runId: "run-1" });
+        ).resolves.toEqual({
+            runId: "run-1",
+            enqueueStatus: "pending_enqueue",
+        });
         expect(db.query).toHaveBeenNthCalledWith(
             3,
             expect.stringContaining("insert into runs"),
@@ -784,9 +789,13 @@ describe("createRunPayload", () => {
             expect.stringContaining("insert into run_models"),
             expect.arrayContaining(["run-1", "gpt-4o", "pv-1", "schema-1"]),
         );
-        expect(db.query).toHaveBeenLastCalledWith(
+        expect(db.query).toHaveBeenCalledWith(
             expect.stringContaining("insert into run_cells"),
             expect.arrayContaining(["run-1", "item-2", "run-model-1"]),
+        );
+        expect(db.query).toHaveBeenLastCalledWith(
+            expect.stringContaining("insert into run_enqueue_outbox"),
+            ["run-1"],
         );
     });
 
@@ -827,7 +836,10 @@ describe("createRunPayload", () => {
                 limitRunInput(),
                 testConfig({ teamDailySpendCapUsd: 10 }),
             ),
-        ).resolves.toEqual({ runId: "run-1" });
+        ).resolves.toEqual({
+            runId: "run-1",
+            enqueueStatus: "pending_enqueue",
+        });
         expect(insertedRuns(db)).toHaveLength(1);
     });
 
@@ -970,7 +982,10 @@ describe("createRunPayload", () => {
                 },
                 testConfig({ openaiApiKey: "sk-test" }),
             ),
-        ).resolves.toEqual({ runId: "run-1" });
+        ).resolves.toEqual({
+            runId: "run-1",
+            enqueueStatus: "pending_enqueue",
+        });
 
         const insertRunArgs = vi.mocked(db.query).mock
             .calls[2]?.[1] as unknown[];
@@ -1388,9 +1403,12 @@ describe("createRunFromSelectionPayload", () => {
                 },
                 testConfig(),
             ),
-        ).resolves.toEqual({ runId: "run-1" });
+        ).resolves.toEqual({
+            runId: "run-1",
+            enqueueStatus: "pending_enqueue",
+        });
 
-        expect(db.query).toHaveBeenCalledTimes(6);
+        expect(db.query).toHaveBeenCalledTimes(7);
         expect(vi.mocked(db.query).mock.calls[3]?.[1]).toEqual([
             "team-1",
             "project-1",
@@ -1491,7 +1509,10 @@ describe("createRunFromSelectionPayload", () => {
                 },
                 testConfig({ sonioxApiKey: "soniox-test" }),
             ),
-        ).resolves.toEqual({ runId: "run-1" });
+        ).resolves.toEqual({
+            runId: "run-1",
+            enqueueStatus: "pending_enqueue",
+        });
 
         const snapshot = vi.mocked(db.query).mock.calls[3]?.[1]?.[6] as {
             sttConfig?: unknown;
@@ -1628,7 +1649,10 @@ describe("createRunFromSelectionPayload", () => {
                     mosaicSecretsEncKey: TEST_SECRETS_KEY,
                 }),
             ),
-        ).resolves.toEqual({ runId: "run-1" });
+        ).resolves.toEqual({
+            runId: "run-1",
+            enqueueStatus: "pending_enqueue",
+        });
     });
 
     it("rejects invalid STT config value types before prompt reads", async () => {
@@ -2654,6 +2678,89 @@ describe("retryRunPayload", () => {
             expect.stringContaining("from runs"),
             ["run-1", "team-1", "project-1"],
         );
+    });
+
+    it("records retry intent and marks admission pending in the same locked transaction", async () => {
+        const db = dbWithRows([
+            [{ status: "partial" }],
+            [{ status: "queued", jobId: "old" }],
+            [],
+            [],
+        ]);
+        await retryRunPayload(db, {
+            teamId: "team-1",
+            projectId: "project-1",
+            runId: "run-1",
+        });
+        expect(db.query).toHaveBeenNthCalledWith(
+            1,
+            expect.stringContaining("for update"),
+            ["run-1", "team-1", "project-1"],
+        );
+        expect(db.query).toHaveBeenNthCalledWith(
+            3,
+            expect.stringContaining("job_id=gen_random_uuid()"),
+            ["run-1"],
+        );
+        expect(db.query).toHaveBeenLastCalledWith(
+            expect.stringContaining("update runs set status='pending'"),
+            ["run-1"],
+        );
+    });
+
+    it("does not admit another retry while the published generation is queued or active", async () => {
+        const db = dbWithRows([
+            [{ status: "pending" }],
+            [{ status: "queued", jobId: "job-1" }],
+            [{ id: "job-1" }],
+        ]);
+        await retryRunPayload(db, {
+            teamId: "team-1",
+            projectId: "project-1",
+            runId: "run-1",
+        });
+        expect(db.query).toHaveBeenCalledTimes(3);
+        expect(db.query).toHaveBeenLastCalledWith(
+            expect.stringContaining("state in ('created', 'retry', 'active')"),
+            ["job-1"],
+        );
+        expect(db.query).not.toHaveBeenCalledWith(
+            expect.stringContaining("insert into run_enqueue_outbox"),
+            expect.anything(),
+        );
+    });
+
+    it("recovers pending runs whose job finished before execution setup completed", async () => {
+        const db = dbWithRows([
+            [{ status: "pending" }],
+            [{ status: "queued", jobId: "finished-job" }],
+            [],
+            [],
+            [],
+        ]);
+        await retryRunPayload(db, {
+            teamId: "team-1",
+            projectId: "project-1",
+            runId: "run-1",
+        });
+        expect(db.query).toHaveBeenNthCalledWith(
+            4,
+            expect.stringContaining("job_id=gen_random_uuid()"),
+            ["run-1"],
+        );
+    });
+
+    it("leaves an already pending publication generation unchanged", async () => {
+        const db = dbWithRows([
+            [{ status: "pending" }],
+            [{ status: "pending_enqueue", jobId: "job-1" }],
+        ]);
+        await retryRunPayload(db, {
+            teamId: "team-1",
+            projectId: "project-1",
+            runId: "run-1",
+        });
+        expect(db.query).toHaveBeenCalledTimes(2);
     });
 
     it("does not retry runs outside the requesting team", async () => {

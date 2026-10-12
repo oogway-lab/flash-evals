@@ -49,6 +49,7 @@ describe("auth session", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.stubEnv("NODE_ENV", "test");
+        delete process.env.MOSAIC_TENANCY_MODE;
         process.env.MOSAIC_ALLOWED_EMAIL_DOMAIN = "example.com";
         delete process.env.MOSAIC_DEFAULT_TEAM_ID;
         delete process.env.MOSAIC_DEFAULT_USER_ID;
@@ -61,6 +62,7 @@ describe("auth session", () => {
     });
 
     afterEach(() => {
+        delete process.env.MOSAIC_TENANCY_MODE;
         vi.unstubAllEnvs();
     });
 
@@ -72,6 +74,21 @@ describe("auth session", () => {
         expect(isAllowedEmail("alice@example.com")).toBe(true);
         expect(isAllowedEmail("alice@sub.example.com")).toBe(false);
         expect(isAllowedEmail("alice@gmail.com")).toBe(false);
+    });
+
+    it("accepts the normalized pilot domain and rejects malformed addresses", () => {
+        process.env.MOSAIC_ALLOWED_EMAIL_DOMAIN = "oogwaylabs.com";
+
+        expect(isAllowedEmail(" Alice+Pilot@OOGWAYLABS.COM ")).toBe(true);
+        for (const email of [
+            "alice@sub.oogwaylabs.com",
+            "alice@oogwaylabs.com.evil",
+            "@oogwaylabs.com",
+            "alice..pilot@oogwaylabs.com",
+            "alice@@oogwaylabs.com",
+        ]) {
+            expect(isAllowedEmail(email)).toBe(false);
+        }
     });
 
     it("denies every email when no domain is configured", () => {
@@ -96,29 +113,53 @@ describe("auth session", () => {
         expect(apiMock.resolvePrincipal).not.toHaveBeenCalled();
     });
 
-    it("skips the domain check in isolated mode and lets the API decide", async () => {
-        process.env.MOSAIC_TENANCY_MODE = "isolated";
-        try {
-            await expect(
-                principalForClerkIdentity({
-                    clerkUserId: "clerk-1",
-                    email: "person@gmail.com",
-                    emailVerified: true,
-                    name: "Person",
-                }),
-            ).resolves.toEqual({ userId: "user-1", teamId: "team-1" });
+    it("denies a changed out-of-domain primary email on session refresh", async () => {
+        clerkMock.currentClerkIdentity.mockResolvedValue({
+            clerkUserId: "clerk-existing",
+            email: "alice@outside.example",
+            emailVerified: true,
+            name: "Alice",
+        });
 
-            expect(apiMock.resolvePrincipal).toHaveBeenCalledWith({
-                identity: {
-                    clerkUserId: "clerk-1",
-                    email: "person@gmail.com",
-                    emailVerified: true,
-                    name: "Person",
-                },
-            });
-        } finally {
-            delete process.env.MOSAIC_TENANCY_MODE;
-        }
+        await expect(requirePrincipal()).rejects.toBeInstanceOf(ForbiddenError);
+        expect(apiMock.resolvePrincipal).not.toHaveBeenCalled();
+    });
+
+    it("keeps a configured domain restriction in isolated mode", async () => {
+        process.env.MOSAIC_TENANCY_MODE = "isolated";
+        process.env.MOSAIC_ALLOWED_EMAIL_DOMAIN = "oogwaylabs.com";
+        await expect(
+            principalForClerkIdentity({
+                clerkUserId: "clerk-1",
+                email: "person@gmail.com",
+                emailVerified: true,
+                name: "Person",
+            }),
+        ).rejects.toBeInstanceOf(ForbiddenError);
+        expect(apiMock.resolvePrincipal).not.toHaveBeenCalled();
+        delete process.env.MOSAIC_TENANCY_MODE;
+    });
+
+    it("uses isolated tenancy without a domain restriction only when none is configured", async () => {
+        process.env.MOSAIC_TENANCY_MODE = "isolated";
+        delete process.env.MOSAIC_ALLOWED_EMAIL_DOMAIN;
+        await expect(
+            principalForClerkIdentity({
+                clerkUserId: "clerk-1",
+                email: "person@gmail.com",
+                emailVerified: true,
+                name: "Person",
+            }),
+        ).resolves.toEqual({ userId: "user-1", teamId: "team-1" });
+        expect(apiMock.resolvePrincipal).toHaveBeenCalledWith({
+            identity: {
+                clerkUserId: "clerk-1",
+                email: "person@gmail.com",
+                emailVerified: true,
+                name: "Person",
+            },
+        });
+        delete process.env.MOSAIC_TENANCY_MODE;
     });
 
     it("requires a verified email before calling the API", async () => {

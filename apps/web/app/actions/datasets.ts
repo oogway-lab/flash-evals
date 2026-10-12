@@ -220,7 +220,9 @@ async function createDatasetFromForm(
     purposeOverride?: "evaluation",
 ) {
     const p = await requirePrincipal();
-    const name = String(formData.get("name") || "Untitled dataset");
+    const rawName = formData.get("name");
+    const name = typeof rawName === "string" ? rawName.trim() : "";
+    if (!name) throw new UserFacingError("Enter a name for your dataset.");
     const purpose =
         purposeOverride ??
         (formData.get("purpose") === "evaluation" ? "evaluation" : "golden");

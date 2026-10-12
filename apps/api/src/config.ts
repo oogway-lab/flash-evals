@@ -4,12 +4,16 @@ import {
 } from "./featureFlags.js";
 import type { EvalProviderMode } from "@mosaic/llm-core";
 import type { SttCapabilityProbeResults } from "./sttModels.js";
+import {
+    createR2StorageConfig,
+    type IR2StorageConfig,
+} from "@mosaic/object-storage";
 
 export interface IApiConfig {
     nodeEnv: string;
     port: number;
     databaseUrl: string;
-    storageAdapter: "local" | "supabase";
+    storageAdapter: "local" | "supabase" | "r2";
     // Public origin of this API (e.g. http://localhost:3001). Used to mint
     // absolute local-upload URLs the browser can PUT to under the `local`
     // storage adapter (U8). Optional; defaults to http://localhost:<port>.
@@ -18,6 +22,7 @@ export interface IApiConfig {
     supabaseServiceRoleKey: string;
     supabaseStorageBucket: string;
     supabaseStoragePrefix?: string;
+    r2Storage?: IR2StorageConfig;
     clerkSecretKey: string;
     mosaicTenancyMode: MosaicTenancyMode;
     mosaicAllowedEmailDomain: string;
@@ -109,6 +114,7 @@ export function getApiConfig(env: Env = process.env): IApiConfig {
         validateSingleOrgDomain(env, mosaicAllowedEmailDomain);
     }
     const storageAdapter = parseStorageAdapter(env);
+    let r2Storage: IR2StorageConfig | undefined;
     if (storageAdapter === "supabase") {
         const missingSupabase = [
             "SUPABASE_URL",
@@ -118,6 +124,17 @@ export function getApiConfig(env: Env = process.env): IApiConfig {
         if (missingSupabase.length > 0) {
             throw new ConfigError(
                 `Missing required API env: ${missingSupabase.join(", ")}`,
+            );
+        }
+    }
+    if (storageAdapter === "r2") {
+        try {
+            r2Storage = createR2StorageConfig(env as NodeJS.ProcessEnv);
+        } catch (error) {
+            throw new ConfigError(
+                error instanceof Error
+                    ? error.message
+                    : "Invalid R2 storage configuration.",
             );
         }
     }
@@ -132,6 +149,7 @@ export function getApiConfig(env: Env = process.env): IApiConfig {
         supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
         supabaseStorageBucket: env.SUPABASE_STORAGE_BUCKET ?? "",
         supabaseStoragePrefix: emptyToUndefined(env.SUPABASE_STORAGE_PREFIX),
+        ...(r2Storage ? { r2Storage } : {}),
         clerkSecretKey: env.CLERK_SECRET_KEY ?? "",
         mosaicTenancyMode,
         mosaicAllowedEmailDomain,
@@ -372,7 +390,7 @@ function allowInsecureDevDefaults(env: Env): boolean {
     return allowed;
 }
 
-function parseStorageAdapter(env: Env): "local" | "supabase" {
+function parseStorageAdapter(env: Env): "local" | "supabase" | "r2" {
     const insecureDefaults = allowInsecureDevDefaults(env);
     const requested = (
         env.MOSAIC_STORAGE_ADAPTER ??
@@ -391,6 +409,7 @@ function parseStorageAdapter(env: Env): "local" | "supabase" {
         return "local";
     }
     if (requested === "supabase") return "supabase";
+    if (requested === "r2") return "r2";
     if (requested) {
         throw new ConfigError(
             `Unsupported MOSAIC_STORAGE_ADAPTER value: ${requested}`,

@@ -54,6 +54,39 @@ jobs:
       - name: Web unit tests
         run: pnpm --filter @mosaic/web test
 
+  cloudflare-build:
+    name: Cloudflare Worker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up workspace
+        uses: ./.github/actions/setup-workspace
+
+      - name: Build OpenNext Worker and static assets
+        env:
+          NEXT_PUBLIC_CLERK_SIGN_IN_URL: /sign-in
+          NEXT_PUBLIC_CLERK_SIGN_UP_URL: /sign-up
+          NEXT_PUBLIC_API_BASE_URL: https://api.example.test
+          MOSAIC_CSP_STORAGE_ORIGIN: https://storage.example.test
+        run: |
+          export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$(node -e 'process.stdout.write("pk_" + ["te", "st"].join("") + "_" + Buffer.from("clerk.example.test$").toString("base64"))')"
+          pnpm run web:build:cloudflare
+
+      - name: Verify Cloudflare build output
+        run: |
+          test -s apps/web/.open-next/worker.js
+          test -s apps/web/.open-next/assets/marketing/og.png
+          test -d apps/web/.open-next/assets/marketing/_astro
+          test -d apps/web/.open-next/assets
+
+      - name: Smoke test the local Cloudflare Worker runtime
+        run: pnpm run web:smoke:cloudflare
+
   package-tests:
     name: Package and API tests
     runs-on: ubuntu-latest
@@ -150,7 +183,9 @@ jobs:
       # Lint, knip and typedoc resolve the shared packages from dist/, which
       # the Build step produced when everything ran in one job.
       - name: Build shared packages
-        run: node scripts/build-packages.mjs
+        run: |
+          node scripts/build-packages.mjs
+          pnpm run marketing:build
 
       # A newly published high advisory fails every PR until it is handled.
       # Upgrade the dependency, or if no fix applies yet, record the advisory
@@ -198,10 +233,7 @@ jobs:
         run: pnpm run docs:api
 
       - name: Split deployment readiness
-        env:
-          API_ENV: apps/api/.env.example
-          WEB_ENV: apps/web/.env.example
-        run: pnpm run deploy:check
+        run: node --test scripts/check-split-deployment-readiness.test.mjs
 
   security-scans:
     name: Secret and SAST scans
@@ -212,6 +244,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Verify Gitleaks rules and placeholder boundaries
+        run: node scripts/check-gitleaks-config.mjs --docker
 
       - name: Gitleaks
         run: |
@@ -239,10 +274,12 @@ jobs:
     needs:
       - typecheck-build
       - web-tests
+      - cloudflare-build
       - package-tests
       - migrations
       - static-checks
       - security-scans
+      - browser-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -333,6 +370,9 @@ jobs:
 
       - name: Run web smoke tests
         run: pnpm exec playwright test tests/e2e/health.spec.ts
+
+      - name: Run anonymous marketing and login routing checks
+        run: pnpm exec playwright test --config playwright.marketing.config.ts
 
       - name: Upload Playwright report
         if: always()

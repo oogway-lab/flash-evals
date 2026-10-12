@@ -10,15 +10,37 @@ const mocks = vi.hoisted(() => ({
     updatePayloads: [] as Array<Record<string, unknown>>,
     send: vi.fn(),
     work: vi.fn(),
+    offWork: vi.fn(async () => undefined),
+    stop: vi.fn(async () => undefined),
+    bossConstructions: 0,
+    selectGate: undefined as
+        | Promise<
+              Array<{ id: string; cellStatus: string; claimedAt: Date | null }>
+          >
+        | undefined,
+    selectStarted: vi.fn(),
 }));
+
+function deferred<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    const promise = new Promise<T>((done) => {
+        resolve = done;
+    });
+    return { promise, resolve };
+}
 
 vi.mock("pg-boss", () => ({
     default: class PgBossMock {
+        constructor() {
+            mocks.bossConstructions += 1;
+        }
         on = vi.fn();
         start = vi.fn(async () => undefined);
         createQueue = vi.fn(async () => undefined);
         send = mocks.send;
         work = mocks.work;
+        offWork = mocks.offWork;
+        stop = mocks.stop;
     },
 }));
 
@@ -28,7 +50,9 @@ vi.mock("../db/client", () => ({
             from: vi.fn(() => ({
                 innerJoin: vi.fn(() => ({
                     where: vi.fn(async () => {
+                        mocks.selectStarted();
                         if (mocks.selectError) throw mocks.selectError;
+                        if (mocks.selectGate) return await mocks.selectGate;
                         return mocks.runCells;
                     }),
                 })),
@@ -45,7 +69,7 @@ vi.mock("../db/client", () => ({
 
 vi.mock("../runs/executor", () => ({ executeRun: vi.fn() }));
 
-import { recoverOrphanedRuns, startRunWorker } from "./runQueue";
+import { recoverOrphanedRuns, startRunWorker, stopRunWorker } from "./runQueue";
 
 describe("run queue stale claims", () => {
     beforeEach(() => {
@@ -56,6 +80,10 @@ describe("run queue stale claims", () => {
         mocks.updatePayloads.length = 0;
         mocks.send.mockReset();
         mocks.work.mockReset();
+        mocks.offWork.mockReset();
+        mocks.stop.mockReset();
+        mocks.selectGate = undefined;
+        mocks.selectStarted.mockReset();
     });
 
     it("clears stale V1 cell claims before re-enqueueing their runs", async () => {
@@ -147,5 +175,88 @@ describe("run queue stale claims", () => {
 
         expect(mocks.work).toHaveBeenCalledOnce();
         expect(mocks.send).toHaveBeenCalledWith("eval-run", { runId: "run-2" });
+
+        await expect(stopRunWorker(1_500)).resolves.toEqual({
+            remainingInFlight: 0,
+        });
+        expect(mocks.stop).toHaveBeenCalledWith({
+            graceful: true,
+            timeout: 1_500,
+        });
+    });
+
+    it("quiesces before a recovery sweep and closes the same pg-boss instance", async () => {
+        vi.useFakeTimers();
+        await startRunWorker();
+        const constructionCount = mocks.bossConstructions;
+
+        let releaseRecovery!: (
+            rows: Array<{
+                id: string;
+                cellStatus: string;
+                claimedAt: Date | null;
+            }>,
+        ) => void;
+        let signalRecoveryStarted!: () => void;
+        const recoveryStarted = new Promise<void>((resolve) => {
+            signalRecoveryStarted = resolve;
+        });
+        mocks.selectGate = new Promise((resolve) => {
+            releaseRecovery = resolve;
+        });
+        mocks.selectStarted.mockImplementationOnce(signalRecoveryStarted);
+
+        const sweep = vi.advanceTimersByTimeAsync(300_000);
+        await recoveryStarted;
+
+        const stopping = stopRunWorker(10_000);
+        expect(mocks.offWork).toHaveBeenCalledWith("eval-run");
+        expect(mocks.stop).not.toHaveBeenCalled();
+
+        releaseRecovery([
+            { id: "run-stale", cellStatus: "running", claimedAt: new Date(0) },
+        ]);
+        await sweep;
+        await expect(stopping).resolves.toEqual({ remainingInFlight: 0 });
+
+        expect(mocks.send).toHaveBeenCalledWith("eval-run", {
+            runId: "run-stale",
+        });
+        expect(mocks.bossConstructions).toBe(constructionCount);
+        expect(mocks.stop).toHaveBeenCalledOnce();
+        expect(mocks.offWork.mock.invocationCallOrder[0]).toBeLessThan(
+            mocks.send.mock.invocationCallOrder[0]!,
+        );
+    });
+
+    it("does not register a consumer when shutdown interrupts startup recovery", async () => {
+        const constructionCount = mocks.bossConstructions;
+        const recovery = deferred<
+            Array<{
+                id: string;
+                cellStatus: string;
+                claimedAt: Date | null;
+            }>
+        >();
+        const recoveryStarted = deferred<void>();
+        mocks.selectGate = recovery.promise;
+        mocks.selectStarted.mockImplementationOnce(() =>
+            recoveryStarted.resolve(),
+        );
+
+        const starting = startRunWorker();
+        await recoveryStarted.promise;
+        const stopping = stopRunWorker(10_000);
+        recovery.resolve([
+            { id: "run-startup-stale", cellStatus: "running", claimedAt: null },
+        ]);
+        await Promise.all([starting, stopping]);
+
+        expect(mocks.work).not.toHaveBeenCalled();
+        expect(mocks.send).toHaveBeenCalledWith("eval-run", {
+            runId: "run-startup-stale",
+        });
+        expect(mocks.bossConstructions).toBe(constructionCount + 1);
+        expect(mocks.stop).toHaveBeenCalledOnce();
     });
 });

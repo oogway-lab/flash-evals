@@ -5,12 +5,15 @@ import { AuthCardSkeleton, AuthPanel } from "@/components/layout/auth-panel";
 
 export default function SignUpPage() {
     if (isDevAuthEnabled()) {
-        redirect("/");
+        redirect("/dashboard");
     }
 
     return (
         <AuthPanel>
-            <SignUp fallback={<AuthCardSkeleton />} />
+            <SignUp
+                forceRedirectUrl="/dashboard"
+                fallback={<AuthCardSkeleton />}
+            />
         </AuthPanel>
     );
 }

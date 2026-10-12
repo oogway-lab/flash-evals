@@ -5,6 +5,7 @@
 import { spawnSync } from "node:child_process";
 
 const PACKAGES = [
+    "@mosaic/object-storage",
     "@mosaic/api-contract",
     "@mosaic/llm-core",
     "@mosaic/secrets",

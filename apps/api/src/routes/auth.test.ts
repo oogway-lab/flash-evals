@@ -103,6 +103,92 @@ describe("resolvePrincipalPayload", () => {
         expect(db.query).not.toHaveBeenCalled();
     });
 
+    it("normalizes the pilot domain and rejects malformed or changed identities", async () => {
+        const pilotConfig = {
+            ...config,
+            mosaicAllowedEmailDomain: "oogwaylabs.com",
+        };
+        const existingDb = dbWithRows([
+            [
+                {
+                    id: "user-existing",
+                    clerk_user_id: "clerk-1",
+                    team_id: config.mosaicDefaultTeamId,
+                    email: "alice@oogwaylabs.com",
+                    name: "Alice",
+                    default_workspace_id: "workspace-existing",
+                },
+            ],
+        ]);
+
+        await expect(
+            resolvePrincipalPayload(existingDb, pilotConfig, {
+                identity: {
+                    clerkUserId: "clerk-1",
+                    email: " Alice+Pilot@OOGWAYLABS.COM ",
+                    emailVerified: true,
+                    name: "Alice",
+                },
+            }),
+        ).resolves.toMatchObject({ userId: "user-existing" });
+
+        for (const email of [
+            "alice@sub.oogwaylabs.com",
+            "alice@oogwaylabs.com.evil",
+            "@oogwaylabs.com",
+            "alice..pilot@oogwaylabs.com",
+            "alice@@oogwaylabs.com",
+        ]) {
+            const db = dbWithRows([]);
+            await expect(
+                resolvePrincipalPayload(db, pilotConfig, {
+                    identity: {
+                        clerkUserId: "clerk-1",
+                        email,
+                        emailVerified: true,
+                    },
+                }),
+            ).rejects.toBeInstanceOf(ApiForbiddenError);
+            expect(db.query).not.toHaveBeenCalled();
+        }
+
+        // A refreshed Clerk session with an out-of-domain primary email must
+        // not retain access through an already provisioned user row.
+        const changedEmailDb = dbWithRows([]);
+        await expect(
+            resolvePrincipalPayload(changedEmailDb, pilotConfig, {
+                identity: {
+                    clerkUserId: "clerk-1",
+                    email: "alice@outside.example",
+                    emailVerified: true,
+                },
+            }),
+        ).rejects.toBeInstanceOf(ApiForbiddenError);
+        expect(changedEmailDb.query).not.toHaveBeenCalled();
+    });
+
+    it("keeps a configured domain restriction active in isolated tenancy", async () => {
+        const db = dbWithRows([]);
+        await expect(
+            resolvePrincipalPayload(
+                db,
+                {
+                    ...config,
+                    mosaicTenancyMode: "isolated",
+                    mosaicAllowedEmailDomain: "oogwaylabs.com",
+                },
+                {
+                    identity: {
+                        clerkUserId: "clerk-1",
+                        email: "person@outside.example",
+                        emailVerified: true,
+                    },
+                },
+            ),
+        ).rejects.toBeInstanceOf(ApiForbiddenError);
+        expect(db.query).not.toHaveBeenCalled();
+    });
+
     it("denies every email when no allowed domain is configured", async () => {
         const db = dbWithRows([]);
 

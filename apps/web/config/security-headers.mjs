@@ -8,7 +8,8 @@
 //   avatars; Cloudflare Turnstile runs the bot-protection captcha. See
 //   https://clerk.com/docs/security/clerk-csp.
 // - Storage: dataset uploads PUT straight to a signed URL. With the local
-//   adapter that is the API; in production it is Supabase Storage.
+//   adapter that is the API; with cloud storage it is Supabase or the R2 bucket
+//   endpoint configured through MOSAIC_CSP_STORAGE_ORIGIN.
 //
 // script-src keeps 'unsafe-inline' because the App Router emits inline
 // bootstrap scripts, and nonces would force every page to render dynamically.

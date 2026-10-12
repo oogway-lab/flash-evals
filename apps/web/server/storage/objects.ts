@@ -1,8 +1,16 @@
 import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
+import {
+    createR2StorageConfig,
+    deleteR2Object,
+    getR2Object,
+    putR2Object,
+    r2ObjectKey,
+    type IR2StorageConfig,
+} from "@mosaic/object-storage";
 
-export type ObjectStorageAdapter = "supabase" | "local";
+export type ObjectStorageAdapter = "supabase" | "local" | "r2";
 
 export class ObjectStorageConfigError extends Error {
     constructor(message: string) {
@@ -30,6 +38,7 @@ export interface IObjectStorageConfig {
     supabaseServiceRoleKey?: string;
     supabaseStorageBucket?: string;
     supabaseStoragePrefix?: string;
+    r2Storage?: IR2StorageConfig;
 }
 
 export async function storeObject(
@@ -57,6 +66,11 @@ export async function putObject(
         return;
     }
 
+    if (config.adapter === "r2") {
+        await putR2Object(config.r2Storage!, storageKey, bytes, mimeType);
+        return;
+    }
+
     await uploadToSupabase(config, storageKey, bytes, mimeType, options.upsert);
 }
 
@@ -66,6 +80,11 @@ export async function deleteObject(storageKey: string): Promise<void> {
 
     if (config.adapter === "local") {
         await fs.rm(objectFilePath(storageKey), { force: true });
+        return;
+    }
+
+    if (config.adapter === "r2") {
+        await deleteR2Object(config.r2Storage!, storageKey);
         return;
     }
 
@@ -80,16 +99,35 @@ export async function loadObjectBytes(storageKey: string): Promise<Buffer> {
         return fs.readFile(objectFilePath(storageKey));
     }
 
+    if (config.adapter === "r2") {
+        return getR2Object(config.r2Storage!, storageKey);
+    }
+
     return downloadFromSupabase(config, storageKey);
 }
 
-// Local storage is the default for development and tests. Production must use
-// Supabase unless a deployment explicitly opts into another supported adapter.
+// Local storage is the default for development and tests. Production defaults
+// to Supabase; R2 must be selected explicitly in each server environment.
 export function getObjectStorageConfig(
     env: NodeJS.ProcessEnv = process.env,
 ): IObjectStorageConfig {
     const adapter = resolveAdapter(env);
     if (adapter === "local") return { adapter };
+
+    if (adapter === "r2") {
+        try {
+            return {
+                adapter,
+                r2Storage: createR2StorageConfig(env),
+            };
+        } catch (error) {
+            throw new ObjectStorageConfigError(
+                error instanceof Error
+                    ? error.message
+                    : "Invalid R2 storage configuration.",
+            );
+        }
+    }
 
     const required = [
         "SUPABASE_URL",
@@ -114,6 +152,10 @@ export function getObjectStorageConfig(
 
 export function objectPath(storageKey: string): string {
     assertStorageKey(storageKey);
+    const config = getObjectStorageConfig();
+    if (config.adapter === "r2") {
+        return r2ObjectKey(config.r2Storage!, storageKey);
+    }
     const prefix = normalizePrefix(process.env.SUPABASE_STORAGE_PREFIX);
     return prefix ? `${prefix}/${storageKey}` : storageKey;
 }
@@ -159,12 +201,25 @@ function resolveAdapter(env: NodeJS.ProcessEnv): ObjectStorageAdapter {
         }
         return "local";
     }
+    if (requested === "r2") return "r2";
     if (requested && requested !== "supabase") {
         throw new ObjectStorageConfigError(
             `Unsupported MOSAIC_STORAGE_ADAPTER value: ${requested}`,
         );
     }
     if (requested === "supabase") return "supabase";
+
+    const hasR2Settings = [
+        env.R2_ACCOUNT_ID,
+        env.R2_ACCESS_KEY_ID,
+        env.R2_SECRET_ACCESS_KEY,
+        env.R2_BUCKET,
+    ].some((value) => Boolean(value?.trim()));
+    if (hasR2Settings) {
+        throw new ObjectStorageConfigError(
+            "R2 storage settings are set but MOSAIC_STORAGE_ADAPTER is not. Set MOSAIC_STORAGE_ADAPTER=r2 in every API and worker environment.",
+        );
+    }
     if (env.NODE_ENV === "production") return "supabase";
 
     // Dev/test default remains local when no adapter is set. Fail loudly when

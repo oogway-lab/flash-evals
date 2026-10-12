@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
     // pg and pg-boss are server-only; keep them external to the bundle.
     serverExternalPackages: ["pg", "pg-boss"],
     experimental: {
-        // Dataset media now uploads direct-to-Supabase (signed-URL PUT), so those
+        // Dataset media now uploads directly to object storage (signed-URL PUT), so those
         // bytes no longer traverse Server Actions. However the prompt-test image
         // attach (`app/actions/prompts.ts` `imageFromForm`) was NOT migrated: it
         // still reads a raw `imageFile` File through a Server Action and allows up

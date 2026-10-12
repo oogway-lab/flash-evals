@@ -407,10 +407,13 @@ describe("loadJudgePromptForRun", () => {
             }),
         ).resolves.toBeUndefined();
 
-        expect(errorSpy).toHaveBeenCalledWith(
-            "failed to load judge prompt version judge-pv-1:",
-            expect.stringContaining("database unavailable"),
-        );
+        const logged = String(errorSpy.mock.calls[0]?.[0]);
+        expect(JSON.parse(logged)).toMatchObject({
+            service: "mosaic-worker",
+            event: "judge_prompt.load_failed",
+            errorName: "Error",
+        });
+        expect(logged).not.toContain("database unavailable");
         errorSpy.mockRestore();
     });
 
@@ -430,8 +433,13 @@ describe("loadJudgePromptForRun", () => {
         });
 
         const logged = errorSpy.mock.calls.flat().map(String).join(" ");
-        expect(logged).toContain("fetch failed");
         expect(logged).not.toContain("sk-live-abcdef123456");
+        expect(logged).not.toContain("fetch failed");
+        expect(JSON.parse(String(errorSpy.mock.calls[0]?.[0]))).toMatchObject({
+            service: "mosaic-worker",
+            event: "judge_prompt.load_failed",
+            errorName: "Error",
+        });
         errorSpy.mockRestore();
     });
 });
@@ -500,11 +508,11 @@ describe("legacyJudgeRationale", () => {
     it("redacts credentials from a failed judge's provider error", () => {
         const rationale = legacyJudgeRationale({
             ok: false,
-            error: "401 Incorrect API key provided: sk-proj-abcDEF1234567890",
+            error: "401 Incorrect API key provided: sk-proj-aaaaaaaaaaaaaaaa",
         });
 
         expect(rationale).toContain("judge error: 401 Incorrect API key");
-        expect(rationale).not.toContain("sk-proj-abcDEF1234567890");
+        expect(rationale).not.toContain("sk-proj-aaaaaaaaaaaaaaaa");
     });
 });
 
@@ -642,7 +650,7 @@ describe("executeRun STT variants", () => {
             async (input) => {
                 if (input.config?.diarization)
                     throw new Error(
-                        "401 Incorrect API key provided: sk-proj-abcDEF1234567890",
+                        "401 Incorrect API key provided: sk-proj-aaaaaaaaaaaaaaaa",
                     );
                 return transcriptArtifact("plain transcript", "plain-hash");
             },
@@ -655,7 +663,7 @@ describe("executeRun STT variants", () => {
         ) as { status: string; error: string } | undefined;
         expect(failed?.status).toBe("failed");
         expect(failed?.error).toContain("Incorrect API key provided");
-        expect(failed?.error).not.toContain("sk-proj-abcDEF1234567890");
+        expect(failed?.error).not.toContain("sk-proj-aaaaaaaaaaaaaaaa");
     });
 
     it("creates distinct transcripts and invokes the judge for every variant", async () => {

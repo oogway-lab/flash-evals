@@ -36,7 +36,7 @@ const docsToCheck = [
     ...listMarkdownFiles("docs"),
 ].filter((docPath) => existsSync(join(root, docPath)));
 const commandPattern =
-    /\bpnpm\s+(?:(--filter)\s+(@mosaic\/[a-z-]+)\s+)?(?:run\s+)?([a-zA-Z0-9:_-]+)/;
+    /\bpnpm\s+(?:--silent\s+)?(?:(--filter)\s+(@mosaic\/[a-z-]+)\s+)?(?:run\s+)?([a-zA-Z0-9:_-]+)/;
 const packageToDir = new Map([
     ["@mosaic/web", "apps/web"],
     ["@mosaic/api", "apps/api"],
@@ -54,7 +54,12 @@ for (const docPath of docsToCheck) {
         if (!match) continue;
         const packageName = match[2];
         const scriptName = match[3];
-        if (["install", "exec", "dlx", "audit"].includes(scriptName)) continue;
+        if (
+            ["install", "exec", "dlx", "audit", "--version", "-v"].includes(
+                scriptName,
+            )
+        )
+            continue;
 
         const packageDir = packageName ? packageToDir.get(packageName) : "";
         if (packageName && !packageDir) {

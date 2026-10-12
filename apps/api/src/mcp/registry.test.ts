@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { isKnownMcpToolEffect, mcpToolEffect } from "./effects.js";
 
 const promptMocks = vi.hoisted(() => ({
     testPromptDraftPayload: vi.fn(),
@@ -133,6 +134,7 @@ describe("MCP prompt tools", () => {
             runtime,
             principal: {
                 authMode: "oauth",
+                profile: "admin",
                 userId: "user-1",
                 teamId: "authenticated-team",
                 email: "user@example.com",
@@ -195,14 +197,22 @@ describe("MCP prompt tools", () => {
         } as never);
         promptMocks.testPromptDraftPayload.mockClear();
 
-        await expect(
-            tools.get("test_prompt_draft")!.handler({
-                prompt: "Answer",
-                jsonSchema: { type: "object" },
-                targetModelId: "gpt-4o",
-                samples: [{ name: "Sample", inputText: "hello" }],
-            }),
-        ).rejects.toMatchObject({ status: 429, retryAfterSeconds: 9 });
+        const result = await tools.get("test_prompt_draft")!.handler({
+            prompt: "Answer",
+            jsonSchema: { type: "object" },
+            targetModelId: "gpt-4o",
+            samples: [{ name: "Sample", inputText: "hello" }],
+        });
+        expect(result).toMatchObject({
+            isError: true,
+            structuredContent: {
+                error: {
+                    code: "rate_limited",
+                    retryable: true,
+                    retryAfterSeconds: 9,
+                },
+            },
+        });
 
         expect(runtime.db.query).toHaveBeenCalledWith(
             expect.stringContaining("insert into api_rate_limits"),
@@ -240,9 +250,13 @@ describe("MCP prompt tools", () => {
             .spyOn(console, "error")
             .mockImplementation(() => undefined);
 
-        await expect(tools.get("list_datasets")!.handler({})).rejects.toThrow(
-            "Internal server error",
-        );
+        const result = await tools.get("list_datasets")!.handler({});
+        expect(result).toMatchObject({
+            isError: true,
+            structuredContent: {
+                error: { code: "internal_error", status: 500 },
+            },
+        });
         expect(consoleError).toHaveBeenCalledWith(
             expect.stringContaining('"event":"mcp.handler.failed"'),
         );
@@ -257,11 +271,18 @@ describe("MCP prompt tools", () => {
             rowCount: 0,
         } as never);
 
-        await expect(
-            tools.get("list_datasets")!.handler({ projectId }),
-        ).rejects.toThrow(
-            "Project was not found in the authenticated workspace.",
-        );
+        const result = await tools.get("list_datasets")!.handler({ projectId });
+        expect(result).toMatchObject({
+            isError: true,
+            structuredContent: {
+                error: {
+                    code: "not_found",
+                    message:
+                        "Project was not found in the authenticated workspace.",
+                    status: 404,
+                },
+            },
+        });
         expect(datasetMocks.listDatasetsPayload).not.toHaveBeenCalled();
     });
 
@@ -333,9 +354,80 @@ describe("MCP prompt tools", () => {
             projectId,
         );
     });
+
+    it("describes every registered tool effect and denies direct admin-only calls to eval", async () => {
+        const { tools, runtime } = registerTools("eval");
+        expect([...tools.keys()].every(isKnownMcpToolEffect)).toBe(true);
+        expect(mcpToolEffect("create_runnable_prompt")).toMatchObject({
+            kind: "costly_external",
+            idempotent: false,
+            openWorld: true,
+            minimumProfile: "eval",
+        });
+        expect(mcpToolEffect("retry_run")).toMatchObject({
+            kind: "costly_external",
+            idempotent: false,
+            openWorld: true,
+            minimumProfile: "eval",
+        });
+        expect(
+            tools.get("create_runnable_prompt")?.config.annotations,
+        ).toMatchObject({
+            readOnlyHint: false,
+            idempotentHint: false,
+            openWorldHint: true,
+        });
+        expect(tools.get("retry_run")?.config.annotations).toMatchObject({
+            readOnlyHint: false,
+            idempotentHint: false,
+            openWorldHint: true,
+        });
+        expect(
+            tools.get("get_dataset_summary")?.config.annotations,
+        ).toMatchObject({
+            readOnlyHint: true,
+            destructiveHint: false,
+        });
+        expect(tools.get("set_provider_key")?.config.annotations).toMatchObject(
+            { readOnlyHint: false, openWorldHint: false },
+        );
+
+        const result = await tools.get("set_provider_key")!.handler({
+            provider: "openai",
+            key: "must-not-reach-the-handler",
+        });
+        expect(result).toMatchObject({
+            isError: true,
+            structuredContent: {
+                error: {
+                    code: "forbidden",
+                    status: 403,
+                    message: expect.stringContaining(
+                        "requires the admin profile",
+                    ),
+                },
+            },
+        });
+        expect(runtime.db.query).not.toHaveBeenCalled();
+    });
+
+    it("allows read calls and denies eval writes to the read profile even when called directly", async () => {
+        const { tools, runtime } = registerTools("read");
+        const forbidden = await tools.get("create_dataset")!.handler({
+            projectId: "11111111-1111-4111-8111-111111111111",
+            name: "No write",
+            purpose: "evaluation",
+            modality: "text",
+        });
+        expect(forbidden).toMatchObject({
+            isError: true,
+            structuredContent: { error: { code: "forbidden", status: 403 } },
+        });
+        expect(runtime.db.query).not.toHaveBeenCalled();
+    });
 });
 
-function registerTools(): {
+function registerTools(profile: "read" | "eval" | "admin" = "admin"): {
     tools: Map<string, IRegisteredTool>;
     runtime: IApiRuntime;
 } {
@@ -357,6 +449,7 @@ function registerTools(): {
         runtime,
         principal: {
             authMode: "oauth",
+            profile,
             userId: "user-1",
             teamId: "authenticated-team",
             email: "user@example.com",

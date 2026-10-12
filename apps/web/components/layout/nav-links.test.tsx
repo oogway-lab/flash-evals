@@ -27,7 +27,7 @@ describe("NavLinks", () => {
         mocks.pathname = "/settings";
     });
 
-    it.each(["/", "/dashboard"])(
+    it.each(["/dashboard"])(
         "marks Dashboard current on %s and nothing else",
         (pathname) => {
             mocks.pathname = pathname;
@@ -67,7 +67,7 @@ describe("NavLinks", () => {
         ).not.toBeInTheDocument();
     });
 
-    it("lists Dashboard first and links it to /", () => {
+    it("lists Dashboard first and links it to /dashboard", () => {
         render(<NavLinks showAuthControls={false} />);
 
         const links = within(screen.getByRole("navigation")).getAllByRole(
@@ -81,7 +81,7 @@ describe("NavLinks", () => {
             "Runs",
             "Settings",
         ]);
-        expect(links[0]).toHaveAttribute("href", "/");
+        expect(links[0]).toHaveAttribute("href", "/dashboard");
         expect(
             screen.queryByRole("link", { name: "Workspaces" }),
         ).not.toBeInTheDocument();

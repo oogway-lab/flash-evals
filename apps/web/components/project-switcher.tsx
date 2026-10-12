@@ -69,7 +69,7 @@ export function ProjectSwitcher({
     useEffect(() => {
         if (!createState.created) return;
         setCreateOpen(false);
-        router.push("/");
+        router.push("/dashboard");
         router.refresh();
     }, [createState, router]);
 
@@ -93,7 +93,7 @@ export function ProjectSwitcher({
                     toast.error(result.formError ?? failure);
                     return;
                 }
-                router.push("/");
+                router.push("/dashboard");
                 router.refresh();
             } finally {
                 switchInFlight.current = false;

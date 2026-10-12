@@ -54,6 +54,11 @@ export {
     canonicalJsonValue,
 } from "./canonical-json.js";
 export {
+    isEmailAllowedForDomain,
+    isValidEmailAddress,
+    normalizeEmailAddress,
+} from "./email.js";
+export {
     buildLeaderboardRows,
     pickBestModel,
     type IBestModelCandidate,
@@ -338,6 +343,8 @@ export function parseSttMetricsModelId(
 }
 
 export interface ICreateRunRequest {
+    /** Stable retry key, scoped to team/project/creator. Omit for a new run each time. */
+    idempotencyKey?: string;
     teamId: string;
     projectId: string;
     datasetId: string;
@@ -363,6 +370,8 @@ export interface ICreateRunRequest {
 
 export interface ICreateRunResponse {
     runId: string;
+    /** A durable run is recoverable even if queue publication is deferred. */
+    enqueueStatus?: "pending_enqueue" | "queued";
 }
 
 export interface IPromptAssignment {
@@ -383,6 +392,8 @@ export interface ITransportAssignment {
 }
 
 export interface ICreateRunFromSelectionRequest {
+    /** Stable retry key, scoped to team/project/creator. Omit for a new run each time. */
+    idempotencyKey?: string;
     teamId: string;
     projectId: string;
     datasetId: string;
@@ -985,6 +996,11 @@ export interface IDuplicateDatasetRequest {
     createdBy: string;
 }
 
+export interface IDuplicateDatasetResponse {
+    sourceDatasetId: string;
+    createdDatasetId: string;
+}
+
 export interface IDeleteDatasetRequest {
     teamId: string;
     projectId: string;
@@ -1176,6 +1192,8 @@ export interface ICreateSignedUploadRequest {
 export interface ISignedUploadTarget {
     storageKey: string;
     signedUrl: string;
+    /** Additional headers required when PUTing to this signed URL. */
+    headers?: Record<string, string>;
     expiresAt?: string;
 }
 
@@ -1379,6 +1397,12 @@ export interface IDuplicatePromptVersionRequest {
     projectId: string;
     sourcePromptVersionId: string;
     createdBy: string;
+}
+
+export interface IDuplicatePromptVersionResponse {
+    sourcePromptVersionId: string;
+    promptId: string;
+    promptVersionId: string;
 }
 
 export interface ICreateJudgePromptRequest {
@@ -1627,6 +1651,7 @@ export interface IDashboardResponse {
 
 export interface IRunProgressResponse extends IRunProgress {
     status: RunStatus;
+    enqueueStatus?: "pending_enqueue" | "queued";
 }
 
 export interface IMatrixCellScore {
@@ -2584,8 +2609,13 @@ export class MosaicApiClient {
         await this.postJson("/api/datasets/archive", input);
     }
 
-    async duplicateDataset(input: IDuplicateDatasetRequest): Promise<void> {
-        await this.postJson("/api/datasets/duplicate", input);
+    async duplicateDataset(
+        input: IDuplicateDatasetRequest,
+    ): Promise<IDuplicateDatasetResponse> {
+        return this.postJson<IDuplicateDatasetResponse>(
+            "/api/datasets/duplicate",
+            input,
+        );
     }
 
     async deleteDataset(input: IDeleteDatasetRequest): Promise<void> {
@@ -2658,8 +2688,11 @@ export class MosaicApiClient {
 
     async duplicatePromptVersion(
         input: IDuplicatePromptVersionRequest,
-    ): Promise<void> {
-        await this.postJson("/api/prompts/duplicate-version", input);
+    ): Promise<IDuplicatePromptVersionResponse> {
+        return this.postJson<IDuplicatePromptVersionResponse>(
+            "/api/prompts/duplicate-version",
+            input,
+        );
     }
 
     async createJudgePrompt(

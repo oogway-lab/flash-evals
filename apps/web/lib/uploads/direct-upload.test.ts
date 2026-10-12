@@ -14,12 +14,16 @@ function makeFile(
     return file;
 }
 
-function signResponse(storageKeys: string[]): Response {
+function signResponse(
+    storageKeys: string[],
+    headers: Record<string, string> = {},
+): Response {
     return new Response(
         JSON.stringify({
             targets: storageKeys.map((storageKey, i) => ({
                 storageKey,
                 signedUrl: `https://storage.example/put/${i}?token=t${i}`,
+                headers,
             })),
         }),
         { status: 200, headers: { "content-type": "application/json" } },
@@ -52,7 +56,11 @@ describe("uploadFiles", () => {
         const keys = ["k/a", "k/b", "k/c"];
 
         fetchMock.mockImplementation((input: RequestInfo | URL) => {
-            if (isSignCall(input)) return Promise.resolve(signResponse(keys));
+            if (isSignCall(input)) {
+                return Promise.resolve(
+                    signResponse(keys, { "If-None-Match": "*" }),
+                );
+            }
             return Promise.resolve(new Response(null, { status: 200 }));
         });
 
@@ -72,7 +80,8 @@ describe("uploadFiles", () => {
 
         for (const [, init] of putCalls) {
             expect(init.method).toBe("PUT");
-            expect(init.headers["x-upsert"]).toBe("false");
+            expect(init.headers["x-upsert"]).toBeUndefined();
+            expect(init.headers["If-None-Match"]).toBe("*");
         }
         // Content-type matches each file's type.
         const sentTypes = putCalls.map((c) => c[1].headers["Content-Type"]);

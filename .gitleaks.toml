@@ -1,5 +1,8 @@
 title = "Flash Evals Gitleaks configuration"
 
+[extend]
+useDefault = true
+
 [allowlist]
 description = "Known example-only credential placeholders"
 regexes = [

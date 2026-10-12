@@ -14,11 +14,12 @@ import {
     globalSttCapabilityProbes,
 } from "./routes/sttProbes.js";
 import type { SttProviderId } from "@mosaic/api-contract";
+import { checkR2Bucket } from "@mosaic/object-storage";
 
 export interface IHealthPayload {
     status: "ok" | "degraded";
     service: "mosaic-api";
-    storage: "local" | "supabase";
+    storage: "local" | "supabase" | "r2";
     database: "supabase-postgres";
     checks: {
         database: "ok" | "error";
@@ -189,6 +190,15 @@ async function checkDatabase(db: IDb): Promise<"ok" | "error"> {
 
 async function checkStorage(config: IApiConfig): Promise<"ok" | "error"> {
     if (config.storageAdapter === "local") return "ok";
+
+    if (config.storageAdapter === "r2") {
+        try {
+            await checkR2Bucket(config.r2Storage!);
+            return "ok";
+        } catch {
+            return "error";
+        }
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5_000);

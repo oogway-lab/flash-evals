@@ -24,7 +24,7 @@ export default defineConfig({
               // script its own `dev` script runs), then start Next directly so
               // the port can be set. The API is faked by the tests in tests/e2e.
               command:
-                  `node scripts/build-packages.mjs && ` +
+                  `node scripts/build-packages.mjs && node scripts/build-marketing.mjs && ` +
                   `pnpm --filter @mosaic/web exec next dev --port ${webPort}`,
               url: `${webBaseUrl}/api/health`,
               reuseExistingServer: !process.env.CI,

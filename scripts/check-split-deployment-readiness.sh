@@ -49,9 +49,6 @@ WEB_ENV="${WEB_ENV:-apps/web/.env}"
 if require_file "$API_ENV"; then
     for key in \
         DATABASE_URL \
-        SUPABASE_URL \
-        SUPABASE_SERVICE_ROLE_KEY \
-        SUPABASE_STORAGE_BUCKET \
         CLERK_SECRET_KEY \
         MOSAIC_ALLOWED_EMAIL_DOMAIN \
         CORS_ORIGINS \
@@ -78,9 +75,6 @@ if require_file "$WEB_ENV"; then
 
     for key in \
         DATABASE_URL \
-        SUPABASE_URL \
-        SUPABASE_SERVICE_ROLE_KEY \
-        SUPABASE_STORAGE_BUCKET \
         OPENAI_API_KEY \
         AI_GATEWAY_API_KEY \
         UPLOAD_DIR
@@ -89,19 +83,39 @@ if require_file "$WEB_ENV"; then
     done
 fi
 
-require_file "railway.json"
-if [ -f "railway.json" ]; then
-    if ! grep -q '"startCommand": "pnpm --filter @mosaic/api start:railway"' railway.json; then
-        fail "railway.json must start the Railway API runtime"
-    fi
-    if grep -Eq 'UPLOAD_DIR|RAILWAY_VOLUME|volumeMounts|requiredMountPath' railway.json; then
-        fail "railway.json must not configure Railway volume storage"
-    fi
-fi
-
 require_file "apps/web/wrangler.jsonc"
 if [ -f "wrangler.jsonc" ]; then
     fail "root wrangler.jsonc should not exist; use apps/web/wrangler.jsonc"
+fi
+
+if [ -f "$API_ENV" ] || [ -f "$WEB_ENV" ]; then
+    if ! node scripts/validate-split-storage-readiness.mjs local "$API_ENV" "$WEB_ENV"; then
+        FAILED=1
+    fi
+fi
+
+if ! node --input-type=module <<'NODE'
+import fs from "node:fs";
+
+const read = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
+const root = read("package.json");
+const api = read("apps/api/package.json");
+const web = read("apps/web/package.json");
+const checks = [
+    [root.scripts?.["api:start:railway"], "@mosaic/api start:railway", "root API start script"],
+    [root.scripts?.worker, "@mosaic/web worker", "root worker start script"],
+    [api.scripts?.["start:railway"], "NODE_ENV=production", "API Railway runtime script"],
+    [api.scripts?.["start:railway"], "dist/railway.js", "API Railway entrypoint"],
+    [web.scripts?.worker, "scripts/worker.ts", "worker entrypoint"],
+];
+const failures = checks.filter(([actual, expected]) => !actual?.includes(expected));
+if (failures.length) {
+    for (const [, , label] of failures) console.error(`SPLIT DEPLOYMENT: ${label} is missing or changed.`);
+    process.exitCode = 1;
+}
+NODE
+then
+    FAILED=1
 fi
 
 if [ -f "$API_ENV" ] && [ -f "$WEB_ENV" ]; then
@@ -120,6 +134,8 @@ fi
 
 if [ "$FAILED" -eq 0 ]; then
     echo "Split deployment readiness check passed."
+    echo "Expected split topology: API uses pnpm run api:start:railway with MOSAIC_API_START_WORKER=false; worker uses pnpm run worker and has no HTTP health check. This check does not inspect Railway service settings."
+    echo "This check validates repository launch scripts; it does not treat railway.json as the deployed configuration."
 else
     exit 1
 fi

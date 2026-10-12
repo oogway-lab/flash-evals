@@ -795,11 +795,64 @@ export const runs = pgTable(
             .$type<RunConfigSnapshot>()
             .notNull(),
         createdBy: uuid("created_by").references(() => users.id),
+        idempotencyKey: text("idempotency_key"),
+        idempotencyFingerprint: text("idempotency_fingerprint"),
         createdAt: createdAt(),
     },
     (t) => [
         index("runs_team_id_idx").on(t.teamId),
         index("runs_project_id_idx").on(t.projectId),
+        unique("runs_idempotency_scope_unique").on(
+            t.teamId,
+            t.projectId,
+            t.createdBy,
+            t.idempotencyKey,
+        ),
+        check(
+            "runs_idempotency_check",
+            sql`
+            (${t.idempotencyKey} is null and ${t.idempotencyFingerprint} is null)
+            or (${t.idempotencyKey} is not null and ${t.idempotencyFingerprint} is not null
+                and ${t.createdBy} is not null and length(${t.idempotencyKey}) between 1 and 200)
+        `,
+        ),
+    ],
+);
+
+// Only newly requested publications are recorded; migrations never replay historical runs.
+export const runEnqueueOutbox = pgTable(
+    "run_enqueue_outbox",
+    {
+        runId: uuid("run_id")
+            .primaryKey()
+            .references(() => runs.id, { onDelete: "cascade" }),
+        jobId: uuid("job_id").notNull().defaultRandom(),
+        status: text("status")
+            .$type<"pending_enqueue" | "queued">()
+            .notNull()
+            .default("pending_enqueue"),
+        publishAttempts: integer("publish_attempts").notNull().default(0),
+        availableAt: timestamp("available_at", { withTimezone: true })
+            .notNull()
+            .defaultNow(),
+        queuedAt: timestamp("queued_at", { withTimezone: true }),
+        lastError: text("last_error"),
+        updatedAt: timestamp("updated_at", { withTimezone: true })
+            .notNull()
+            .defaultNow(),
+        createdAt: createdAt(),
+    },
+    (t) => [
+        unique("run_enqueue_outbox_job_unique").on(t.jobId),
+        index("run_enqueue_outbox_pending_idx").on(t.status, t.availableAt),
+        check(
+            "run_enqueue_outbox_status_check",
+            sql`${t.status} in ('pending_enqueue', 'queued')`,
+        ),
+        check(
+            "run_enqueue_outbox_attempts_check",
+            sql`${t.publishAttempts} >= 0`,
+        ),
     ],
 );
 
@@ -1430,4 +1483,29 @@ export const apiRateLimits = pgTable(
         requestCount: integer("request_count").notNull().default(0),
     },
     (t) => [primaryKey({ columns: [t.bucketKey, t.windowStart] })],
+);
+
+// MCP copy operations keep their small response so callers can safely retry
+// with the same key after a transport failure. Raw keys are never persisted.
+export const mcpIdempotencyRecords = pgTable(
+    "mcp_idempotency_records",
+    {
+        teamId: uuid("team_id")
+            .notNull()
+            .references(() => teams.id, { onDelete: "cascade" }),
+        operation: text("operation").notNull(),
+        keyHash: text("key_hash").notNull(),
+        fingerprint: text("fingerprint").notNull(),
+        responseJson: jsonb("response_json").notNull(),
+        createdAt: createdAt(),
+    },
+    (t) => [
+        primaryKey({ columns: [t.teamId, t.operation, t.keyHash] }),
+        check("mcp_idempotency_key_hash_check", sql`length(${t.keyHash}) = 64`),
+        check(
+            "mcp_idempotency_fingerprint_check",
+            sql`length(${t.fingerprint}) = 64`,
+        ),
+        index("mcp_idempotency_created_at_idx").on(t.createdAt),
+    ],
 );

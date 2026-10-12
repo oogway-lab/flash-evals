@@ -1,0 +1,508 @@
+{
+    "schemaVersion": 2,
+    "generatedAt": "2026-10-10T00:00:00Z",
+    "title": "Design System: flashevals.dev",
+    "extensions": {
+        "colorMeta": {
+            "counter": {
+                "role": "neutral",
+                "displayName": "Canary Counter",
+                "canonical": "oklch(0.93 0.11 102)",
+                "tonalRamp": [
+                    "oklch(0.15 0.11 102)",
+                    "oklch(0.27 0.11 102)",
+                    "oklch(0.39 0.11 102)",
+                    "oklch(0.51 0.11 102)",
+                    "oklch(0.63 0.11 102)",
+                    "oklch(0.75 0.11 102)",
+                    "oklch(0.86 0.11 102)",
+                    "oklch(0.95 0.11 102)"
+                ]
+            },
+            "counter-ink": {
+                "role": "neutral",
+                "displayName": "Counter Ink",
+                "canonical": "oklch(0.24 0.05 85)",
+                "tonalRamp": [
+                    "oklch(0.15 0.05 85)",
+                    "oklch(0.27 0.05 85)",
+                    "oklch(0.39 0.05 85)",
+                    "oklch(0.51 0.05 85)",
+                    "oklch(0.63 0.05 85)",
+                    "oklch(0.75 0.05 85)",
+                    "oklch(0.86 0.05 85)",
+                    "oklch(0.95 0.05 85)"
+                ]
+            },
+            "counter-ink-soft": {
+                "role": "neutral",
+                "displayName": "Counter Ink Soft",
+                "canonical": "oklch(0.38 0.06 95)",
+                "tonalRamp": [
+                    "oklch(0.15 0.06 95)",
+                    "oklch(0.27 0.06 95)",
+                    "oklch(0.39 0.06 95)",
+                    "oklch(0.51 0.06 95)",
+                    "oklch(0.63 0.06 95)",
+                    "oklch(0.75 0.06 95)",
+                    "oklch(0.86 0.06 95)",
+                    "oklch(0.95 0.06 95)"
+                ]
+            },
+            "paper": {
+                "role": "neutral",
+                "displayName": "Thermal Paper",
+                "canonical": "oklch(0.988 0.003 250)",
+                "tonalRamp": [
+                    "oklch(0.15 0.003 250)",
+                    "oklch(0.27 0.003 250)",
+                    "oklch(0.39 0.003 250)",
+                    "oklch(0.51 0.003 250)",
+                    "oklch(0.63 0.003 250)",
+                    "oklch(0.75 0.003 250)",
+                    "oklch(0.86 0.003 250)",
+                    "oklch(0.95 0.003 250)"
+                ]
+            },
+            "paper-shade": {
+                "role": "neutral",
+                "displayName": "Paper Shade",
+                "canonical": "oklch(0.95 0.005 250)",
+                "tonalRamp": [
+                    "oklch(0.15 0.005 250)",
+                    "oklch(0.27 0.005 250)",
+                    "oklch(0.39 0.005 250)",
+                    "oklch(0.51 0.005 250)",
+                    "oklch(0.63 0.005 250)",
+                    "oklch(0.75 0.005 250)",
+                    "oklch(0.86 0.005 250)",
+                    "oklch(0.95 0.005 250)"
+                ]
+            },
+            "print": {
+                "role": "neutral",
+                "displayName": "Thermal Print",
+                "canonical": "oklch(0.22 0.025 290)",
+                "tonalRamp": [
+                    "oklch(0.15 0.025 290)",
+                    "oklch(0.27 0.025 290)",
+                    "oklch(0.39 0.025 290)",
+                    "oklch(0.51 0.025 290)",
+                    "oklch(0.63 0.025 290)",
+                    "oklch(0.75 0.025 290)",
+                    "oklch(0.86 0.025 290)",
+                    "oklch(0.95 0.025 290)"
+                ]
+            },
+            "print-soft": {
+                "role": "neutral",
+                "displayName": "Faded Print",
+                "canonical": "oklch(0.45 0.02 290)",
+                "tonalRamp": [
+                    "oklch(0.15 0.02 290)",
+                    "oklch(0.27 0.02 290)",
+                    "oklch(0.39 0.02 290)",
+                    "oklch(0.51 0.02 290)",
+                    "oklch(0.63 0.02 290)",
+                    "oklch(0.75 0.02 290)",
+                    "oklch(0.86 0.02 290)",
+                    "oklch(0.95 0.02 290)"
+                ]
+            },
+            "rule": {
+                "role": "neutral",
+                "displayName": "Print Rule",
+                "canonical": "oklch(0.22 0.025 290 / 0.6)",
+                "tonalRamp": [
+                    "oklch(0.15 0.025 290)",
+                    "oklch(0.27 0.025 290)",
+                    "oklch(0.39 0.025 290)",
+                    "oklch(0.51 0.025 290)",
+                    "oklch(0.63 0.025 290)",
+                    "oklch(0.75 0.025 290)",
+                    "oklch(0.86 0.025 290)",
+                    "oklch(0.95 0.025 290)"
+                ]
+            },
+            "stamp": {
+                "role": "primary",
+                "displayName": "Rubber-Stamp Violet",
+                "canonical": "oklch(0.47 0.2 285)",
+                "tonalRamp": [
+                    "oklch(0.15 0.2 285)",
+                    "oklch(0.27 0.2 285)",
+                    "oklch(0.39 0.2 285)",
+                    "oklch(0.51 0.2 285)",
+                    "oklch(0.63 0.2 285)",
+                    "oklch(0.75 0.2 285)",
+                    "oklch(0.86 0.2 285)",
+                    "oklch(0.95 0.2 285)"
+                ]
+            },
+            "hit-wash": {
+                "role": "primary",
+                "displayName": "Stamp Wash",
+                "canonical": "oklch(0.94 0.02 285)",
+                "tonalRamp": [
+                    "oklch(0.15 0.02 285)",
+                    "oklch(0.27 0.02 285)",
+                    "oklch(0.39 0.02 285)",
+                    "oklch(0.51 0.02 285)",
+                    "oklch(0.63 0.02 285)",
+                    "oklch(0.75 0.02 285)",
+                    "oklch(0.86 0.02 285)",
+                    "oklch(0.95 0.02 285)"
+                ]
+            },
+            "miss": {
+                "role": "secondary",
+                "displayName": "Failure Pink",
+                "canonical": "oklch(0.52 0.2 12)",
+                "tonalRamp": [
+                    "oklch(0.15 0.2 12)",
+                    "oklch(0.27 0.2 12)",
+                    "oklch(0.39 0.2 12)",
+                    "oklch(0.51 0.2 12)",
+                    "oklch(0.63 0.2 12)",
+                    "oklch(0.75 0.2 12)",
+                    "oklch(0.86 0.2 12)",
+                    "oklch(0.95 0.2 12)"
+                ]
+            },
+            "miss-wash": {
+                "role": "secondary",
+                "displayName": "Miss Wash",
+                "canonical": "oklch(0.94 0.045 12)",
+                "tonalRamp": [
+                    "oklch(0.15 0.045 12)",
+                    "oklch(0.27 0.045 12)",
+                    "oklch(0.39 0.045 12)",
+                    "oklch(0.51 0.045 12)",
+                    "oklch(0.63 0.045 12)",
+                    "oklch(0.75 0.045 12)",
+                    "oklch(0.86 0.045 12)",
+                    "oklch(0.95 0.045 12)"
+                ]
+            },
+            "roll-stripe": {
+                "role": "secondary",
+                "displayName": "End-of-Roll Stripe",
+                "canonical": "oklch(0.7 0.17 5)",
+                "tonalRamp": [
+                    "oklch(0.15 0.17 5)",
+                    "oklch(0.27 0.17 5)",
+                    "oklch(0.39 0.17 5)",
+                    "oklch(0.51 0.17 5)",
+                    "oklch(0.63 0.17 5)",
+                    "oklch(0.75 0.17 5)",
+                    "oklch(0.86 0.17 5)",
+                    "oklch(0.95 0.17 5)"
+                ]
+            },
+            "printer": {
+                "role": "neutral",
+                "displayName": "Printer Body",
+                "canonical": "oklch(0.235 0.012 265)",
+                "tonalRamp": [
+                    "oklch(0.15 0.012 265)",
+                    "oklch(0.27 0.012 265)",
+                    "oklch(0.39 0.012 265)",
+                    "oklch(0.51 0.012 265)",
+                    "oklch(0.63 0.012 265)",
+                    "oklch(0.75 0.012 265)",
+                    "oklch(0.86 0.012 265)",
+                    "oklch(0.95 0.012 265)"
+                ]
+            },
+            "printer-edge": {
+                "role": "neutral",
+                "displayName": "Printer Edge",
+                "canonical": "oklch(0.34 0.012 265)",
+                "tonalRamp": [
+                    "oklch(0.15 0.012 265)",
+                    "oklch(0.27 0.012 265)",
+                    "oklch(0.39 0.012 265)",
+                    "oklch(0.51 0.012 265)",
+                    "oklch(0.63 0.012 265)",
+                    "oklch(0.75 0.012 265)",
+                    "oklch(0.86 0.012 265)",
+                    "oklch(0.95 0.012 265)"
+                ]
+            },
+            "printer-ink": {
+                "role": "neutral",
+                "displayName": "LCD Amber",
+                "canonical": "oklch(0.9 0.13 96)",
+                "tonalRamp": [
+                    "oklch(0.15 0.13 96)",
+                    "oklch(0.27 0.13 96)",
+                    "oklch(0.39 0.13 96)",
+                    "oklch(0.51 0.13 96)",
+                    "oklch(0.63 0.13 96)",
+                    "oklch(0.75 0.13 96)",
+                    "oklch(0.86 0.13 96)",
+                    "oklch(0.95 0.13 96)"
+                ]
+            }
+        },
+        "typographyMeta": {
+            "display": {
+                "displayName": "Printed Headline",
+                "purpose": "The one masthead headline, uppercase and balanced."
+            },
+            "masthead": {
+                "displayName": "Double-Width Masthead",
+                "purpose": "The printed name FLASH EVALS via DoubleWidth; stands in for the absent logo."
+            },
+            "headline": {
+                "displayName": "Section Header",
+                "purpose": "Segment titles; lead text in double width, soft qualifier right-aligned."
+            },
+            "body": {
+                "displayName": "Receipt Body",
+                "purpose": "Every line on the paper, prose included; tabular figures."
+            },
+            "lede": {
+                "displayName": "Receipt Lede",
+                "purpose": "Section ledes at 58ch, pitch at 52ch."
+            },
+            "label": {
+                "displayName": "Key Label",
+                "purpose": "Buttons, printed links, nav, table headers, LCD."
+            },
+            "note": {
+                "displayName": "Counter Note",
+                "purpose": "Geist margin notes and the footer legal line, on the counter only."
+            }
+        },
+        "shadows": [
+            {
+                "name": "roll-lift",
+                "value": "0 1px 1px oklch(0.45 0.09 90 / 0.25), 0 30px 60px -22px oklch(0.42 0.1 95 / 0.55), 0 0 0 1px oklch(0.5 0.08 95 / 0.12)",
+                "purpose": "The paper roll lifting off the counter."
+            },
+            {
+                "name": "slip-rest",
+                "value": "0 6px 14px -8px oklch(0.4 0.1 85 / 0.5)",
+                "purpose": "Stacked margin-note slips below 1360px."
+            },
+            {
+                "name": "printer-overhang",
+                "value": "0 -10px 30px -10px oklch(0.3 0.08 85 / 0.45)",
+                "purpose": "The fixed printer casting up over the paper."
+            },
+            {
+                "name": "slot-well",
+                "value": "inset 0 2px 2px oklch(0 0 0 / 0.8)",
+                "purpose": "The printer's paper slot."
+            },
+            {
+                "name": "lcd-well",
+                "value": "inset 0 1px 3px oklch(0 0 0 / 0.7)",
+                "purpose": "The recessed LCD."
+            },
+            {
+                "name": "feed-key",
+                "value": "0 2px 0 oklch(0.62 0.13 90), 0 4px 8px oklch(0 0 0 / 0.35)",
+                "purpose": "Physical travel of the printer's feed key only; collapses on press."
+            }
+        ],
+        "motion": [
+            {
+                "name": "ease-out",
+                "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+                "purpose": "Feed, stamp, tear, hover slides."
+            },
+            {
+                "name": "feed",
+                "value": "translate 0 90px -> 0, 1.3s ease-out",
+                "purpose": "Roll feeds up into place on load."
+            },
+            {
+                "name": "line-print",
+                "value": "clip-path inset(0 0 100% 0) -> inset(0); 0.2s steps(5) at 85ms stagger (masthead), 0.16s steps(4) at 60ms (response rows)",
+                "purpose": "Thermal head printing lines top-down."
+            },
+            {
+                "name": "develop",
+                "value": "opacity 0.4 + blur(0.5px) -> 1 + none; animation-timeline view(), range cover printer-h-10px to printer-h+90px",
+                "purpose": "Lines develop as they clear the printer slot; @supports only."
+            },
+            {
+                "name": "stamp-slam",
+                "value": "scale 1.9 + blur(3px) -> 0.96 -> 1, 0.42s ease-out, 260ms stagger",
+                "purpose": "Verdict stamps hitting the subtotal."
+            },
+            {
+                "name": "tear",
+                "value": "translate(7px,-4px) rotate(4deg) -> none, 0.5s ease-out",
+                "purpose": "Copy tab tearing on copy."
+            },
+            {
+                "name": "blink",
+                "value": "0.5s steps(2) infinite",
+                "purpose": "Square cursor while a demo response is pending."
+            },
+            {
+                "name": "reduced-motion",
+                "value": "no motion class; all animations and transitions 0.01ms",
+                "purpose": "Everything visible without JS or with reduced motion."
+            }
+        ],
+        "breakpoints": [
+            {
+                "name": "notes-beside",
+                "value": "1360px",
+                "purpose": "min-width: notes sit on the counter beside the roll; below, stacked slips."
+            },
+            {
+                "name": "stamp-compact",
+                "value": "1199.98px",
+                "purpose": "max-width: smaller stamps."
+            },
+            {
+                "name": "nav-compact",
+                "value": "760px",
+                "purpose": "max-width: nav keeps Self-host and GitHub."
+            },
+            {
+                "name": "wrap",
+                "value": "600px",
+                "purpose": "max-width: clone command wraps, latency on its own line."
+            },
+            {
+                "name": "board-grid",
+                "value": "560px",
+                "purpose": "max-width: leaderboard grid rows, printer drops LCD, printer-h 68px."
+            },
+            {
+                "name": "narrow",
+                "value": "420px",
+                "purpose": "max-width: section title 13px."
+            }
+        ]
+    },
+    "components": [
+        {
+            "name": "Clone Command with Tear Tab",
+            "kind": "button",
+            "refersTo": "copy-tab",
+            "description": "Primary in-page action: the clone line in a 2px print frame with a perforated COPY tear-tab.",
+            "html": "<div class=\"ds-clone\"><code><span class=\"ds-prompt\">$ </span>git clone https://github.com/oogway-lab/flash-evals</code><button class=\"ds-tab\" type=\"button\"><svg class=\"ds-icon\" viewBox=\"0 0 8 8\" shape-rendering=\"crispEdges\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M2 0h5v1h-5zM2 1h1v1h-1zM6 1h1v5h-1zM0 2h5v1h-5zM0 3h1v4h-1zM4 3h1v4h-1zM5 4h1v1h-1zM1 6h3v1h-3z\"/></svg><span>Copy</span></button></div>",
+            "css": ".ds-icon{width:1em;height:1em;flex:none;vertical-align:-0.125em}.ds-clone{display:flex;align-items:stretch;border:2px solid var(--print);background:var(--paper);font-family:var(--mono,'Martian Mono Variable',ui-monospace,monospace);font-size:13.5px;font-stretch:87.5%;color:var(--print)}.ds-clone code{flex:1;min-width:0;padding:14px 16px;white-space:nowrap;overflow-x:auto;font:inherit}.ds-prompt{color:var(--print-soft);user-select:none}.ds-tab{position:relative;display:inline-flex;align-items:center;gap:10px;padding:0 18px;border:0;background:var(--print);color:var(--paper);font-family:var(--mono,'Martian Mono Variable',ui-monospace,monospace);font-weight:700;font-size:13px;line-height:1;font-stretch:100%;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:background-color .2s,color .2s}.ds-tab::before{content:'';position:absolute;top:3px;bottom:3px;left:-2px;width:4px;background:radial-gradient(circle,var(--paper) 1.4px,transparent 1.9px) 50% 0/4px 7px repeat-y}.ds-tab:hover{background:var(--stamp)}.ds-tab:focus-visible{outline:2.5px solid var(--stamp);outline-offset:3px}.ds-tab:active{transform:translate(7px,-4px) rotate(4deg)}"
+        },
+        {
+            "name": "Printed Link",
+            "kind": "button",
+            "refersTo": "copy-tab",
+            "description": "Secondary actions under the clone command: uppercase mono with a 2px underline and a pixel arrow that slides on hover.",
+            "html": "<a class=\"ds-next\" href=\"#\">Read the setup guide <svg class=\"ds-icon\" viewBox=\"0 0 8 8\" shape-rendering=\"crispEdges\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M4 1h1v1h-1zM4 2h1v1h-1zM5 2h1v1h-1zM0 3h7v1h-7zM4 4h1v1h-1zM5 4h1v1h-1zM4 5h1v1h-1z\"/></svg></a>",
+            "css": ".ds-icon{width:1em;height:1em;flex:none;vertical-align:-0.125em}.ds-next{display:inline-flex;align-items:center;gap:8px;padding-block:4px;border-bottom:2px solid currentColor;color:var(--print);text-decoration:none;font-family:var(--mono,'Martian Mono Variable',ui-monospace,monospace);font-size:13px;font-weight:650;font-stretch:87.5%;letter-spacing:.04em;text-transform:uppercase}.ds-next .ds-icon{transition:translate .3s cubic-bezier(.16,1,.3,1)}.ds-next:hover .ds-icon{translate:4px 0}.ds-next:focus-visible{outline:2.5px solid var(--stamp);outline-offset:3px;border-radius:2px}"
+        },
+        {
+            "name": "Printer Panel",
+            "kind": "custom",
+            "refersTo": "printer",
+            "description": "The fixed bottom printer: paper slot, amber LCD status, canary feed key (persistent CTA), GitHub link.",
+            "html": "<div class=\"ds-printer\"><div class=\"ds-panel\"><div class=\"ds-lcd\"><span class=\"ds-led\"></span><span>Ready · git clone flash-evals</span></div><button class=\"ds-feed\" type=\"button\"><svg class=\"ds-icon\" viewBox=\"0 0 8 8\" shape-rendering=\"crispEdges\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M2 0h5v1h-5zM2 1h1v1h-1zM6 1h1v5h-1zM0 2h5v1h-5zM0 3h1v4h-1zM4 3h1v4h-1zM5 4h1v1h-1zM1 6h3v1h-3z\"/></svg><span>Copy clone command</span></button><a class=\"ds-gh\" href=\"#\">GitHub</a></div></div>",
+            "css": ".ds-icon{width:1em;height:1em;flex:none;vertical-align:-0.125em}.ds-printer{position:relative;padding:14px 18px 12px;background:linear-gradient(180deg,var(--printer-edge),var(--printer) 22%,var(--printer));border-radius:16px 16px 0 0;box-shadow:0 -10px 30px -10px oklch(0.3 0.08 85 / 0.45);color:var(--paper);font-family:var(--mono,'Martian Mono Variable',ui-monospace,monospace);font-stretch:87.5%}.ds-printer::before{content:'';position:absolute;top:5px;left:36px;right:36px;height:5px;border-radius:3px;background:oklch(0.1 0.01 265);box-shadow:inset 0 2px 2px oklch(0 0 0 / 0.8)}.ds-panel{display:flex;align-items:center;gap:14px;height:50px}.ds-lcd{flex:1;min-width:0;display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;background:oklch(0.16 0.01 265);border-radius:4px;box-shadow:inset 0 1px 3px oklch(0 0 0 / 0.7);color:var(--printer-ink);font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;overflow:hidden}.ds-led{width:7px;height:7px;border-radius:50%;background:var(--printer-ink);box-shadow:0 0 6px var(--printer-ink);flex:none}.ds-feed{display:inline-flex;align-items:center;gap:10px;height:40px;padding:0 16px;border:0;border-radius:6px;background:var(--counter);color:var(--counter-ink);font-family:var(--mono,'Martian Mono Variable',ui-monospace,monospace);font-weight:760;font-size:13px;line-height:1;font-stretch:100%;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;box-shadow:0 2px 0 oklch(0.62 0.13 90),0 4px 8px oklch(0 0 0 / 0.35);transition:translate .12s,box-shadow .12s}.ds-feed:active{translate:0 2px;box-shadow:0 0 0 oklch(0.62 0.13 90),0 2px 4px oklch(0 0 0 / 0.35)}.ds-feed:focus-visible{outline:2.5px solid var(--stamp);outline-offset:3px}.ds-gh{display:inline-flex;align-items:center;height:40px;padding:0 6px;color:var(--paper);font-size:13px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;text-decoration:none}.ds-gh:hover{color:var(--printer-ink)}"
+        },
+        {
+            "name": "Navigation",
+            "kind": "nav",
+            "refersTo": "roll",
+            "description": "Counter topbar: expanded mono wordmark, uppercase mono links with a drawn underline on hover.",
+            "html": "<header class=\"ds-topbar\"><a class=\"ds-wordmark\" href=\"#\">Flash Evals</a><nav><a href=\"#\">How it works</a><a href=\"#\">Audio</a><a href=\"#\">Self-host</a><a href=\"#\">GitHub</a></nav></header>",
+            "css": ".ds-topbar{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:18px 24px;background:var(--counter);color:var(--counter-ink);font-family:var(--mono,'Martian Mono Variable',ui-monospace,monospace);font-size:13px;font-stretch:87.5%;letter-spacing:.02em}.ds-wordmark{color:inherit;font-weight:760;font-stretch:112.5%;font-size:15px;letter-spacing:.04em;text-transform:uppercase;text-decoration:none}.ds-topbar nav{display:flex;gap:24px}.ds-topbar nav a{color:inherit;text-decoration:none;text-transform:uppercase;padding-block:6px;background:linear-gradient(currentColor,currentColor) 0 100%/0 1.5px no-repeat;transition:background-size .35s cubic-bezier(.16,1,.3,1)}.ds-topbar nav a:hover{background-size:100% 1.5px}.ds-topbar a:focus-visible{outline:2.5px solid var(--stamp);outline-offset:3px;border-radius:2px}"
+        },
+        {
+            "name": "Receipt Segment",
+            "kind": "card",
+            "refersTo": "roll",
+            "description": "The paper itself: serrated top edge, double-width header with illustrative qualifier, pixel-asterisk rule, dotted leaders.",
+            "html": "<div class=\"ds-roll\"><h2 class=\"ds-sec\"><span class=\"ds-dw\" style=\"--n:8\"><span class=\"ds-dw-ink\">SUBTOTAL</span></span><span class=\"ds-soft\">illustrative</span></h2><span class=\"ds-stars\"></span><span class=\"ds-lead\"><span>License</span><span class=\"ds-fill\"></span><span>AGPL-3.0-only</span></span><span class=\"ds-lead\"><span>Hosting</span><span class=\"ds-fill\"></span><span>Your machine</span></span></div>",
+            "css": ".ds-roll{position:relative;margin-top:14px;padding:30px 32px 28px;background:linear-gradient(90deg,var(--paper-shade),var(--paper) 7%,var(--paper) 93%,var(--paper-shade));color:var(--print);font-family:var(--mono,'Martian Mono Variable',ui-monospace,monospace);font-size:14px;font-stretch:87.5%;line-height:1.65;font-variant-numeric:tabular-nums;box-shadow:0 1px 1px oklch(0.45 0.09 90 / 0.25),0 30px 60px -22px oklch(0.42 0.1 95 / 0.55),0 0 0 1px oklch(0.5 0.08 95 / 0.12)}.ds-roll::before{content:'';position:absolute;left:0;right:0;top:-11px;height:12px;background:var(--paper);-webkit-mask:conic-gradient(from 135deg at 50% 0,#0000,#000 1deg 89deg,#0000 90deg) 50%/16px 100%;mask:conic-gradient(from 135deg at 50% 0,#0000,#000 1deg 89deg,#0000 90deg) 50%/16px 100%}.ds-sec{display:flex;justify-content:space-between;gap:16px;margin:0 0 12px;font-size:15px;font-weight:760;font-stretch:112.5%;letter-spacing:.08em;text-transform:uppercase}.ds-soft{color:var(--print-soft);font-weight:450;font-stretch:87.5%;letter-spacing:.02em}.ds-dw{display:inline-block;width:calc(var(--n)*2ch);font-stretch:75%;font-weight:760;letter-spacing:0;white-space:nowrap}.ds-dw-ink{display:inline-block;transform:scaleX(2);transform-origin:0 50%}.ds-stars{display:block;height:14px;margin-block:6px 2px;background:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 15 7' shape-rendering='crispEdges' fill='%2326212e'%3E%3Cpath d='M3 0h1v7H3zM0 3h7v1H0zM1 1h1v1H1zM5 1h1v1H5zM1 5h1v1H1zM5 5h1v1H5z'/%3E%3C/svg%3E\") 0 50%/15px 7px space no-repeat}.ds-lead{display:flex;align-items:baseline;gap:.6em}.ds-fill{flex:1;min-width:1.5em;border-bottom:2px dotted var(--rule);transform:translateY(-.3em)}"
+        },
+        {
+            "name": "Verdict Stamp",
+            "kind": "chip",
+            "refersTo": "stamp",
+            "description": "Rubber-stamp verdict, only in the leaderboard's verdict lane.",
+            "html": "<div class=\"ds-stamp-lane\"><span class=\"ds-stamp\">Most accurate</span></div>",
+            "css": ".ds-stamp-lane{padding:20px;background:var(--paper)}.ds-stamp{display:inline-block;padding:5px 10px 4px;border:3px solid currentColor;border-radius:6px;outline:1.5px solid currentColor;outline-offset:2px;color:var(--stamp);font-family:var(--mono,'Martian Mono Variable',ui-monospace,monospace);font-size:14px;font-weight:800;font-stretch:75%;letter-spacing:.1em;line-height:1.2;text-transform:uppercase;white-space:nowrap;transform:rotate(-7deg);opacity:.88;mix-blend-mode:multiply;transition:transform .42s cubic-bezier(.16,1,.3,1)}.ds-stamp-lane:hover .ds-stamp{transform:rotate(-7deg) scale(.96)}"
+        },
+        {
+            "name": "Response Field Rows",
+            "kind": "custom",
+            "refersTo": "field-miss",
+            "description": "Itemized field checks: pixel tick or cross, field, got value; misses on a pink wash with the expected value beneath.",
+            "html": "<ul class=\"ds-fields\"><li class=\"ds-field\"><span><svg class=\"ds-icon\" viewBox=\"0 0 8 8\" shape-rendering=\"crispEdges\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M6 1h2v1h-2zM5 2h2v1h-2zM0 3h1v1h-1zM4 3h2v1h-2zM0 4h2v1h-2zM3 4h2v1h-2zM1 5h3v1h-3zM2 6h1v1h-1z\"/></svg></span><span>merchant</span><span>CORNER MARKET</span></li><li class=\"ds-field ds-miss\"><span><svg class=\"ds-icon\" viewBox=\"0 0 8 8\" shape-rendering=\"crispEdges\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M1 1h2v1h-2zM5 1h2v1h-2zM2 2h4v1h-4zM3 3h2v1h-2zM2 4h4v1h-4zM1 5h2v1h-2zM5 5h2v1h-2z\"/></svg></span><span>total</span><span>37.97<span class=\"ds-exp\">expected 37.79</span></span></li></ul>",
+            "css": ".ds-icon{width:1em;height:1em;flex:none;vertical-align:-0.125em}.ds-fields{margin:0;padding:12px 16px;list-style:none;background:var(--paper);color:var(--print);font-family:var(--mono,'Martian Mono Variable',ui-monospace,monospace);font-size:14px;font-stretch:87.5%;line-height:1.65}.ds-field{display:grid;grid-template-columns:1.2em 9.5em 1fr;gap:0 10px;align-items:baseline}.ds-miss{background:var(--miss-wash);color:var(--miss);margin-inline:-6px;padding-inline:6px}.ds-exp{display:block;font-size:12.5px;color:var(--print-soft)}.ds-field:hover{background:var(--hit-wash)}.ds-miss:hover{background:var(--miss-wash)}"
+        },
+        {
+            "name": "Margin Note Slip",
+            "kind": "card",
+            "refersTo": "margin-note",
+            "description": "Geist commentary on the counter; the stacked slip form used below 1360px.",
+            "html": "<aside class=\"ds-note\"><p>An open-source workbench you run yourself. Your data goes only to the model providers you choose, with your own keys.</p></aside>",
+            "css": ".ds-note{max-width:320px;padding:14px 16px;background:var(--counter);color:var(--counter-ink);font-family:var(--sans,'Geist Variable',ui-sans-serif,system-ui,sans-serif);font-size:15px;line-height:1.5;transform:rotate(-0.6deg);box-shadow:0 6px 14px -8px oklch(0.4 0.1 85 / 0.5)}.ds-note p{margin:0}"
+        }
+    ],
+    "narrative": {
+        "northStar": "Keep the Receipts",
+        "overview": "The page is one continuous thermal receipt roll, fed out of a dark printer that sits fixed at the bottom of the viewport, lying on a canary carbonless-copy counter. Everything that claims something is printed on the paper: every model call is itemized (input, field checks, score, latency, cost), subtotalled into a leaderboard, and totalled at the end above a real Code 128 barcode. Everything that comments sits on the yellow counter beside or between the paper.\n\nThe paper speaks in one voice: a single variable-width monospace for every line, prose included, with true thermal double width for headers. Density is a receipt's: tight 14px lines, tabular figures, dotted leaders carrying labels to their values, dashed rules between segments. Ornament comes only from the receipt and the printer themselves (serrated tear edges, pixel asterisk rules, rubber stamps, the pink end-of-roll stripe, the lit LCD), never from screen glow or card grids. The world refuses the dark dev-tool landing: centred headline over a glowing screenshot and a feature-card grid.\n\nMotion is mechanical: paper feeds, lines print in discrete steps, inked stamps slam, a tab tears. Nothing floats, fades in from nowhere, or bounces. Every line is fully printed without JavaScript or under reduced motion; motion only re-performs what is already there.",
+        "keyCharacteristics": [
+            "Canary counter ground, one cool-white paper roll centred at up to 704px.",
+            "Martian Mono Variable (wdth 75–112.5) for everything on the paper; Geist only on the counter.",
+            "True double width: condensed glyphs in an n×2ch box, ink scaled 2× horizontally.",
+            "Serrated conic-mask tear edges; dotted leaders; dashed segment rules; pixel-asterisk rule.",
+            "Stamps are verdict-only marks printed in their own leaderboard lane.",
+            "The fixed bottom printer is the persistent call to action.",
+            "Demo data is illustrative and labelled as such, on the paper and in the footer."
+        ],
+        "rules": [
+            {
+                "name": "The Two Grounds Rule",
+                "body": "Paper is for the record, the counter is for commentary. A claim, number, or action prints on the paper; a margin note never does.",
+                "section": "colors"
+            },
+            {
+                "name": "The Verdict Colour Rule",
+                "body": "Stamp violet marks judgement and the action affordance; failure pink marks failure. Neither is used to decorate.",
+                "section": "colors"
+            },
+            {
+                "name": "The One Head Rule",
+                "body": "Everything on the paper is Martian Mono, prose included; vary the width axis and weight, never the family.",
+                "section": "typography"
+            },
+            {
+                "name": "The True Double Width Rule",
+                "body": "Double width is a print mode, not a large size: condensed glyphs (wdth 75, 760) in a box exactly n×2ch wide, ink scaled 2× horizontally from the left. Use the DoubleWidth component; never fake it with letter-spacing or font-size.",
+                "section": "typography"
+            },
+            {
+                "name": "The Objects Cast, Ink Doesn't Rule",
+                "body": "Shadows belong to the roll, slips, and printer. Text, rules, stamps, and blocks on the paper are flat.",
+                "section": "elevation"
+            }
+        ],
+        "dos": [
+            "Do print every claim, number, and action on the paper in Martian Mono, and keep commentary on the counter in Geist.",
+            "Do set receipt headers in true double width through the DoubleWidth component (n×2ch box, ink scaleX(2)).",
+            "Do carry labels to values with 2px dotted leaders, and separate segments with the dashed rule.",
+            "Do label demo data as illustrative where it appears (section header qualifier, table caption) and in the footer; use only figures and claims the product can support.",
+            "Do keep the printer as the single persistent CTA and the clone command as the in-page primary action.",
+            "Do make every motion re-perform content that is already rendered; with no JS or with reduced motion, the page is fully printed.",
+            "Do draw icons on the 8×8 pixel grid in currentColor."
+        ],
+        "donts": [
+            "Don't invent customers, stars, benchmarks, pricing, or a hosted plan; the roll records, it doesn't boast.",
+            "Don't use stamps for anything but verdicts, or place them outside the leaderboard's verdict lane.",
+            "Don't round the paper or replace its torn edges with borders or radius.",
+            "Don't add glow or gradients beyond the world's own: the paper's edge shading, the printer housing's lit edge, the LCD's LED, and the end-of-roll stripe.",
+            "Don't add floating or bouncing motion, or a feature-card grid.",
+            "Don't introduce ink hues beyond stamp violet and failure pink on the paper; illustrated input imagery (the photographed slip) is the only exception."
+        ]
+    }
+}

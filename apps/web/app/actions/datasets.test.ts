@@ -43,6 +43,7 @@ import {
     previewGoldenAnswersAction,
     commitGoldenAnswersAction,
     createDatasetForInputAction,
+    createDatasetAction,
 } from "./datasets";
 
 const okSummary = { importedCount: 1, failures: [] };
@@ -94,7 +95,67 @@ beforeEach(() => {
     mocks.commitGoldenAnswers.mockResolvedValue(okSummary);
 });
 
+describe("createDatasetAction", () => {
+    it.each([undefined, "", " \t\n"])(
+        "rejects a missing or blank name (%j) without creating a dataset",
+        async (name) => {
+            const formData = new FormData();
+            if (name !== undefined) formData.set("name", name);
+            formData.set("purpose", "evaluation");
+            formData.set("modality", "text");
+
+            await expect(createDatasetAction({}, formData)).resolves.toEqual({
+                formError: "Enter a name for your dataset.",
+            });
+            expect(mocks.createDataset).not.toHaveBeenCalled();
+            expect(mocks.revalidatePath).not.toHaveBeenCalled();
+        },
+    );
+
+    it("rejects a file supplied as the dataset name", async () => {
+        const formData = new FormData();
+        formData.set("name", new File(["not a name"], "name.txt"));
+        await expect(createDatasetAction({}, formData)).resolves.toEqual({
+            formError: "Enter a name for your dataset.",
+        });
+        expect(mocks.createDataset).not.toHaveBeenCalled();
+    });
+
+    it("creates a named dataset and redirects after a valid form submission", async () => {
+        const formData = new FormData();
+        formData.set("name", "  My text evaluation  ");
+        formData.set("purpose", "evaluation");
+        formData.set("modality", "text");
+
+        await expect(createDatasetAction({}, formData)).rejects.toThrow(
+            "NEXT_REDIRECT",
+        );
+        expect(mocks.createDataset).toHaveBeenCalledExactlyOnceWith({
+            teamId: "team-1",
+            projectId: "project-1",
+            createdBy: "user-1",
+            name: "My text evaluation",
+            purpose: "evaluation",
+            modality: "text",
+        });
+        expect(mocks.revalidatePath).toHaveBeenCalledWith("/datasets");
+    });
+});
+
 describe("createDatasetForInputAction", () => {
+    it.each([undefined, "", " \t\n"])(
+        "rejects a blank name in the canvas creation form (%j)",
+        async (name) => {
+            const formData = new FormData();
+            if (name !== undefined) formData.set("name", name);
+            await expect(createDatasetForInputAction(formData)).rejects.toThrow(
+                "Enter a name for your dataset.",
+            );
+            expect(mocks.createDataset).not.toHaveBeenCalled();
+            expect(mocks.revalidatePath).not.toHaveBeenCalled();
+        },
+    );
+
     it("creates an evaluation dataset and returns its id without redirecting", async () => {
         const formData = new FormData();
         formData.set("name", "Canvas images");

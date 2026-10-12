@@ -1,6 +1,7 @@
 import type { IApiConfig } from "../config.js";
 import type { IDb } from "../db.js";
 import { ApiNotFoundError } from "../errors.js";
+import { getR2Object } from "@mosaic/object-storage";
 import { promises as fs } from "node:fs";
 import { isStorageKey, localMediaPath } from "../mediaPaths.js";
 
@@ -29,9 +30,11 @@ export async function imageResponsePayload(
     }
 
     if (config.storageAdapter === "local") {
-        const bytes = await fs.readFile(localMediaPath(storageKey)).catch(() => {
-            throw new ApiNotFoundError();
-        });
+        const bytes = await fs
+            .readFile(localMediaPath(storageKey))
+            .catch(() => {
+                throw new ApiNotFoundError();
+            });
         return new Response(bytes, {
             headers: {
                 "Content-Type": access.mime_type,
@@ -40,10 +43,30 @@ export async function imageResponsePayload(
         });
     }
 
-    const response = await fetchWithTimeout(supabaseObjectUrl(config, storageKey), {
-        method: "GET",
-        headers: supabaseHeaders(config),
-    });
+    if (config.storageAdapter === "r2") {
+        try {
+            const bytes = await getR2Object(config.r2Storage!, storageKey);
+            const body = new Uint8Array(bytes.byteLength);
+            body.set(bytes);
+            return new Response(body, {
+                headers: {
+                    "Content-Type": access.mime_type,
+                    "Cache-Control": "private, max-age=3600",
+                    "X-Content-Type-Options": "nosniff",
+                },
+            });
+        } catch {
+            throw new ApiNotFoundError();
+        }
+    }
+
+    const response = await fetchWithTimeout(
+        supabaseObjectUrl(config, storageKey),
+        {
+            method: "GET",
+            headers: supabaseHeaders(config),
+        },
+    );
     if (!response.ok || !response.body) throw new ApiNotFoundError();
     return new Response(response.body, {
         headers: {

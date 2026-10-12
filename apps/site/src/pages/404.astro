@@ -1,0 +1,22 @@
+---
+import Base from "../layouts/Base.astro";
+import { REPO_URL } from "../lib/content";
+---
+
+<Base title="Not found · Flash Evals" description="This page is not on the receipt.">
+    <header class="topbar">
+        <a class="wordmark" href="/">Flash Evals</a>
+        <nav aria-label="Primary"><a href={REPO_URL} class="keep">GitHub</a></nav>
+    </header>
+    <main id="main" class="roll" style="margin-bottom:64px">
+        <section class="seg mast center">
+                        <h1 class="ln">Item not on this receipt.</h1>
+            <p class="ln pitch" style="margin-inline:auto">
+                Error 404: the page you asked for was never printed. Head back to the front of the roll.
+            </p>
+            <div class="ln next" style="justify-content:center">
+                <a href="/">Back to flashevals.dev</a>
+            </div>
+        </section>
+    </main>
+</Base>

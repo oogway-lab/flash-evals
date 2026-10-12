@@ -45,6 +45,25 @@ test.beforeAll(async () => {
             return;
         }
 
+        if (req.url?.startsWith("/api/dashboard")) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+                JSON.stringify({
+                    stats: {
+                        datasetCount: 0,
+                        promptCount: 0,
+                        runCount: 0,
+                        totalCostUsd: 0,
+                        hasDatasetWithItems: false,
+                        hasDatasetWithSchema: false,
+                        hasPrompt: false,
+                    },
+                    recentRuns: [],
+                }),
+            );
+            return;
+        }
+
         if (req.url?.startsWith("/api/datasets")) {
             res.writeHead(200, {
                 "Content-Type": "application/json",
@@ -105,4 +124,30 @@ test("protected app shell is reachable in dev auth mode", async ({ page }) => {
         name: /open navigation menu/i,
     });
     await expect(datasetsLink.or(navigationMenu).first()).toBeVisible();
+});
+
+test("dev-auth entry, dashboard navigation, refresh and browser history stay on protected routes", async ({
+    page,
+}) => {
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(
+        page.getByRole("heading", { name: "Dashboard", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("link", { name: "Datasets", exact: true }).click();
+    await expect(
+        page.getByRole("heading", { name: "Datasets", exact: true }),
+    ).toBeVisible();
+    await page.reload();
+    await expect(page).toHaveURL(/\/datasets$/);
+    await page.goBack();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goForward();
+    await expect(page).toHaveURL(/\/datasets$/);
+    await page.getByRole("link", { name: "Dashboard", exact: true }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/sign-in");
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/sign-up");
+    await expect(page).toHaveURL(/\/dashboard$/);
 });

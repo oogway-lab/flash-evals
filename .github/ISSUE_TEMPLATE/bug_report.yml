@@ -44,7 +44,7 @@ body:
       required: true
   - type: markdown
     attributes:
-      value: "Remove credentials, customer data, and personal information before posting. Use the private reporting route in SECURITY.md for vulnerabilities."
+      value: "Remove credentials, customer data, and personal information before posting. Do not post vulnerability details here; read SECURITY.md for current reporting availability."
   - type: textarea
     id: evidence
     attributes:
