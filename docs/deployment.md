@@ -59,15 +59,15 @@ Workflow execution uses a saved route snapshot, not an implicit override from `M
 
 Have authorized access to the repository/GitHub Actions, a Cloudflare account and the domain's DNS zone, R2 and Hyperdrive, the production Clerk instance, the correct Supabase project, the Railway project/environment/services, and the approved secret manager. For a new instance, assign an operator and recovery/backup owner before admitting real data. Paid model-provider access is needed only when performing real provider evaluations; do not add dummy keys to satisfy a smoke test.
 
-| Tool/dependency                | Documented baseline and evidence                                                                                                                                                       |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node.js                        | `.nvmrc` and CI pin **24.21.0**. `engines.node` accepts `^22.12.0                                                                                                                      |     | ^24.0.0 |     | >=26.0.0`; a local build can use another version within that range. Use the repo/CI pin for repeatable setup. |
-| pnpm                           | Root `packageManager` pins **12.6.0**, including its integrity suffix. Keep `pnpm-lock.yaml` and `pnpm-workspace.yaml`.                                                                |
-| Next.js                        | Exact **16.3.8**. Do not fold an upgrade into a deployment release. Next 16.4 previously caused an OpenNext runtime `preview-props.json` manifest failure.                             |
-| Astro                          | Marketing source pins **7.3.4**. It is packaged into the web release, not deployed as a second apex Worker.                                                                            |
-| OpenNext Cloudflare / Wrangler | Tracked ranges `^1.20.8` / `^4.147.0`, installed from the lockfile; Wrangler inspected here is **4.147.0**. Do not replace lockfile-resolved versions with unreviewed latest versions. |
-| PostgreSQL driver / queue      | Tracked `pg ^8.23.1`, `pg-boss ^10.1.5`; restore and deploy the reviewed lockfile.                                                                                                     |
-| Codex CLI                      | Help/version inspected here: **0.162.1**. OAuth options below were verified in its help, not newly used to log in during documentation.                                                |
+| Tool/dependency                | Documented baseline and evidence                                                                                                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node.js                        | `.nvmrc` and CI pin **24.21.0**. `engines.node` accepts `^22.12.0 \|\| ^24.0.0 \|\| >=26.0.0`; a local build can use another version within that range. Use the repo/CI pin for repeatable setup. |
+| pnpm                           | Root `packageManager` pins **12.6.0**, including its integrity suffix. Keep `pnpm-lock.yaml` and `pnpm-workspace.yaml`.                                                                           |
+| Next.js                        | Exact **16.3.8**. Do not fold an upgrade into a deployment release. Next 16.4 previously caused an OpenNext runtime `preview-props.json` manifest failure.                                        |
+| Astro                          | Marketing source pins **7.3.4**. It is packaged into the web release, not deployed as a second apex Worker.                                                                                       |
+| OpenNext Cloudflare / Wrangler | Tracked ranges `^1.20.8` / `^4.147.0`, installed from the lockfile; Wrangler inspected here is **4.147.0**. Do not replace lockfile-resolved versions with unreviewed latest versions.            |
+| PostgreSQL driver / queue      | Tracked `pg ^8.23.1`, `pg-boss ^10.1.5`; restore and deploy the reviewed lockfile.                                                                                                                |
+| Codex CLI                      | Help/version inspected here: **0.162.1**. OAuth options below were verified in its help, not newly used to log in during documentation.                                                           |
 
 Clean checkout template (**changes local files; new clone template**):
 
