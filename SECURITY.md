@@ -4,7 +4,7 @@
 
 Please do not report security vulnerabilities in public issues or pull requests.
 
-This project does not yet have a private vulnerability-reporting channel. Do not post technical details in public issues, pull requests, or discussions. The security@oogwaylabs.com alias is planned but is not active; do not send reports there. This policy will be updated when a private channel is available.
+Use the private email address [security@oogwaylabs.com](mailto:security@oogwaylabs.com) to report a suspected vulnerability. Include a concise description and steps to reproduce when possible. Keep vulnerability details private while the issue is investigated; do not post reports or reproduction details in public issues, pull requests, or discussions.
 
 This is an early-stage alpha. There are no stable releases or backported security fixes; fixes are made on `main`.
 

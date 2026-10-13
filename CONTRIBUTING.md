@@ -2,7 +2,7 @@
 
 Thanks for helping improve Flash Evals. This early-stage alpha is changing quickly; focused pull requests and clear reports are especially useful.
 
-Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Do not put credentials, customer data, or personal information in public issues, pull requests, fixtures, or screenshots. For security concerns, read [SECURITY.md](SECURITY.md) before reporting. No private vulnerability-reporting channel is active yet; the planned security@oogwaylabs.com alias is inactive. Do not send reports there or post vulnerability details publicly.
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Do not put credentials, customer data, or personal information in public issues, pull requests, fixtures, or screenshots. For suspected vulnerabilities, use the private reporting address in [SECURITY.md](SECURITY.md); do not post vulnerability details publicly.
 
 ## Project layout
 
