@@ -17,6 +17,7 @@ export async function imageResponsePayload(
     teamId: string,
     projectId: string,
     storageKey: string,
+    range: string | null = null,
 ): Promise<Response> {
     if (!isStorageKey(storageKey)) throw new ApiNotFoundError();
     const access = await getImageAccessForStorageKey(db, storageKey);
@@ -35,26 +36,13 @@ export async function imageResponsePayload(
             .catch(() => {
                 throw new ApiNotFoundError();
             });
-        return new Response(bytes, {
-            headers: {
-                "Content-Type": access.mime_type,
-                "Cache-Control": "private, max-age=3600",
-            },
-        });
+        return mediaBytesResponse(bytes, access.mime_type, range);
     }
 
     if (config.storageAdapter === "r2") {
         try {
             const bytes = await getR2Object(config.r2Storage!, storageKey);
-            const body = new Uint8Array(bytes.byteLength);
-            body.set(bytes);
-            return new Response(body, {
-                headers: {
-                    "Content-Type": access.mime_type,
-                    "Cache-Control": "private, max-age=3600",
-                    "X-Content-Type-Options": "nosniff",
-                },
-            });
+            return mediaBytesResponse(bytes, access.mime_type, range);
         } catch {
             throw new ApiNotFoundError();
         }
@@ -64,14 +52,35 @@ export async function imageResponsePayload(
         supabaseObjectUrl(config, storageKey),
         {
             method: "GET",
-            headers: supabaseHeaders(config),
+            headers: {
+                ...supabaseHeaders(config),
+                ...(range ? { Range: range } : {}),
+            },
         },
     );
+    if (response.status === 416) {
+        return new Response(null, {
+            status: 416,
+            headers: {
+                "Content-Range":
+                    response.headers.get("content-range") ?? "bytes */*",
+            },
+        });
+    }
     if (!response.ok || !response.body) throw new ApiNotFoundError();
     return new Response(response.body, {
+        status: response.status,
         headers: {
             "Content-Type": access.mime_type,
             "Cache-Control": "private, max-age=3600",
+            ...Object.fromEntries(
+                ["content-length", "content-range", "accept-ranges"].flatMap(
+                    (name) => {
+                        const value = response.headers.get(name);
+                        return value ? [[name, value]] : [];
+                    },
+                ),
+            ),
         },
     });
 }
@@ -105,7 +114,7 @@ function encodeObjectPath(objectPath: string): string {
     return objectPath.split("/").map(encodeURIComponent).join("/");
 }
 
-function supabaseHeaders(config: IApiConfig): HeadersInit {
+function supabaseHeaders(config: IApiConfig) {
     const token = config.supabaseServiceRoleKey;
     return {
         apikey: token,
@@ -125,4 +134,47 @@ async function fetchWithTimeout(
     } finally {
         clearTimeout(timeout);
     }
+}
+
+/** Serve a single byte range so browsers can determine duration and seek audio. */
+export function mediaBytesResponse(
+    bytes: Uint8Array,
+    contentType: string,
+    range: string | null,
+): Response {
+    const size = bytes.byteLength;
+    const headers = new Headers({
+        "Content-Type": contentType,
+        "Cache-Control": "private, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
+        "Accept-Ranges": "bytes",
+        "Content-Length": String(size),
+    });
+    // Malformed and multi-range requests may be ignored; do not claim support
+    // for multipart responses that we cannot produce.
+    const match = range && /^bytes=(\d*)-(\d*)$/.exec(range);
+    if (!match || (!match[1] && !match[2]))
+        return new Response(Uint8Array.from(bytes), { headers });
+    const start = match[1]
+        ? Number(match[1])
+        : Math.max(0, size - Number(match[2]));
+    const end =
+        match[1] && match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+    if (
+        !Number.isSafeInteger(start) ||
+        !Number.isSafeInteger(end) ||
+        start > end ||
+        start >= size ||
+        (!match[1] && Number(match[2]) === 0)
+    ) {
+        headers.set("Content-Range", `bytes */${size}`);
+        headers.set("Content-Length", "0");
+        return new Response(null, { status: 416, headers });
+    }
+    headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
+    headers.set("Content-Length", String(end - start + 1));
+    return new Response(Uint8Array.from(bytes.subarray(start, end + 1)), {
+        status: 206,
+        headers,
+    });
 }

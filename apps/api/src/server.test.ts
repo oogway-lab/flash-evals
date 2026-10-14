@@ -745,6 +745,56 @@ describe("handleRequest", () => {
         );
     });
 
+    it("preserves authorized storage byte-range responses", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(
+                async () =>
+                    new Response("cdef", {
+                        status: 206,
+                        headers: {
+                            "content-length": "4",
+                            "content-range": "bytes 2-5/10",
+                            "accept-ranges": "bytes",
+                        },
+                    }),
+            ),
+        );
+        const key = "11111111-1111-4111-8111-111111111111";
+        const response = await handleRequest(
+            new Request(
+                `https://api.example.com/api/images/${key}?teamId=team-1&projectId=project-1`,
+                {
+                    headers: {
+                        "x-mosaic-internal-token": "internal-secret",
+                        Range: "bytes=2-5",
+                    },
+                },
+            ),
+            {
+                config,
+                db: dbWithRows([
+                    [
+                        {
+                            team_id: "team-1",
+                            project_id: "project-1",
+                            mime_type: "audio/wav",
+                        },
+                    ],
+                ]),
+            },
+        );
+        expect(response.status).toBe(206);
+        expect(response.headers.get("content-length")).toBe("4");
+        expect(response.headers.get("content-range")).toBe("bytes 2-5/10");
+        expect(fetch).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+                headers: expect.objectContaining({ Range: "bytes=2-5" }),
+            }),
+        );
+    });
+
     it("hides image bytes from another project in the same team", async () => {
         const key = "11111111-1111-4111-8111-111111111111";
         const response = await handleRequest(

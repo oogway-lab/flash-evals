@@ -115,7 +115,10 @@ export function useRunProgress(
         );
     }
 
-    const active = isActiveRunStatus(data.status);
+    // A terminal poll updates the card before router.refresh() has delivered
+    // the result rows. Keep polling until the server snapshot also settles.
+    const serverActive = isActiveRunStatus(initial.status);
+    const active = serverActive || isActiveRunStatus(data.status);
     // `at: 0` lets the first completed cell refresh straight away.
     const refreshed = useRef({ settled: settledCells(initial), at: 0 });
 
@@ -170,7 +173,7 @@ export function useRunProgress(
                     };
                     router.refresh();
                 }
-                if (!isActiveRunStatus(next.status)) return;
+                if (!isActiveRunStatus(next.status) && !serverActive) return;
             } catch {
                 if (controller.signal.aborted) return;
                 failures += 1;
@@ -204,7 +207,7 @@ export function useRunProgress(
                 onVisibilityChange,
             );
         };
-    }, [active, url, router]);
+    }, [active, serverActive, url, router]);
 
     return { data, connection };
 }
