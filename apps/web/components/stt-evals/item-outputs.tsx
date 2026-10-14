@@ -259,7 +259,7 @@ export function ItemOutputs({
                                 type="button"
                                 aria-pressed={filter === value}
                                 onClick={() => setFilter(value)}
-                                className="rounded-[4px] px-2.5 py-1 text-label-14 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring aria-pressed:bg-neutral aria-pressed:text-foreground aria-pressed:shadow-[0_0_0_1px_var(--border)]"
+                                className="rounded-[4px] px-2.5 py-1 text-label-14 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring aria-pressed:bg-neutral aria-pressed:text-foreground aria-pressed:ring-1 aria-pressed:ring-border"
                             >
                                 {label}
                                 <Num className="ml-1.5 text-muted-foreground">
