@@ -28,6 +28,10 @@ export {
     type IEvalProviderOptions,
     providerModeFromEnv,
 } from "./providers/factory.js";
+export {
+    gatewayAttributionHeaders,
+    openRouterAttributionHeaders,
+} from "./providers/attribution.js";
 export { GatewayEvalProvider } from "./providers/gateway.js";
 export { OpenAIEvalProvider } from "./providers/openai.js";
 export {

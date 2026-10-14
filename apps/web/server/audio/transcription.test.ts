@@ -1,5 +1,5 @@
 import { Buffer } from "buffer";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
     cachedRows: [] as Array<{
@@ -50,7 +50,12 @@ beforeEach(() => {
         onConflictDoUpdate: mocks.onConflictDoUpdate,
     });
     vi.stubGlobal("fetch", vi.fn());
+    vi.stubEnv("MOSAIC_GATEWAY_HTTP_REFERER", "");
+    vi.stubEnv("MOSAIC_GATEWAY_APP_TITLE", "");
+    vi.stubEnv("MOSAIC_PROVIDER_ATTRIBUTION", "");
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("getOrCreateAudioTranscript", () => {
     it("reports cache provenance without changing the existing transcript API", async () => {
@@ -486,7 +491,11 @@ describe("getOrCreateAudioTranscript", () => {
         expect(fetch).toHaveBeenCalledWith(
             "https://openrouter.ai/api/v1/audio/transcriptions",
             expect.objectContaining({
-                headers: { Authorization: "Bearer openrouter-test" },
+                headers: {
+                    Authorization: "Bearer openrouter-test",
+                    "http-referer": "https://flashevals.dev",
+                    "x-title": "Flash Evals",
+                },
             }),
         );
         const requestForm = vi.mocked(fetch).mock.calls[0]?.[1]

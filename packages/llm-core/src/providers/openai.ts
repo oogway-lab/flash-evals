@@ -8,6 +8,7 @@ import type {
     IEvalCompletionProvider,
     UsageData,
 } from "../types.js";
+import { openRouterAttributionHeaders } from "./attribution.js";
 import { parseStructuredOutput } from "./structuredOutput.js";
 
 function isReasoningModel(model: string): boolean {
@@ -33,6 +34,7 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
             new OpenAI({
                 apiKey,
                 ...(options.baseURL ? { baseURL: options.baseURL } : {}),
+                defaultHeaders: openRouterAttributionHeaders(options.baseURL),
                 timeout: 120_000,
                 maxRetries: 2,
             });

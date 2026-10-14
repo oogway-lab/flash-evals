@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpenAIEvalProvider } from "./openai.js";
 
 function provider(
@@ -289,5 +289,76 @@ describe("OpenRouter reported charges", () => {
 
     it("falls back to catalog pricing when the BYOK upstream charge is unknown", async () => {
         expect(await reportedCost({ cost: 0, is_byok: true })).toBeUndefined();
+    });
+});
+
+describe("OpenAI-compatible attribution headers", () => {
+    beforeEach(() => {
+        vi.stubEnv("MOSAIC_GATEWAY_HTTP_REFERER", "");
+        vi.stubEnv("MOSAIC_GATEWAY_APP_TITLE", "");
+        vi.stubEnv("MOSAIC_PROVIDER_ATTRIBUTION", "");
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(
+                async () =>
+                    new Response(
+                        JSON.stringify({
+                            id: "gen-1",
+                            model: "gpt-4o",
+                            choices: [
+                                {
+                                    finish_reason: "stop",
+                                    message: { content: "ok" },
+                                },
+                            ],
+                        }),
+                        { headers: { "Content-Type": "application/json" } },
+                    ),
+            ),
+        );
+    });
+
+    afterEach(() => {
+        vi.unstubAllEnvs();
+        vi.unstubAllGlobals();
+    });
+
+    async function sentHeaders(options: {
+        baseURL?: string;
+        transport?: "openai" | "openrouter" | "bifrost";
+    }) {
+        await new OpenAIEvalProvider("secret", options).complete({
+            model: "gpt-4o",
+            prompt: "hi",
+            maxTokens: 10,
+            maxRetries: 0,
+        });
+        const [, init] = vi.mocked(fetch).mock.calls[0]!;
+        return new Headers(init?.headers);
+    }
+
+    it("attributes OpenRouter requests to Flash Evals", async () => {
+        const headers = await sentHeaders({
+            baseURL: "https://openrouter.ai/api/v1",
+            transport: "openrouter",
+        });
+        expect(headers.get("http-referer")).toBe("https://flashevals.dev");
+        expect(headers.get("x-title")).toBe("Flash Evals");
+    });
+
+    it.each([
+        { transport: "openai" as const },
+        {
+            baseURL: "https://or-proxy.example.com/api/v1",
+            transport: "openrouter" as const,
+        },
+        {
+            baseURL: "https://bifrost.example.com/v1",
+            transport: "bifrost" as const,
+        },
+    ])("sends no attribution to $transport at $baseURL", async (options) => {
+        const headers = await sentHeaders(options);
+        expect(headers.has("http-referer")).toBe(false);
+        expect(headers.has("x-title")).toBe(false);
     });
 });

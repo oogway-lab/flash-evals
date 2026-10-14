@@ -1,4 +1,5 @@
 import { createGateway } from "@ai-sdk/gateway";
+import { gatewayAttributionHeaders } from "./attribution.js";
 import {
     generateText,
     jsonSchema,
@@ -206,21 +207,6 @@ function usageFrom(usage: LanguageModelUsage): UsageData {
         cacheWriteTokens: usage.inputTokenDetails.cacheWriteTokens,
         totalTokens: usage.totalTokens,
     };
-}
-
-function gatewayAttributionHeaders(): Record<string, string> | undefined {
-    const env = (
-        globalThis as {
-            process?: { env?: Record<string, string | undefined> };
-        }
-    ).process?.env;
-    const referer = env?.MOSAIC_GATEWAY_HTTP_REFERER;
-    const title = env?.MOSAIC_GATEWAY_APP_TITLE;
-    const headers = {
-        ...(referer ? { "http-referer": referer } : {}),
-        ...(title ? { "x-title": title } : {}),
-    };
-    return Object.keys(headers).length > 0 ? headers : undefined;
 }
 
 function providerMetadataFrom(

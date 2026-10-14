@@ -1,16 +1,16 @@
 import { createGateway, type GatewayProvider } from "@ai-sdk/gateway";
 import OpenAI from "openai";
 import type { ApiKeys } from "../types.js";
+import { gatewayAttributionHeaders } from "./attribution.js";
 import { providerModeFromEnv, type EvalProviderMode } from "./factory.js";
 import type { IModelPricing, IModelPricingTier } from "../models/registry.js";
 
 const MODEL_LIST_TIMEOUT_MS = 15_000;
 
 export interface IListAvailableModelsOptions {
-    createGatewayProvider?: (apiKey: string) => Pick<
-        GatewayProvider,
-        "getAvailableModels"
-    >;
+    createGatewayProvider?: (
+        apiKey: string,
+    ) => Pick<GatewayProvider, "getAvailableModels">;
     provider?: EvalProviderMode;
 }
 
@@ -44,19 +44,27 @@ export async function listAvailableModelMetadata(
         return listGatewayModels(apiKeys, options);
     }
     if (provider === "openrouter") {
-        return (await listOpenAICompatibleModels({
-            apiKey: apiKeys.openrouter,
-            baseURL: apiKeys.openrouterBaseUrl ?? "https://openrouter.ai/api/v1",
-            missingKeyMessage: "Please add your OpenRouter API key to list models.",
-        })).map((id) => ({ id }));
+        return (
+            await listOpenAICompatibleModels({
+                apiKey: apiKeys.openrouter,
+                baseURL:
+                    apiKeys.openrouterBaseUrl ?? "https://openrouter.ai/api/v1",
+                missingKeyMessage:
+                    "Please add your OpenRouter API key to list models.",
+            })
+        ).map((id) => ({ id }));
     }
     if (provider === "bifrost") {
-        return (await listOpenAICompatibleModels({
-            apiKey: apiKeys.bifrost,
-            baseURL: apiKeys.bifrostBaseUrl,
-            missingKeyMessage: "Please add your Bifrost API key to list models.",
-            missingBaseUrlMessage: "Please add BIFROST_BASE_URL to list Bifrost models.",
-        })).map((id) => ({ id }));
+        return (
+            await listOpenAICompatibleModels({
+                apiKey: apiKeys.bifrost,
+                baseURL: apiKeys.bifrostBaseUrl,
+                missingKeyMessage:
+                    "Please add your Bifrost API key to list models.",
+                missingBaseUrlMessage:
+                    "Please add BIFROST_BASE_URL to list Bifrost models.",
+            })
+        ).map((id) => ({ id }));
     }
     return (await listOpenAIModels(apiKeys)).map((id) => ({ id }));
 }
@@ -105,7 +113,10 @@ async function listGatewayModels(
     }
     const gateway =
         options.createGatewayProvider?.(apiKeys.gateway) ??
-        createGateway({ apiKey: apiKeys.gateway });
+        createGateway({
+            apiKey: apiKeys.gateway,
+            headers: gatewayAttributionHeaders(),
+        });
     const metadata = await withTimeout(
         gateway.getAvailableModels(),
         MODEL_LIST_TIMEOUT_MS,
@@ -157,7 +168,11 @@ function pricingFromGateway(pricing: unknown): IModelPricing | undefined {
         completionPricePerToken,
         ...optionalRate(pricing, "reasoning", "reasoningPricePerToken"),
         ...optionalRate(pricing, "input_cache_read", "cacheReadPricePerToken"),
-        ...optionalRate(pricing, "input_cache_write", "cacheWritePricePerToken"),
+        ...optionalRate(
+            pricing,
+            "input_cache_write",
+            "cacheWritePricePerToken",
+        ),
         ...(promptTiers.length > 0 ? { promptTiers } : {}),
         ...(completionTiers.length > 0 ? { completionTiers } : {}),
     };
@@ -169,7 +184,9 @@ function optionalRate<T extends string>(
     target: T,
 ): { [K in T]: number } | Record<string, never> {
     const value = numericPrice(pricing[source]);
-    return value === undefined ? {} : { [target]: value } as { [K in T]: number };
+    return value === undefined
+        ? {}
+        : ({ [target]: value } as { [K in T]: number });
 }
 
 function tiersFromGateway(value: unknown): IModelPricingTier[] {
@@ -224,7 +241,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null;
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+async function withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
         return await Promise.race([

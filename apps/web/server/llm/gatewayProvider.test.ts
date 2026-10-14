@@ -24,9 +24,7 @@ vi.mock("@ai-sdk/gateway", () => ({
     createGateway: gatewayMocks.createGateway,
 }));
 
-function usage(
-    override: Partial<LanguageModelUsage> = {},
-): LanguageModelUsage {
+function usage(override: Partial<LanguageModelUsage> = {}): LanguageModelUsage {
     return {
         inputTokens: 11,
         inputTokenDetails: {
@@ -65,11 +63,13 @@ describe("GatewayEvalProvider", () => {
     const originalTitle = process.env.MOSAIC_GATEWAY_APP_TITLE;
 
     beforeEach(() => {
+        vi.stubEnv("MOSAIC_PROVIDER_ATTRIBUTION", "");
         gatewayMocks.createGateway.mockClear();
         gatewayMocks.modelFor.mockClear();
     });
 
     afterEach(() => {
+        vi.unstubAllEnvs();
         if (originalReferer === undefined) {
             delete process.env.MOSAIC_GATEWAY_HTTP_REFERER;
         } else {
@@ -111,7 +111,7 @@ describe("GatewayEvalProvider", () => {
         expect(gatewayMocks.modelFor).toHaveBeenCalledWith("openai/gpt-4o");
     });
 
-    it("omits Gateway attribution headers when they are not configured", () => {
+    it("defaults Gateway attribution headers to Flash Evals when unset", () => {
         delete process.env.MOSAIC_GATEWAY_HTTP_REFERER;
         delete process.env.MOSAIC_GATEWAY_APP_TITLE;
 
@@ -121,7 +121,10 @@ describe("GatewayEvalProvider", () => {
 
         expect(gatewayMocks.createGateway).toHaveBeenCalledWith({
             apiKey: "vck-test",
-            headers: undefined,
+            headers: {
+                "http-referer": "https://flashevals.dev",
+                "x-title": "Flash Evals",
+            },
         });
     });
 

@@ -1,5 +1,9 @@
 import { createGateway } from "@ai-sdk/gateway";
-import type { ITranscriptArtifact, ITranscriptionProviderInput } from "../types";
+import { gatewayAttributionHeaders } from "@mosaic/llm-core";
+import type {
+    ITranscriptArtifact,
+    ITranscriptionProviderInput,
+} from "../types";
 import {
     bufferToUint8Array,
     speakersFromSegments,
@@ -15,17 +19,25 @@ export async function transcribeWithVercelGateway(
     input: ITranscriptionProviderInput,
 ): Promise<ITranscriptArtifact> {
     if (!input.aiGatewayApiKey) {
-        throw new Error("Add AI_GATEWAY_API_KEY to run Vercel Gateway transcription.");
+        throw new Error(
+            "Add AI_GATEWAY_API_KEY to run Vercel Gateway transcription.",
+        );
     }
 
-    const gateway = createGateway({ apiKey: input.aiGatewayApiKey });
-    const result = await gateway.transcription(input.canonicalModelId).doGenerate({
-        audio: bufferToUint8Array(input.bytes),
-        mediaType: input.mimeType,
-        providerOptions: vercelProviderOptions(input.config),
+    const gateway = createGateway({
+        apiKey: input.aiGatewayApiKey,
+        headers: gatewayAttributionHeaders(),
     });
+    const result = await gateway
+        .transcription(input.canonicalModelId)
+        .doGenerate({
+            audio: bufferToUint8Array(input.bytes),
+            mediaType: input.mimeType,
+            providerOptions: vercelProviderOptions(input.config),
+        });
     const text = result.text.trim();
-    if (!text) throw new Error("Vercel Gateway transcription returned empty text.");
+    if (!text)
+        throw new Error("Vercel Gateway transcription returned empty text.");
     const segments = transcriptSegments(result.segments);
     const detectedLanguage = result.language?.trim() ?? "";
     return {

@@ -1,7 +1,16 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { transcribeOpenRouterAudio } from "./openrouterAudio.js";
 
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+    vi.stubEnv("MOSAIC_GATEWAY_HTTP_REFERER", "");
+    vi.stubEnv("MOSAIC_GATEWAY_APP_TITLE", "");
+    vi.stubEnv("MOSAIC_PROVIDER_ATTRIBUTION", "");
+});
+
+afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+});
 
 it.each(["नमस्ते", "வணக்கம்", "నమస్కారం", "নমস্কার", "vanakkam்"])(
     "rejects native-script drift: %s",
@@ -69,6 +78,9 @@ it("sends encoded audio to Gemini and preserves billed usage", async () => {
         costUsd: 0.001,
     });
     const [, options] = vi.mocked(fetch).mock.calls[0]!;
+    const headers = new Headers(options?.headers);
+    expect(headers.get("http-referer")).toBe("https://flashevals.dev");
+    expect(headers.get("x-title")).toBe("Flash Evals");
     const body = JSON.parse(String(options?.body));
     expect(body.model).toBe("google/gemini-3.8-flash");
     expect(body.reasoning).toEqual({ effort: "low" });

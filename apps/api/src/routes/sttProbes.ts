@@ -1,7 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
-import { transcribeOpenRouterAudio } from "@mosaic/llm-core";
+import {
+    gatewayAttributionHeaders,
+    openRouterAttributionHeaders,
+    transcribeOpenRouterAudio,
+} from "@mosaic/llm-core";
 import type {
     ICreateSttRouteProbeRequest,
     ISttRouteProbeModel,
@@ -441,7 +445,10 @@ async function probeVercelGateway(
             "No provider key is configured for this route",
         );
     }
-    const gateway = createGateway({ apiKey: key });
+    const gateway = createGateway({
+        apiKey: key,
+        headers: gatewayAttributionHeaders(),
+    });
     const result = await gateway.transcription(model).doGenerate({
         audio: new Uint8Array(audio),
         mediaType: "audio/wav",
@@ -476,7 +483,10 @@ async function probeMultipart(
         url,
         {
             method: "POST",
-            headers: { Authorization: `Bearer ${key}` },
+            headers: {
+                ...openRouterAttributionHeaders(url),
+                Authorization: `Bearer ${key}`,
+            },
             body: form,
         },
         signal,

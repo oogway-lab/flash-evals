@@ -1,5 +1,8 @@
 import type { ITranscriptSegment } from "../../../db/jsonTypes";
-import { transcribeOpenRouterAudio } from "@mosaic/llm-core";
+import {
+    openRouterAttributionHeaders,
+    transcribeOpenRouterAudio,
+} from "@mosaic/llm-core";
 import type {
     ITranscriptArtifact,
     ITranscriptionProviderInput,
@@ -13,6 +16,9 @@ import {
     stringConfig,
     stringProperty,
 } from "./shared";
+
+const OPENROUTER_TRANSCRIPTIONS_URL =
+    "https://openrouter.ai/api/v1/audio/transcriptions";
 
 /** Gemini on OpenRouter takes audio through chat completions, not the STT route. */
 export function isOpenRouterChatAudioModel(canonicalModelId: string): boolean {
@@ -74,10 +80,13 @@ export async function transcribeWithOpenRouter(
     }
 
     const response = await fetchWithTimeout(
-        "https://openrouter.ai/api/v1/audio/transcriptions",
+        OPENROUTER_TRANSCRIPTIONS_URL,
         {
             method: "POST",
-            headers: { Authorization: `Bearer ${input.openrouterApiKey}` },
+            headers: {
+                ...openRouterAttributionHeaders(OPENROUTER_TRANSCRIPTIONS_URL),
+                Authorization: `Bearer ${input.openrouterApiKey}`,
+            },
             body: form,
         },
         input.timeoutMs,

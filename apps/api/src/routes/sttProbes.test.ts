@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createGateway } from "@ai-sdk/gateway";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IApiConfig } from "../config.js";
 import type { IDb } from "../db.js";
 import { resolveApiFeatureFlags } from "../featureFlags.js";
@@ -66,7 +67,12 @@ function database(probeRows: unknown[] = []): IDb {
 beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
     mocks.gatewayTranscription.mockReset();
+    vi.stubEnv("MOSAIC_GATEWAY_HTTP_REFERER", "");
+    vi.stubEnv("MOSAIC_GATEWAY_APP_TITLE", "");
+    vi.stubEnv("MOSAIC_PROVIDER_ATTRIBUTION", "");
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("STT route probes", () => {
     it("lists probe-enabled models from the requested team and project only", async () => {
@@ -128,8 +134,13 @@ describe("STT route probes", () => {
                 transcript: "Flash Evals route verification.",
             }),
         );
-        const requestForm = vi.mocked(fetch).mock.calls[0]?.[1]
-            ?.body as FormData;
+        const request = vi.mocked(fetch).mock.calls[0]?.[1];
+        expect(request?.headers).toEqual({
+            Authorization: "Bearer or-test",
+            "http-referer": "https://flashevals.dev",
+            "x-title": "Flash Evals",
+        });
+        const requestForm = request?.body as FormData;
         expect(requestForm.get("model")).toBe("openai/whisper-large-v3-turbo");
         expect(db.query).toHaveBeenCalledWith(
             expect.stringContaining("insert into stt_route_probes"),
@@ -192,6 +203,13 @@ describe("STT route probes", () => {
                 transcript: "Flash Evals route verification.",
             }),
         );
+        expect(createGateway).toHaveBeenCalledWith({
+            apiKey: "gateway-test",
+            headers: {
+                "http-referer": "https://flashevals.dev",
+                "x-title": "Flash Evals",
+            },
+        });
         expect(mocks.gatewayTranscription).toHaveBeenCalledWith({
             audio: expect.any(Uint8Array),
             mediaType: "audio/wav",

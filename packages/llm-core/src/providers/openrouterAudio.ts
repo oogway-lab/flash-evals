@@ -1,4 +1,5 @@
 import OpenAI, { APIConnectionError, APIConnectionTimeoutError } from "openai";
+import { openRouterAttributionHeaders } from "./attribution.js";
 import { finishLatinTranscript } from "./latinTranscript.js";
 
 const AUDIO_FORMATS = new Map<string, "wav" | "mp3">([
@@ -7,6 +8,8 @@ const AUDIO_FORMATS = new Map<string, "wav" | "mp3">([
     ["audio/mpeg", "mp3"],
     ["audio/mp3", "mp3"],
 ]);
+
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
 /** Default inline audio budget; callers prepare larger recordings first. */
 export const OPENROUTER_AUDIO_DEFAULT_MAX_BYTES = 14 * 1024 * 1024;
@@ -72,7 +75,8 @@ export async function transcribeOpenRouterAudio(input: {
         );
     const client = new OpenAI({
         apiKey: input.apiKey,
-        baseURL: "https://openrouter.ai/api/v1",
+        baseURL: OPENROUTER_BASE_URL,
+        defaultHeaders: openRouterAttributionHeaders(OPENROUTER_BASE_URL),
         timeout: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxRetries: 0,
     });
