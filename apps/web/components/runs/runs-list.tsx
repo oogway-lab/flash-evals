@@ -199,6 +199,7 @@ export function RunsList({ runs }: { runs: IRunListRow[] }) {
                                     <RunLinkCell
                                         id={r.id}
                                         noteTitle={r.noteTitle}
+                                        workflow={r.workflow}
                                     />
                                 </TableCell>
                                 <TableCell>{r.datasetName}</TableCell>
@@ -224,7 +225,9 @@ export function RunsList({ runs }: { runs: IRunListRow[] }) {
                                     <RelativeTime value={r.createdAt} />
                                 </TableCell>
                                 <TableCell className="text-right">
-                                    <RunRowActions run={r} />
+                                    {r.workflow ? null : (
+                                        <RunRowActions run={r} />
+                                    )}
                                 </TableCell>
                             </TableRow>
                         ))}

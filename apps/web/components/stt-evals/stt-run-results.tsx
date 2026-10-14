@@ -55,13 +55,18 @@ import {
     transcriptSegments,
 } from "./run-artifacts";
 
+/** Multi-modal pipelines start at input; legacy STT evaluations start at STT. */
+function branchRoots(detail: IWorkflowRunDetailResponse) {
+    const snapshot = detail.workflowRun.workflowSnapshot;
+    const type = snapshot.kind === "stt" ? "stt" : "input";
+    return snapshot.nodes.filter((node) => node.nodeType === type);
+}
+
 function rootByNode(detail: IWorkflowRunDetailResponse): Map<string, string> {
     const nodes = detail.workflowRun.workflowSnapshot.nodes;
     const keyById = new Map(nodes.map((node) => [node.id, node.nodeKey]));
     const roots = new Map(
-        nodes
-            .filter((node) => node.nodeType === "stt")
-            .map((node) => [node.nodeKey, node.nodeKey]),
+        branchRoots(detail).map((node) => [node.nodeKey, node.nodeKey]),
     );
     for (let pass = 0; pass < nodes.length; pass += 1)
         for (const edge of detail.edges) {
@@ -158,7 +163,7 @@ export function SttRunResults({
     };
     const snapshotNodes = detail.workflowRun.workflowSnapshot.nodes;
     const ownership = rootByNode(detail);
-    const roots = snapshotNodes.filter((node) => node.nodeType === "stt");
+    const roots = branchRoots(detail);
     const configs: Array<Record<string, unknown>> = roots.map((node) =>
         node.nodeConfig?.type === "stt"
             ? {

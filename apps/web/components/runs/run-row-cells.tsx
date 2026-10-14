@@ -1,5 +1,6 @@
 import Link from "next/link";
-import type { IRunProgress } from "@mosaic/api-contract";
+import type { Route } from "next";
+import type { IDashboardRun, IRunProgress } from "@mosaic/api-contract";
 import { shortId } from "@/lib/format";
 import { runNoteTitle } from "@/components/runs/run-title";
 
@@ -10,15 +11,25 @@ import { runNoteTitle } from "@/components/runs/run-title";
 export function RunLinkCell({
     id,
     noteTitle,
+    workflow,
 }: {
     id: string;
     noteTitle?: string;
+    workflow?: IDashboardRun["workflow"];
 }) {
     const title = runNoteTitle(noteTitle);
+    const bases = {
+        multi: "/multiworkflow",
+        stt: "/stt-evals",
+        prompt: "/workflows",
+    } as const;
+    const href = workflow
+        ? (`${bases[workflow.kind]}/${workflow.id}/runs/${id}` as Route)
+        : (`/runs/${id}` as Route);
     return (
         <div className="flex min-w-0 max-w-44 flex-col gap-1 sm:max-w-96">
             <Link
-                href={`/runs/${id}`}
+                href={href}
                 className={
                     title
                         ? "truncate rounded-sm text-label-14 text-on-surface hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"

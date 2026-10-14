@@ -16,6 +16,7 @@ import type {
     ISideMetrics,
     ReviewVerdict,
     RunStatus,
+    WorkflowKind,
 } from "@mosaic/api-contract";
 import {
     buildLeaderboardRows,
@@ -129,6 +130,8 @@ interface IRunNoteDbRow {
 }
 
 interface IRunListDbRow {
+    workflow_id?: string | null;
+    workflow_kind?: WorkflowKind | null;
     id: string;
     status: RunStatus;
     created_at: Date | string;
@@ -274,8 +277,19 @@ export async function listRunsPayload(
     teamId: string,
     projectId: string,
 ): Promise<IRunListRow[]> {
-    const rows = await runListRows(db, teamId, projectId);
+    const rows = await runListRows(db, teamId, projectId, undefined, true);
     return rows.map(runListPayloadRow);
+}
+
+/** Dashboard and UI lists share ordering and pipeline navigation metadata. */
+export async function listRecentRunsPayload(
+    db: IDb,
+    teamId: string,
+    projectId: string,
+    limit: number,
+): Promise<IRunListRow[]> {
+    const rows = await runListRows(db, teamId, projectId, { limit }, true);
+    return rows.slice(0, limit).map(runListPayloadRow);
 }
 
 export async function listRunSummariesPagePayload(
@@ -306,15 +320,17 @@ async function runListRows(
     teamId: string,
     projectId: string,
     page?: { limit: number; cursor?: { createdAt: string; id: string } },
+    includeWorkflows = false,
 ) {
     const result = await db.query<
         IRunListDbRow & { cursor_created_at?: string }
     >(
-        `select
+        `with listed_runs as (select
             r.id,
             r.status,
             r.created_at,
-            ${page ? `to_char(r.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_created_at,` : ""}
+            null::uuid as workflow_id,
+            null::text as workflow_kind,
             r.dataset_id,
             d.name as dataset_name,
             coalesce(
@@ -357,7 +373,32 @@ async function runListRows(
         where r.team_id = $1 and r.project_id = $2
           ${page ? "and ($3::timestamptz is null or (r.created_at,r.id)<($3::timestamptz,$4::uuid))" : ""}
         group by r.id, r.status, r.created_at, r.dataset_id, d.name
-        order by r.created_at desc,r.id desc
+        ${
+            includeWorkflows
+                ? `union all
+        select r.id, r.status, r.created_at, r.workflow_id,
+            coalesce(r.workflow_snapshot->>'kind', w.kind) as workflow_kind,
+            r.dataset_id, d.name as dataset_name,
+            coalesce((select array_agg(distinct model_id order by model_id) filter(where model_id is not null)
+                from (select coalesce(n->'resolvedLlmExecution'->'route'->>'modelId', n->>'modelId', n->'nodeConfig'->'sttConfig'->>'modelId') as model_id
+                    from jsonb_array_elements(coalesce(r.workflow_snapshot->'nodes', '[]'::jsonb)) n) models), array[]::text[]) as models,
+            count(c.id)::int as total,
+            count(c.id) filter(where c.status in ('succeeded','cached'))::int as done,
+            count(c.id) filter(where c.status='failed')::int as failed,
+            count(c.id) filter(where c.status in ('pending','running'))::int as pending,
+            coalesce(r.workflow_snapshot->>'name', w.name) as note_title,
+            '[]'::json as model_scores
+        from workflow_runs r
+        inner join datasets d on d.id=r.dataset_id
+        inner join prompt_workflows w on w.id=r.workflow_id
+        left join workflow_run_cells c on c.workflow_run_id=r.id
+        where r.team_id=$1 and r.project_id=$2
+            ${page ? "and ($3::timestamptz is null or (r.created_at,r.id)<($3::timestamptz,$4::uuid))" : ""}
+        group by r.id, d.name, w.kind, w.name`
+                : ""
+        })
+        select listed_runs.* ${page ? `, to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_created_at` : ""}
+        from listed_runs order by created_at desc,id desc
         ${page ? "limit $5" : ""}`,
         page
             ? [
@@ -398,6 +439,9 @@ function runListPayloadRow(row: IRunListDbRow): IRunListRow {
             pending: countValue(row.pending),
         },
         ...(row.note_title ? { noteTitle: row.note_title } : {}),
+        ...(row.workflow_id && row.workflow_kind
+            ? { workflow: { id: row.workflow_id, kind: row.workflow_kind } }
+            : {}),
         ...(best ? { best } : {}),
     };
 }

@@ -66,7 +66,8 @@ export function isSetupComplete(stats: IDashboardStats) {
 function datasetDetail(stats: IDashboardStats): string | undefined {
     if (stats.datasetCount === 0) return undefined;
     if (!stats.hasDatasetWithItems) return "None have items yet";
-    if (!stats.hasDatasetWithSchema) return "None have a labeling schema";
+    if (!stats.hasDatasetWithSchema && !stats.hasGoldenLabels)
+        return "None have a labeling schema";
     return undefined;
 }
 
@@ -244,6 +245,7 @@ function RecentRuns({ recentRuns }: { recentRuns: RecentRun[] }) {
                                     <RunLinkCell
                                         id={r.id}
                                         noteTitle={r.noteTitle}
+                                        workflow={r.workflow}
                                     />
                                 </TableCell>
                                 <TableCell>{r.datasetName}</TableCell>

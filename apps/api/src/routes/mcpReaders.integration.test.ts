@@ -9,6 +9,7 @@ import {
 } from "./datasets.js";
 import {
     listRunCellsPagePayload,
+    listRunsPayload,
     listRunSummariesPagePayload,
     runSummaryPayload,
 } from "./runs.js";
@@ -18,6 +19,8 @@ import {
     listWorkflowSummariesPagePayload,
     workflowRunSummaryPayload,
 } from "./workflows.js";
+
+import { dashboardPayload } from "./dashboard.js";
 
 // Opt in with a disposable migrated database. The large fixture is synthetic.
 const databaseUrl = process.env.MOSAIC_TEST_DATABASE_URL;
@@ -279,6 +282,58 @@ describe.skipIf(!databaseUrl)("bounded MCP readers (PostgreSQL)", () => {
             await pool.query("delete from teams where id=$1", [teamId]);
         } finally {
             await pool.end();
+        }
+    });
+
+    it("includes pipeline runs in dashboard totals, recent runs and the Runs list", async () => {
+        const runs = await listRunsPayload(db, teamId, projectId);
+        expect(runs).toHaveLength(listFixtureCount * 2);
+        const pipeline = runs.find((run) => run.id === workflowRunId);
+        expect(pipeline?.workflow).toEqual({ id: workflowId, kind: "prompt" });
+        expect(pipeline?.progress).toMatchObject({
+            total: totalItemCount,
+            done: totalItemCount,
+            failed: 0,
+        });
+        const dashboard = await dashboardPayload(db, teamId, projectId, 3);
+        expect(dashboard.stats.runCount).toBe(listFixtureCount * 2);
+        expect(dashboard.recentRuns).toHaveLength(3);
+        expect(
+            dashboard.recentRuns.some(
+                (run) =>
+                    run.id === workflowRunId && run.workflow?.id === workflowId,
+            ),
+        ).toBe(true);
+        const otherProject = await dashboardPayload(db, teamId, randomUUID());
+        expect(otherProject.stats.runCount).toBe(0);
+        expect(otherProject.recentRuns).toEqual([]);
+    });
+
+    it("recognizes golden labels independently of a labeling schema", async () => {
+        const client = await pool.connect();
+        try {
+            await client.query("begin");
+            await client.query(
+                "update datasets set purpose='golden' where id=$1",
+                [datasetId],
+            );
+            await client.query(
+                'insert into labels(dataset_item_id,label_json) select id,\'{"category":"World"}\'::jsonb from dataset_items where dataset_id=$1 limit 1',
+                [datasetId],
+            );
+            const scopedDb: IDb = {
+                query: (text, values) => client.query(text, values),
+            };
+            const { stats } = await dashboardPayload(
+                scopedDb,
+                teamId,
+                projectId,
+            );
+            expect(stats.hasDatasetWithSchema).toBe(false);
+            expect(stats.hasGoldenLabels).toBe(true);
+        } finally {
+            await client.query("rollback");
+            client.release();
         }
     });
 

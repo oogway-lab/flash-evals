@@ -77,6 +77,7 @@ export interface IDashboardStats {
     runCount: number;
     runningCount: number;
     hasDatasetWithSchema: boolean;
+    hasGoldenLabels?: boolean;
     hasDatasetWithItems: boolean;
     hasPrompt: boolean;
 }
@@ -250,20 +251,13 @@ export interface IDashboardRun {
     datasetName: string;
     models: string[];
     progress: IRunProgress;
+    /** Captured workflow identity for navigation to pipeline results. */
+    workflow?: { id: string; kind: WorkflowKind };
     /** First line of the run note, used as the run's name. */
     noteTitle?: string;
 }
 
-export interface IRunListRow {
-    id: string;
-    status: RunStatus;
-    createdAt: string;
-    datasetId: string;
-    datasetName: string;
-    models: string[];
-    progress: IRunProgress;
-    /** First line of the run note, used as the run's name. */
-    noteTitle?: string;
+export interface IRunListRow extends IDashboardRun {
     /** Top model by judge score (transcript score for STT runs), if scored. */
     best?: IRunBestModel;
 }
