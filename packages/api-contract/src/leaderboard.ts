@@ -234,6 +234,7 @@ function sum(values: number[]): number {
 
 export interface IBestModelCandidate {
     modelId: string;
+    avgFieldScore?: number;
     avgJudgeScore: number | undefined;
     avgTranscriptScore: number | undefined;
 }
@@ -242,7 +243,7 @@ export interface IRunBestModel {
     modelId: string;
     score: number;
     /** Which score ranked the models. */
-    metric: "judge" | "transcript";
+    metric: "judge" | "transcript" | "field";
     /** Models that have a score for that metric. */
     scored: number;
     /** All models considered, scored or not; `scored < total` means a partial winner. */
@@ -253,18 +254,24 @@ export interface IRunBestModel {
 
 /**
  * The top model by judge score, or by transcript score when no model has a
- * judge score (STT runs). Ties are compared as displayed (two decimals), the
- * same rule the leaderboard uses to decide where to put its "Best" marker.
+ * judge score (STT runs), then golden field score. Ties are compared as displayed
+ * (two decimals), the same rule the leaderboard uses to decide where to put its "Best" marker.
  */
 export function pickBestModel(
     candidates: readonly IBestModelCandidate[],
 ): IRunBestModel | undefined {
     const metric = candidates.some((c) => c.avgJudgeScore !== undefined)
         ? "judge"
-        : "transcript";
+        : candidates.some((c) => c.avgTranscriptScore !== undefined)
+          ? "transcript"
+          : "field";
     const scored = candidates.flatMap((c) => {
         const score =
-            metric === "judge" ? c.avgJudgeScore : c.avgTranscriptScore;
+            metric === "judge"
+                ? c.avgJudgeScore
+                : metric === "transcript"
+                  ? c.avgTranscriptScore
+                  : c.avgFieldScore;
         return score === undefined ? [] : [{ modelId: c.modelId, score }];
     });
     if (scored.length === 0) return undefined;

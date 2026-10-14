@@ -1,3 +1,7 @@
+import {
+    startModelCatalogWorker,
+    stopModelCatalogWorker,
+} from "../server/jobs/modelCatalogQueue";
 import { closeDatabasePool } from "../server/db/client";
 import { startRunWorker, stopRunWorker } from "../server/jobs/runQueue";
 import {
@@ -35,6 +39,8 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     await startWorkflowRunWorker();
     if (shuttingDown) return;
+    await startModelCatalogWorker();
+    if (shuttingDown) return;
     logWorkerEvent("info", "worker.ready", { readiness: "ready" });
 }
 
@@ -60,6 +66,7 @@ function shutdown(signal: string): void {
 
     void (async () => {
         const stopResults = await Promise.allSettled([
+            stopModelCatalogWorker(drainTimeoutMs),
             stopRunWorker(drainTimeoutMs),
             stopWorkflowRunWorker(drainTimeoutMs),
         ]);

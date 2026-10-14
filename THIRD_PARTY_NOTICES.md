@@ -4,6 +4,16 @@ Flash Evals uses third-party packages and data under their own licenses. This
 file records attributions for assets or data that may be included in a build.
 Other installed dependencies retain their notices in their respective packages.
 
+## models.dev model metadata
+
+The bundled model catalog includes normalized metadata from
+[models.dev](https://github.com/anomalyco/models.dev), copyright (c) 2025
+models.dev, under the MIT License. The complete license text is in
+[`third-party-licenses/models.dev-MIT.txt`](third-party-licenses/models.dev-MIT.txt).
+The snapshot also incorporates public provider metadata from
+[OpenRouter](https://openrouter.ai/api/v1/models) and
+[Vercel AI Gateway](https://ai-gateway.vercel.sh/v1/models).
+
 ## Geist fonts
 
 The `geist` npm package (version 1.7.2) supplies the Geist Sans and Geist Mono

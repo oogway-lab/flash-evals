@@ -117,6 +117,17 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
                     ? ""
                     : JSON.stringify(sdkParsed)));
 
+        const reportedCost =
+            response.usage && "cost" in response.usage
+                ? response.usage.cost
+                : undefined;
+        const cost =
+            this.transport === "openrouter" &&
+            typeof reportedCost === "number" &&
+            Number.isFinite(reportedCost) &&
+            reportedCost >= 0
+                ? { usd: reportedCost, source: "provider_reported" as const }
+                : undefined;
         const usage: UsageData = {
             promptTokens: response.usage?.prompt_tokens,
             completionTokens: response.usage?.completion_tokens,
@@ -157,6 +168,7 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
             parsed: parsedResult.parsed,
             schemaViolation: parsedResult.schemaViolation,
             usage,
+            cost,
             latencyMs,
             actualRoute,
             cache,

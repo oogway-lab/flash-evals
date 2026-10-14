@@ -80,13 +80,13 @@ describe("pricingFor", () => {
         expect(pricingFor("nonexistent-model")).toBeUndefined();
     });
 
-    it("returns undefined for known Gateway models without static pricing", () => {
-        expect(pricingFor("anthropic/claude-sonnet-4.5")).toBeUndefined();
+    it("uses catalog pricing for known Gateway models", () => {
+        expect(pricingFor("anthropic/claude-sonnet-4.5")).toBeDefined();
     });
 
-    it("returns undefined for removed legacy models", () => {
-        expect(pricingFor("gpt-5")).toBeUndefined();
-        expect(pricingFor("o3")).toBeUndefined();
+    it("prices legacy models that providers still list", () => {
+        expect(pricingFor("gpt-5")).toBeDefined();
+        expect(pricingFor("o3")).toBeDefined();
     });
 
     it("returns undefined for fine-tune ids (unchanged behavior — cost unavailable)", () => {
@@ -104,7 +104,7 @@ describe("pricingFor", () => {
         mockProviderModeFromEnv.mockReturnValue("gateway");
         mockListAvailableModelMetadata.mockResolvedValue([
             {
-                id: "anthropic/claude-sonnet-4.5",
+                id: "fixture/unknown-priced-model",
                 pricing: {
                     promptPricePerToken: 3 / M,
                     completionPricePerToken: 15 / M,
@@ -113,7 +113,7 @@ describe("pricingFor", () => {
         ]);
 
         await expect(
-            resolvePricingFor("anthropic/claude-sonnet-4.5", {
+            resolvePricingFor("fixture/unknown-priced-model", {
                 gateway: "vck-test-live",
             }),
         ).resolves.toMatchObject({
@@ -124,7 +124,7 @@ describe("pricingFor", () => {
 
     it("keeps unresolved models unavailable outside Gateway mode", async () => {
         await expect(
-            resolvePricingFor("anthropic/claude-sonnet-4.5", {
+            resolvePricingFor("fixture/unknown-priced-model", {
                 gateway: "vck-test-unused",
             }),
         ).resolves.toBeUndefined();

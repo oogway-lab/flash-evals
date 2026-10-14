@@ -4,6 +4,7 @@ import {
     providerModeFromEnv,
     type ApiKeys,
     type IModelPricing,
+    type EvalProviderTransport,
 } from "@mosaic/llm-core";
 import { registryEntryFor } from "./modelRegistry";
 
@@ -25,10 +26,15 @@ export function pricingFor(modelId: string): ModelPricing | undefined {
 export async function resolvePricingFor(
     modelId: string,
     apiKeys: ApiKeys,
+    transport?: EvalProviderTransport,
 ): Promise<ModelPricing | undefined> {
-    const staticPricing = pricingFor(modelId);
+    const staticPricing = transport
+        ? (registryEntryFor(modelId)?.pricingByTransport?.[transport] ??
+          pricingFor(modelId))
+        : pricingFor(modelId);
     if (staticPricing) return staticPricing;
-    if (providerModeFromEnv() !== "gateway" || !apiKeys.gateway) return undefined;
+    if (providerModeFromEnv() !== "gateway" || !apiKeys.gateway)
+        return undefined;
     const livePricing = await gatewayPricingFor(apiKeys);
     return livePricing.get(gatewayModelIdFor(modelId) ?? modelId);
 }

@@ -506,12 +506,17 @@ describe("workflow LLM live route discovery", () => {
         expect(candidates.candidates).toEqual([
             expect.objectContaining({
                 modelId: "zai/glm-5.1",
-                label: "Glm 5.1",
+                label: "GLM 5.1",
                 modelProvider: "zai",
-                modelProviderLabel: "Zai",
+                modelProviderLabel: "zai",
                 support: expect.objectContaining({
-                    supportedGenerationControls: ["maxOutputTokens"],
-                    supportsStructuredOutput: false,
+                    supportedGenerationControls: [
+                        "maxOutputTokens",
+                        "temperature",
+                        "topP",
+                        "seed",
+                    ],
+                    supportsStructuredOutput: true,
                 }),
             }),
         ]);

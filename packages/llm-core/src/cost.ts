@@ -1,4 +1,4 @@
-import type { UsageData } from "./types.js";
+import type { UsageData, CompletionResult, CostSource } from "./types.js";
 
 export interface ICostPricingTier {
     minTokens: number;
@@ -130,4 +130,21 @@ export function formatCost(costUsd: number | null | undefined): string {
     if (costUsd < 0.01) return `${(costUsd * 100).toFixed(2)}¢`;
     if (costUsd < 1.0) return `$${costUsd.toFixed(4)}`;
     return `$${costUsd.toFixed(2)}`;
+}
+
+/** Resolve known charges before estimating from tokens. The legacy cell enum uses computed for known costs, including provider charges. */
+export function completionCostFields(
+    completion: Pick<CompletionResult, "usage" | "cost">,
+    pricing: ICostPricing | undefined,
+): { costUsd?: number; costSource: CostSource } {
+    const reported = completion.cost?.usd;
+    const costUsd =
+        reported !== undefined && Number.isFinite(reported) && reported >= 0
+            ? reported
+            : pricing
+              ? computeCostFromUsageWithPricing(completion.usage, pricing)
+              : undefined;
+    return costUsd !== undefined && Number.isFinite(costUsd) && costUsd >= 0
+        ? { costUsd, costSource: "computed" }
+        : { costSource: "unavailable" };
 }

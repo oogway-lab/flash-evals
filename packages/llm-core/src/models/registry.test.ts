@@ -9,6 +9,7 @@ describe("transportsForModel", () => {
     it("supports Gemini 3.8 Flash image and structured output on OpenRouter", () => {
         expect(transportsForModel("google/gemini-3.8-flash")).toEqual({
             openrouter: "google/gemini-3.8-flash",
+            gateway: "google/gemini-3.8-flash",
         });
         expect(registryEntryFor("google/gemini-3.8-flash")).toMatchObject({
             vision: true,
@@ -35,6 +36,7 @@ describe("transportsForModel", () => {
     it("registers Gemini 3.1 Flash Lite for Gateway workflows", () => {
         expect(transportsForModel("google/gemini-3.1-flash-lite")).toEqual({
             gateway: "google/gemini-3.1-flash-lite",
+            openrouter: "google/gemini-3.1-flash-lite",
             bifrost: "google/gemini-3.1-flash-lite",
         });
     });

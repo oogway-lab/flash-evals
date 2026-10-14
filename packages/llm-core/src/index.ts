@@ -1,7 +1,10 @@
+export * from "./models/catalogStore.js";
+export * from "./models/catalog.js";
 export * from "./types.js";
 export * from "./cost.js";
 export {
     MODEL_REGISTRY,
+    installModelCatalog,
     gatewayModelIdFor,
     transportsForModel,
     transportCapabilityForModel,

@@ -382,3 +382,22 @@ describe("runPromptTest", () => {
         }
     });
 });
+
+it("shows provider-reported OpenRouter cost without a catalog rate", async () => {
+    providerComplete(async () =>
+        completion('{"dish_name":"pasta","calories_estimate":520}', {
+            cost: { usd: 0.000042, source: "provider_reported" },
+        }),
+    );
+    const result = await runPromptTest({
+        prompt,
+        schema,
+        targetModelId: "google/gemini-2.5-flash",
+        samples: [{ name: "pasta", inputText: "pasta" }],
+        apiKeys: { openrouter: "test" },
+    });
+    expect(result.results[0]).toMatchObject({
+        costUsd: 0.000042,
+        costSource: "computed",
+    });
+});

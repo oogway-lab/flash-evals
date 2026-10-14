@@ -10,7 +10,8 @@
         "noFallthroughCasesInSwitch": true,
         "esModuleInterop": true,
         "skipLibCheck": true,
-        "noEmit": true
+        "noEmit": true,
+        "resolveJsonModule": true
     },
     "include": ["src"]
 }

@@ -306,6 +306,9 @@ export async function executeRun(runId: string): Promise<void> {
                     label,
                     reference: referenceByItemId.get(item.id),
                     fieldConfigs,
+                    defaultFieldMatcher: isAudioItem(item)
+                        ? undefined
+                        : "exact",
                     judge,
                     judgePrompt,
                     runJudgeTransport: run.configSnapshot.judgeTransport,
@@ -481,7 +484,11 @@ async function generateCellOutput({
         ? [await loadImage(item.storageKey, item.mimeType)]
         : [];
     const resolvedResponseSchema = await responseSchemaForRunModel(runModel);
-    const pricing = await resolvePricingFor(runModel.modelId, apiKeys);
+    const pricing = await resolvePricingFor(
+        runModel.modelId,
+        apiKeys,
+        transport,
+    );
     const exec = await executeCell(
         runModel.modelId,
         {
@@ -865,6 +872,7 @@ interface ScoreArgs {
     label: LabelJson | undefined;
     reference: unknown;
     fieldConfigs: IPipelineFieldConfig[];
+    defaultFieldMatcher?: "exact";
     judge?: typeof judgeConfigs.$inferSelect;
     judgePrompt?: IJudgePromptOption;
     runJudgeTransport?: ProviderTransport;
@@ -892,6 +900,7 @@ async function scoreCell(args: ScoreArgs): Promise<void> {
         output: args.outputJson,
         label: args.label,
         fieldConfigs: args.fieldConfigs,
+        defaultFieldMatcher: args.defaultFieldMatcher,
         inputText: args.inputText,
         hasImage: args.hasImage,
         reference: args.reference,

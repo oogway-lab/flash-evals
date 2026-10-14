@@ -1,3 +1,4 @@
+import { hasGoldenLabel } from "@mosaic/api-contract";
 import { randomUUID } from "node:crypto";
 import { createWriteStream, promises as fs } from "node:fs";
 import path from "node:path";
@@ -217,7 +218,7 @@ export async function listDatasetsPayload(
             d.created_at,
             d.archived_at,
             count(di.id)::int as item_count,
-            count(l.id)::int as labeled_item_count
+            count(l.id) filter (where l.label_json <> '{}'::jsonb)::int as labeled_item_count
         from datasets d
         left join dataset_items di on di.dataset_id = d.id
         left join labels l on l.dataset_item_id = di.id
@@ -250,7 +251,7 @@ export async function listDatasetSummariesPagePayload(
     const result = await db.query<IDatasetRow & { cursor_created_at: string }>(
         `select d.id,d.name,d.purpose,d.modality,d.created_at,d.archived_at,
                 count(di.id)::int as item_count,
-                count(l.id)::int as labeled_item_count,
+                count(l.id) filter (where l.label_json <> '{}'::jsonb)::int as labeled_item_count,
                 to_char(d.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_created_at
          from datasets d
          left join dataset_items di on di.dataset_id=d.id
@@ -363,7 +364,7 @@ export async function datasetDetailPayload(
     );
     const labels = itemIds.map((itemId) => labelByItemId.get(itemId));
     const itemCount = itemsResult.rows.length;
-    const labeledItemCount = labels.filter(Boolean).length;
+    const labeledItemCount = labels.filter(hasGoldenLabel).length;
     const labelMode = resolveLabelMode({
         purpose: dataset.purpose,
         pipelineId: dataset.pipeline_id,
@@ -428,7 +429,7 @@ export async function datasetSummaryPayload(
         `select d.id,d.team_id,d.name,d.purpose,d.modality,d.pipeline_id,
                 d.description,d.archived_at,
                 count(i.id)::int as item_count,
-                count(l.dataset_item_id)::int as labeled_item_count,
+                count(l.dataset_item_id) filter (where l.label_json <> '{}'::jsonb)::int as labeled_item_count,
                 exists(select 1 from dataset_schemas s where s.dataset_id=d.id) as has_legacy_schema
          from datasets d
          left join dataset_items i on i.dataset_id=d.id
@@ -519,7 +520,7 @@ export async function listDatasetItemsPagePayload(
          left join labels l on l.dataset_item_id=i.id
          where d.id=$1 and d.team_id=$2 and d.project_id=$3
            and ($4::item_type is null or i.type=$4::item_type)
-           and ($5::boolean is null or (l.dataset_item_id is not null)=$5)
+           and ($5::boolean is null or coalesce(l.label_json <> '{}'::jsonb, false)=$5)
            and ($6::timestamptz is null or (i.created_at,i.id)>($6::timestamptz,$7::uuid))
          order by i.created_at asc,i.id asc
          limit $8`,
@@ -743,7 +744,7 @@ export async function createDatasetItemPayload(
             ],
         );
         if (!item.rows[0]) throw new ApiNotFoundError("Dataset not found");
-        if (input.label) {
+        if (hasGoldenLabel(input.label)) {
             await db.query(
                 `insert into labels (dataset_item_id, label_json)
                 values ($1, $2)
@@ -1572,7 +1573,7 @@ async function answerImportContext(
         has_label: boolean;
     }>(
         `select di.id, di.input_text, di.source_name,
-            exists(select 1 from labels l where l.dataset_item_id = di.id) as has_label
+            exists(select 1 from labels l where l.dataset_item_id = di.id and l.label_json <> '{}'::jsonb) as has_label
         from dataset_items di
         where di.dataset_id = $1
         order by di.created_at asc`,

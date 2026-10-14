@@ -1,3 +1,9 @@
+import bundledCatalogs from "./catalog.snapshot.json" with { type: "json" };
+import {
+    mergeModelCatalogs,
+    readCatalogSnapshot,
+    type IModelCatalogSnapshot,
+} from "./catalog.js";
 import type { ReasoningEffort } from "../types.js";
 
 export type KnownModelProvider =
@@ -63,6 +69,7 @@ export interface IModelRegistryEntry {
     transports: ModelTransports;
     reasoningEffort?: IReasoningEffortCapability;
     pricing?: IModelPricing;
+    pricingByTransport?: Partial<Record<EvalProviderTransport, IModelPricing>>;
 }
 
 const GPT_REASONING_EFFORTS = [
@@ -103,8 +110,7 @@ const OPENROUTER_MODEL_IDS: Readonly<Record<string, string>> = {
 // (`promptPerM` / `completionPerM`). These are published list prices as of
 // 2026-07-08, the last time they were updated; source:
 // https://openai.com/api/pricing/
-// Non-OpenAI entries carry no static price; when Vercel AI Gateway exposes
-// token pricing, it arrives through live model metadata instead.
+// Public catalog snapshots override these historical fallback prices.
 function price(promptPerM: number, completionPerM: number): IModelPricing {
     return {
         promptPricePerToken: promptPerM / M,
@@ -184,7 +190,7 @@ function gatewayEntry(input: {
     };
 }
 
-export const MODEL_REGISTRY: readonly IModelRegistryEntry[] = [
+const STATIC_MODEL_REGISTRY: readonly IModelRegistryEntry[] = [
     {
         id: "google/gemini-3.8-flash",
         gatewayModelId: "google/gemini-3.8-flash",
@@ -635,15 +641,53 @@ export const MODEL_REGISTRY: readonly IModelRegistryEntry[] = [
     }),
 ];
 
-const BY_ID_LENGTH_DESC = [...MODEL_REGISTRY].sort(
+const catalogSnapshots = new Map(
+    bundledCatalogs.flatMap((value) => {
+        const snapshot = readCatalogSnapshot(value);
+        return snapshot ? [[snapshot.source, snapshot] as const] : [];
+    }),
+);
+export let MODEL_REGISTRY: IModelRegistryEntry[] = mergeModelCatalogs(
+    STATIC_MODEL_REGISTRY,
+    [...catalogSnapshots.values()],
+);
+let BY_ID_LENGTH_DESC = [...MODEL_REGISTRY].sort(
     (a, b) => b.id.length - a.id.length,
 );
+
+/** Install public metadata only; account-specific availability stays in provider discovery. */
+export function installModelCatalog(snapshot: IModelCatalogSnapshot): void {
+    const current = catalogSnapshots.get(snapshot.source);
+    if (
+        current &&
+        Date.parse(current.fetchedAt) > Date.parse(snapshot.fetchedAt)
+    )
+        return;
+    catalogSnapshots.set(snapshot.source, snapshot);
+    MODEL_REGISTRY = mergeModelCatalogs(
+        STATIC_MODEL_REGISTRY,
+        [...catalogSnapshots.values()].sort((a, b) =>
+            a.source === "models.dev"
+                ? -1
+                : b.source === "models.dev"
+                  ? 1
+                  : a.source.localeCompare(b.source),
+        ),
+    );
+    BY_ID_LENGTH_DESC = [...MODEL_REGISTRY].sort(
+        (a, b) => b.id.length - a.id.length,
+    );
+}
 
 export function registryEntryFor(
     modelId: string,
 ): IModelRegistryEntry | undefined {
     return BY_ID_LENGTH_DESC.find((entry) => {
-        if (modelId === entry.id || modelId === entry.gatewayModelId)
+        if (
+            modelId === entry.id ||
+            modelId === entry.gatewayModelId ||
+            Object.values(entry.transports).includes(modelId)
+        )
             return true;
         if (entry.provider !== "openai" && entry.id.includes("/")) {
             return false;
@@ -673,7 +717,8 @@ export function transportCapabilityForModel(
 
     const supportedGenerationControls: ModelGenerationControl[] = [
         "maxOutputTokens",
-        ...(entry.reasoning
+        // Toggle/budget reasoning models do not expose an effort selector.
+        ...(entry.reasoningEffort
             ? (["reasoningEffort"] as const)
             : (["temperature", "topP", "seed"] as const)),
     ];

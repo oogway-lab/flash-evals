@@ -37,14 +37,16 @@ describe("modelRegistry", () => {
             (e) => e.id,
         );
         expect(reasoning.sort()).toEqual(
-            [
-                "google/gemini-3.8-flash",
-                "gpt-5.4",
-                "gpt-5.4-mini",
-                "gpt-5.4-nano",
-                "gpt-5.5",
-                "gpt-6-luna",
-            ].sort(),
+            expect.arrayContaining(
+                [
+                    "google/gemini-3.8-flash",
+                    "gpt-5.4",
+                    "gpt-5.4-mini",
+                    "gpt-5.4-nano",
+                    "gpt-5.5",
+                    "gpt-6-luna",
+                ].sort(),
+            ),
         );
     });
 
@@ -69,10 +71,10 @@ describe("modelRegistry", () => {
         });
     });
 
-    it("gives every reasoning model a non-empty effort list with a valid default", () => {
+    it("validates declared effort capabilities without inventing them for toggle-only models", () => {
         const openAiEffortLevels = new Set(REASONING_EFFORT_LEVELS);
 
-        for (const entry of MODEL_REGISTRY.filter((e) => e.reasoning)) {
+        for (const entry of MODEL_REGISTRY.filter((e) => e.reasoningEffort)) {
             expect(entry.reasoningEffort).toBeDefined();
             expect(
                 entry.reasoningEffort?.supportedLevels.length,
@@ -99,14 +101,18 @@ describe("modelRegistry", () => {
         ).toBeUndefined();
     });
 
-    it("gives every priced entry positive prompt and completion pricing", () => {
+    it("gives every priced entry non-negative prompt and completion pricing", () => {
         for (const entry of MODEL_REGISTRY.filter((e) => e.pricing)) {
-            expect(entry.pricing!.promptPricePerToken).toBeGreaterThan(0);
-            expect(entry.pricing!.completionPricePerToken).toBeGreaterThan(0);
+            expect(entry.pricing!.promptPricePerToken).toBeGreaterThanOrEqual(
+                0,
+            );
+            expect(
+                entry.pricing!.completionPricePerToken,
+            ).toBeGreaterThanOrEqual(0);
         }
     });
 
-    it("includes curated Gateway-only models with unavailable pricing", () => {
+    it("enriches Gateway models with provider catalog pricing", () => {
         const claude = registryEntryFor("anthropic/claude-sonnet-4.5");
         expect(claude).toMatchObject({
             provider: "anthropic",
@@ -116,7 +122,7 @@ describe("modelRegistry", () => {
             structuredOutput: true,
             judgeSuitable: true,
         });
-        expect(claude?.pricing).toBeUndefined();
+        expect(claude?.pricingByTransport?.gateway).toBeDefined();
     });
 
     it("includes additional Gateway families for broader model comparisons", () => {
@@ -165,8 +171,6 @@ describe("modelRegistry", () => {
         expect(registryEntryFor("meta/llama-4-maverick")).toMatchObject({
             providerLabel: "Llama",
             supportsGateway: true,
-            structuredOutput: true,
-            judgeSuitable: true,
         });
         expect(registryEntryFor("alibaba/qwen3-max")).toMatchObject({
             providerLabel: "Qwen",
@@ -188,17 +192,11 @@ describe("modelRegistry", () => {
         });
     });
 
-    it("excludes DeepSeek and GLM models from curated Gateway options", () => {
-        expect(registryEntryFor("deepseek/deepseek-v3.2")).toBeUndefined();
-        expect(registryEntryFor("deepseek/deepseek-r1")).toBeUndefined();
-        expect(registryEntryFor("zai/glm-4.7")).toBeUndefined();
-        expect(registryEntryFor("zai/glm-5.1")).toBeUndefined();
-    });
-
-    it("returns undefined for removed legacy ids", () => {
-        expect(registryEntryFor("o3")).toBeUndefined();
-        expect(registryEntryFor("gpt-5")).toBeUndefined();
-        expect(registryEntryFor("gpt-5-mini")).toBeUndefined();
+    it("includes catalog-listed families and legacy models still served by providers", () => {
+        expect(
+            registryEntryFor("deepseek/deepseek-v3.2")?.transports.gateway,
+        ).toBeDefined();
+        expect(registryEntryFor("o3")).toBeDefined();
     });
 
     it("declares an explicit boolean vision capability on every entry", () => {
@@ -248,8 +246,10 @@ describe("modelRegistry", () => {
             expect(registryEntryFor("gpt-4o-mini")?.id).toBe("gpt-4o-mini");
         });
 
-        it("matches dated snapshot variants via the prefix rule", () => {
-            expect(registryEntryFor("gpt-4o-2024-08-06")?.id).toBe("gpt-4o");
+        it("matches listed dated snapshots exactly and unlisted snapshots via the prefix rule", () => {
+            expect(registryEntryFor("gpt-4o-2024-08-06")?.id).toBe(
+                "gpt-4o-2024-08-06",
+            );
             expect(registryEntryFor("gpt-5.5-2026-04-23")?.id).toBe("gpt-5.5");
         });
 

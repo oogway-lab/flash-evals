@@ -11,7 +11,7 @@ function row(overrides: Partial<ILeaderboardRow>): ILeaderboardRow {
         modelId: "model-1",
         isReference: false,
         n: 10,
-        avgFieldScore: 0.5,
+        avgFieldScore: undefined,
         avgJudgeScore: 0.5,
         avgTranscriptScore: undefined,
         avgTranscriptJudgeScore: undefined,
@@ -328,4 +328,29 @@ describe("Leaderboard", () => {
             "Quality",
         );
     });
+});
+
+it("ranks and displays golden-label scores without a judge", () => {
+    const { container } = render(
+        <Leaderboard
+            rows={[
+                row({
+                    modelId: "wrong",
+                    runModelId: "wrong",
+                    avgJudgeScore: undefined,
+                    avgFieldScore: 0,
+                }),
+                row({
+                    modelId: "correct",
+                    runModelId: "correct",
+                    avgJudgeScore: undefined,
+                    avgFieldScore: 1,
+                }),
+            ]}
+        />,
+    );
+    expect(bodyModelOrder(container)[0]).toContain("correct");
+    expect(
+        container.querySelector('th[aria-sort="descending"]')?.textContent,
+    ).toContain("Golden score");
 });

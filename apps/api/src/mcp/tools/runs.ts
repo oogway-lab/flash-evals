@@ -87,7 +87,11 @@ export function registerRunTools(
                                 .object({
                                     modelId: z.string(),
                                     score: z.number(),
-                                    metric: z.enum(["judge", "transcript"]),
+                                    metric: z.enum([
+                                        "judge",
+                                        "transcript",
+                                        "field",
+                                    ]),
                                     scored: z.number().int(),
                                     total: z.number().int(),
                                     tiedCount: z.number().int(),

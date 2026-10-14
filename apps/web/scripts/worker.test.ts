@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+    startModelCatalogWorker: vi.fn(async (): Promise<void> => undefined),
+    stopModelCatalogWorker: vi.fn(async () => ({ remainingInFlight: 0 })),
     closeDatabasePool: vi.fn(async (): Promise<void> => undefined),
     startRunWorker: vi.fn(async (): Promise<void> => undefined),
     stopRunWorker: vi.fn(async () => ({ remainingInFlight: 0 })),
@@ -10,6 +12,10 @@ const mocks = vi.hoisted(() => ({
     safeWorkerError: vi.fn(() => ({ errorName: "Error" })),
 }));
 
+vi.mock("../server/jobs/modelCatalogQueue", () => ({
+    startModelCatalogWorker: mocks.startModelCatalogWorker,
+    stopModelCatalogWorker: mocks.stopModelCatalogWorker,
+}));
 vi.mock("../server/db/client", () => ({
     closeDatabasePool: mocks.closeDatabasePool,
 }));

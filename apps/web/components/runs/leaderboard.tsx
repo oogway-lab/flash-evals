@@ -34,6 +34,7 @@ import { sttVariantDisplay } from "./stt-variant-display";
 import { EmptyState } from "@/components/layout/empty-state";
 
 type SortKey =
+    | "avgFieldScore"
     | "avgJudgeScore"
     | "avgTranscriptScore"
     | "avgLatencyMs"
@@ -50,6 +51,7 @@ interface SortState {
 // For score columns higher is better, so the natural "best first" view is
 // descending; for cost/latency/tokens lower is better, so it is ascending.
 const DEFAULT_DIRECTION: Record<SortKey, SortDirection> = {
+    avgFieldScore: "desc",
     avgJudgeScore: "desc",
     avgTranscriptScore: "desc",
     avgLatencyMs: "asc",
@@ -58,6 +60,7 @@ const DEFAULT_DIRECTION: Record<SortKey, SortDirection> = {
 };
 
 const COLUMN_LABEL: Record<SortKey, string> = {
+    avgFieldScore: "Golden score",
     avgJudgeScore: "Judge score",
     avgTranscriptScore: "Transcript score",
     avgLatencyMs: "Avg latency",
@@ -66,6 +69,7 @@ const COLUMN_LABEL: Record<SortKey, string> = {
 };
 
 type BestKey =
+    | "avgFieldScore"
     | "avgJudgeScore"
     | "avgTranscriptScore"
     | "avgWer"
@@ -80,6 +84,7 @@ const BEST_RULES: Record<
     BestKey,
     { higherIsBetter: boolean; display: (value: number) => string }
 > = {
+    avgFieldScore: { higherIsBetter: true, display: (v) => fmtScore(v) },
     avgJudgeScore: { higherIsBetter: true, display: (v) => fmtScore(v) },
     avgTranscriptScore: { higherIsBetter: true, display: (v) => fmtScore(v) },
     avgWer: { higherIsBetter: false, display: (v) => fmtMetricRate(v) },
@@ -318,6 +323,7 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 
 interface ILeaderboardLayout {
     reference: ILeaderboardRow | undefined;
+    showField: boolean;
     showJudge: boolean;
     showTranscriptMetrics: boolean;
     showVsReference: boolean;
@@ -342,11 +348,12 @@ function leaderboardLayout(
     );
     return {
         reference,
+        showField: rows.some((r) => r.avgFieldScore !== undefined),
         showTranscriptMetrics,
-        // STT runs without a judge prompt would show a column of dashes; LLM
-        // runs keep the column since judge score is their only quality signal.
+        // Keep a pending quality column only when neither golden nor STT scores exist.
         showJudge:
-            !showTranscriptMetrics ||
+            (!showTranscriptMetrics &&
+                !rows.some((r) => r.avgFieldScore !== undefined)) ||
             rows.some((r) => r.avgJudgeScore !== undefined),
         showVsReference: reference !== undefined && rows.length > 1,
         best: findBest(rows, fmtCostValue),
@@ -358,9 +365,11 @@ function leaderboardLayout(
 function defaultSort(rows: ILeaderboardRow[]): SortState {
     const key: SortKey = rows.some((r) => r.avgJudgeScore !== undefined)
         ? "avgJudgeScore"
-        : rows.some((r) => r.avgTranscriptScore !== undefined)
-          ? "avgTranscriptScore"
-          : "totalCostUsd";
+        : rows.some((r) => r.avgFieldScore !== undefined)
+          ? "avgFieldScore"
+          : rows.some((r) => r.avgTranscriptScore !== undefined)
+            ? "avgTranscriptScore"
+            : "totalCostUsd";
     return { key, direction: DEFAULT_DIRECTION[key] };
 }
 
@@ -472,8 +481,10 @@ function LeaderboardHeader({
     sort: SortState;
     onSort: (key: SortKey) => void;
 }) {
-    const { showJudge, showTranscriptMetrics, showVsReference } = layout;
+    const { showField, showJudge, showTranscriptMetrics, showVsReference } =
+        layout;
     const qualitySpan =
+        (showField ? (showVsReference ? 2 : 1) : 0) +
         (showJudge ? (showVsReference ? 2 : 1) : 0) +
         (showTranscriptMetrics ? 4 : 0);
     return (
@@ -504,6 +515,22 @@ function LeaderboardHeader({
                 <TableHead className={cn(STICKY_CELL, "bg-muted")}>
                     Model
                 </TableHead>
+                {showField && (
+                    <>
+                        <SortableHead
+                            sortKey="avgFieldScore"
+                            sort={sort}
+                            onSort={onSort}
+                            title="Deterministic match against golden answer fields."
+                            className={GROUP_START}
+                        >
+                            Golden score
+                        </SortableHead>
+                        {showVsReference && (
+                            <TableHead align="numeric">vs reference</TableHead>
+                        )}
+                    </>
+                )}
                 {showJudge && (
                     <>
                         <SortableHead
@@ -615,14 +642,39 @@ function LeaderboardTableRow({
     row: ILeaderboardRow;
     layout: ILeaderboardLayout;
 }) {
-    const { reference, showJudge, showTranscriptMetrics, showVsReference } =
-        layout;
+    const {
+        reference,
+        showField,
+        showJudge,
+        showTranscriptMetrics,
+        showVsReference,
+    } = layout;
     const isBest = (key: BestKey) => layout.best[key] === r.runModelId;
     return (
         <TableRow className="group hover:bg-muted">
             <TableCell className={cn(STICKY_CELL, "group-hover:bg-muted")}>
                 <ModelIdentity row={r} snapshot={layout.snapshot} />
             </TableCell>
+            {showField && (
+                <>
+                    <TableCell align="numeric" className={GROUP_START}>
+                        <WithBest best={isBest("avgFieldScore")}>
+                            <Num>{fmtScore(r.avgFieldScore)}</Num>
+                        </WithBest>
+                    </TableCell>
+                    {showVsReference && (
+                        <TableCell align="numeric">
+                            <VsReference
+                                value={r.avgFieldScore}
+                                baseline={reference?.avgFieldScore}
+                                isReference={r.isReference}
+                                better="higher"
+                                worse="lower"
+                            />
+                        </TableCell>
+                    )}
+                </>
+            )}
             {showJudge && (
                 <>
                     <TableCell align="numeric" className={GROUP_START}>
@@ -707,13 +759,29 @@ function LeaderboardCard({
     row: ILeaderboardRow;
     layout: ILeaderboardLayout;
 }) {
-    const { reference, showJudge, showTranscriptMetrics } = layout;
+    const { reference, showField, showJudge, showTranscriptMetrics } = layout;
     const showVsReference = layout.showVsReference && !r.isReference;
     const isBest = (key: BestKey) => layout.best[key] === r.runModelId;
     return (
         <Card className="flex flex-col gap-4 p-4">
             <ModelIdentity row={r} snapshot={layout.snapshot} />
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-copy-14">
+                {showField && (
+                    <MobileMetric label="Golden score">
+                        <WithBest best={isBest("avgFieldScore")}>
+                            <Num>{fmtScore(r.avgFieldScore)}</Num>
+                        </WithBest>
+                        {showVsReference && (
+                            <VsReference
+                                value={r.avgFieldScore}
+                                baseline={reference?.avgFieldScore}
+                                isReference={false}
+                                better="higher"
+                                worse="lower"
+                            />
+                        )}
+                    </MobileMetric>
+                )}
                 {showJudge && (
                     <MobileMetric label="Judge score">
                         <WithBest best={isBest("avgJudgeScore")}>

@@ -9,7 +9,6 @@ vi.mock("@mosaic/llm-core", async (importOriginal) => {
     return {
         ...actual,
         getEvalProvider: vi.fn(),
-        computeCostFromUsageWithPricing: vi.fn(() => 0.01),
     };
 });
 
@@ -137,4 +136,22 @@ describe("executeCell", () => {
             gateway: { generationId: "gen_123" },
         });
     });
+});
+
+it("records the provider charge without catalog pricing", async () => {
+    const result = {
+        ...completion(),
+        cost: { usd: 0.000042, source: "provider_reported" as const },
+    };
+    vi.mocked(getEvalProvider).mockReturnValue({
+        complete: vi.fn(async () => result),
+    });
+    const cell = await executeCell(
+        "google/gemini-2.5-flash",
+        { prompt: "Classify", maxTokens: 50 },
+        { openrouter: "test" },
+        undefined,
+        "openrouter",
+    );
+    expect(cell.costUsd).toBe(0.000042);
 });

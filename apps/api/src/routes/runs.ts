@@ -1034,8 +1034,13 @@ function buildComparison(
 function side(input: IRunComparisonRow): ISideMetrics {
     const { row } = input;
     return {
-        quality: row.avgJudgeScore,
-        qualitySource: row.avgJudgeScore !== undefined ? "judge" : undefined,
+        quality: row.avgJudgeScore ?? row.avgFieldScore,
+        qualitySource:
+            row.avgJudgeScore !== undefined
+                ? "judge"
+                : row.avgFieldScore !== undefined
+                  ? "field"
+                  : undefined,
         cost: row.totalCostUsd,
         latency: row.avgLatencyMs,
         p95Latency: row.p95LatencyMs,

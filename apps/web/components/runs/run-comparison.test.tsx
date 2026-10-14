@@ -123,5 +123,6 @@ describe("RunComparison", () => {
             />,
         );
         expect(container.textContent).toContain("New");
+        expect(container.textContent).not.toContain("STT gate");
     });
 });

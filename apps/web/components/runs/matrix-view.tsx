@@ -391,6 +391,7 @@ function MatrixCell({
     saveCellAnnotationAction: SaveCellAnnotationAction;
     onOpen: () => void;
 }) {
+    const golden = scores.find((s) => s.scorerType === "field_diff");
     const judge = scores.find((s) => s.scorerType === "judge");
     const total = sumTokens(cell.promptTokens, cell.completionTokens);
     const inFlight = isCellInFlight(cell.status);
@@ -428,11 +429,16 @@ function MatrixCell({
                     {cell.error}
                 </ClampedText>
             ) : inFlight ? (
-                // judge score pill
+                // Quality score placeholders while the model call is in flight.
                 <Skeleton className="h-5 w-16" />
             ) : (
                 <div className="flex flex-wrap gap-1">
-                    <ScorePill score={judge?.score} label="judge" />
+                    {golden && (
+                        <ScorePill score={golden.score} label="golden" />
+                    )}
+                    {(judge || !golden) && (
+                        <ScorePill score={judge?.score} label="judge" />
+                    )}
                 </div>
             )}
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
