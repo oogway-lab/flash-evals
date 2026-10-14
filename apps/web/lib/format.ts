@@ -153,3 +153,8 @@ export function fmtDelta(
     const good = lowerIsBetter ? delta < 0 : delta > 0;
     return { text, direction, good };
 }
+
+/** `count` with `noun`, adding an `s` unless `count` is 1: "1 file", "3 files". */
+export function plural(count: number, noun: string): string {
+    return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}

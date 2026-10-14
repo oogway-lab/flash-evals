@@ -4,10 +4,8 @@ import { Card } from "@/components/ui/card";
 import { formatFileSize } from "@/components/ui/file-dropzone";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
+import { plural } from "@/lib/format";
 import type { IUploadProgress } from "@/lib/uploads/upload-progress";
-
-const plural = (count: number, noun: string) =>
-    `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 /**
  * What a media import is doing right now: signing, sending bytes (with an

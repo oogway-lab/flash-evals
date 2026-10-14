@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useFieldErrorId } from "@/components/ui/field-error-context";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/cn";
+import { plural } from "@/lib/format";
 import {
     planUpload,
     type ExclusionReason,
@@ -47,9 +48,6 @@ export function formatFileSize(bytes: number): string {
     if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
-
-const plural = (count: number, noun: string) =>
-    `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 // Reasons in the order they are listed, with what to do about each.
 const EXCLUSION_ORDER: ExclusionReason[] = [
@@ -194,8 +192,9 @@ export function FileDropzone({
 
     // React 19 resets a form after every action, failed ones included, which
     // empties this file input. Put the selection back so a failed save keeps
-    // the user's files; forms that should clear on success remount this
-    // component (e.g. via a key) instead.
+    // the user's files. Forms that should clear on success remount this
+    // component (e.g. via a key); media import forms prune it instead (see
+    // `usePruneAfterImport`).
     React.useEffect(() => {
         const input = inputRef.current;
         const form = input?.form;
@@ -369,7 +368,8 @@ function useFileUploadState(name: string | undefined) {
 /**
  * After an import goes through, drops the files it took. A picker whose files
  * were uploaded keeps the ones that failed or were left out, so the next
- * submit retries only those; any other picker clears.
+ * submit retries only those. Any other picker clears, unless some file failed
+ * and will need it again on the retry.
  */
 function usePruneAfterImport(
     name: string | undefined,
@@ -390,11 +390,16 @@ function usePruneAfterImport(
         const stateOf = (file: File) =>
             name ? states[uploadProgressKey(name, file)] : undefined;
         const uploadedHere = current.some((file) => stateOf(file));
-        apply(
-            uploadedHere
-                ? current.filter((file) => stateOf(file)?.status !== "done")
-                : [],
+        if (uploadedHere) {
+            apply(current.filter((file) => stateOf(file)?.status !== "done"));
+            return;
+        }
+        // A companion picker (an answers file or CSV) is needed again to
+        // retry the files that failed, so it only clears when none did.
+        const retryPending = Object.values(states).some(
+            (state) => state.status === "failed",
         );
+        if (!retryPending) apply([]);
     }, [completedRun, name]);
 }
 

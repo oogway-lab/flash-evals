@@ -409,4 +409,71 @@ describe("uploadFiles", () => {
             ["done", 100],
         ]);
     });
+    it("settles an aborted XMLHttpRequest as a network failure instead of hanging", async () => {
+        class AbortingXhr {
+            upload: { onprogress?: (event: { loaded: number }) => void } = {};
+            onabort?: () => void;
+            open() {}
+            setRequestHeader() {}
+            send() {
+                queueMicrotask(() => this.onabort?.());
+            }
+        }
+        vi.stubGlobal("XMLHttpRequest", AbortingXhr);
+        fetchMock.mockImplementation(() =>
+            Promise.resolve(signResponse(["k/a"])),
+        );
+
+        const result = await uploadFiles({
+            datasetId: "ds-1",
+            modality: "image",
+            files: [makeFile("a.png", { size: 100 })],
+            onFileProgress: () => {},
+            retryDelayMs: 0,
+        });
+
+        expect(result.uploaded).toHaveLength(0);
+        expect(result.failures).toEqual([
+            expect.objectContaining({
+                fileName: "a.png",
+                error: expect.objectContaining({ kind: "network" }),
+            }),
+        ]);
+    });
+
+    it("reports bytes sent only when the whole percent changes", async () => {
+        class ChattyXhr {
+            upload: { onprogress?: (event: { loaded: number }) => void } = {};
+            onload?: () => void;
+            status = 0;
+            open() {}
+            setRequestHeader() {}
+            send() {
+                queueMicrotask(() => {
+                    for (const loaded of [100, 150, 199, 200, 1000]) {
+                        this.upload.onprogress?.({ loaded });
+                    }
+                    this.status = 200;
+                    this.onload?.();
+                });
+            }
+        }
+        vi.stubGlobal("XMLHttpRequest", ChattyXhr);
+        fetchMock.mockImplementation(() =>
+            Promise.resolve(signResponse(["k/a"])),
+        );
+
+        const loaded: number[] = [];
+        await uploadFiles({
+            datasetId: "ds-1",
+            modality: "image",
+            files: [makeFile("a.png", { size: 10_000 })],
+            onFileProgress: (event) => {
+                if (event.status === "uploading") loaded.push(event.loaded);
+            },
+        });
+
+        // 100, 150 and 199 bytes are all 1%; 200 is 2%; 1000 is 10%.
+        expect(loaded).toEqual([0, 100, 200, 1000]);
+    });
 });
