@@ -136,7 +136,9 @@ describe("RunProgressCard", () => {
                 jsonResponse({ ...running, status: "completed", done: 10 }),
             );
         vi.stubGlobal("fetch", fetchMock);
-        render(<RunProgressCard progressUrl="/p" initial={running} />);
+        const view = render(
+            <RunProgressCard progressUrl="/p" initial={running} />,
+        );
 
         await tick(POLL_INTERVAL_MS);
         expect(
@@ -152,6 +154,35 @@ describe("RunProgressCard", () => {
         expect(refresh).toHaveBeenCalledTimes(2);
         expect(screen.queryByText("Updating live")).not.toBeInTheDocument();
 
+        view.rerender(
+            <RunProgressCard
+                progressUrl="/p"
+                initial={{ ...running, status: "completed", done: 10 }}
+            />,
+        );
+        await tick(POLL_INTERVAL_MS * 5);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps refreshing terminal results until the server-rendered snapshot catches up", async () => {
+        const completed = {
+            ...running,
+            status: "completed" as const,
+            done: 10,
+            pending: 0,
+        };
+        const fetchMock = vi.fn().mockResolvedValue(jsonResponse(completed));
+        vi.stubGlobal("fetch", fetchMock);
+        const view = render(
+            <RunProgressCard progressUrl="/p" initial={running} />,
+        );
+        await tick(POLL_INTERVAL_MS);
+        expect(refresh).toHaveBeenCalledTimes(1);
+        // A delayed or interrupted RSC refresh must not leave result rows
+        // permanently running while the progress card already says complete.
+        await tick(POLL_INTERVAL_MS);
+        expect(refresh).toHaveBeenCalledTimes(2);
+        view.rerender(<RunProgressCard progressUrl="/p" initial={completed} />);
         await tick(POLL_INTERVAL_MS * 5);
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
