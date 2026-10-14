@@ -1603,6 +1603,128 @@ describe("executeWorkflowRun", () => {
         );
     });
 
+    it("sends both transcript and summary to a judge with two inputs", async () => {
+        mocks.snapshot = {
+            workflowId: "workflow-1",
+            name: "Summary faithfulness",
+            kind: "stt",
+            nodes: [
+                {
+                    id: "node-stt",
+                    nodeKey: "stt",
+                    label: "Transcript",
+                    nodeType: "stt",
+                    nodeConfig: {
+                        type: "stt",
+                        sttConfig: { modelId: "gpt-4o-mini-transcribe" },
+                    },
+                    evalConfig: { type: "none" },
+                },
+                {
+                    id: "node-summary",
+                    nodeKey: "summary",
+                    label: "Summary",
+                    nodeType: "llm_text",
+                    modelId: "summary-model",
+                    nodeConfig: {
+                        type: "llm_text",
+                        promptText: "Summarize the transcript.",
+                    },
+                    evalConfig: { type: "none" },
+                },
+                {
+                    id: "node-judge",
+                    nodeKey: "judge",
+                    label: "Judge",
+                    nodeType: "judge",
+                    modelId: "judge-model",
+                    nodeConfig: {
+                        type: "judge",
+                        rubricPrompt: "Compare Summary against Transcript.",
+                    },
+                    evalConfig: { type: "none" },
+                },
+            ],
+            edges: [
+                {
+                    id: "stt-summary",
+                    fromNodeId: "node-stt",
+                    toNodeId: "node-summary",
+                    carryOriginalInput: false,
+                },
+                {
+                    id: "stt-judge",
+                    fromNodeId: "node-stt",
+                    toNodeId: "node-judge",
+                    carryOriginalInput: false,
+                },
+                {
+                    id: "summary-judge",
+                    fromNodeId: "node-summary",
+                    toNodeId: "node-judge",
+                    carryOriginalInput: false,
+                },
+            ],
+        };
+        mocks.cells = ["stt", "summary", "judge"].map((nodeKey) => ({
+            id: `cell-${nodeKey}`,
+            datasetItemId: "item-1",
+            nodeKey,
+            status: "pending",
+        }));
+        mocks.items = [
+            {
+                id: "item-1",
+                type: "audio",
+                storageKey: "audio-key",
+                mimeType: "audio/wav",
+            },
+        ];
+        mocks.getOrCreateAudioTranscriptArtifact.mockResolvedValue({
+            artifact: {
+                text: "The delivery is delayed until Friday.",
+                segments: [],
+                warnings: [],
+            },
+            cacheHit: false,
+            lookupLatencyMs: 1,
+        });
+        mocks.executeCell.mockImplementation(async (model: string) => ({
+            outputText:
+                model === "summary-model"
+                    ? "Delivery is due Friday."
+                    : '{"score":1,"criteria":[],"winner":"not_applicable"}',
+            ...(model === "judge-model"
+                ? {
+                      parsed: {
+                          score: 1,
+                          criteria: [],
+                          winner: "not_applicable",
+                      },
+                  }
+                : {}),
+            usage: {},
+            latencyMs: 1,
+        }));
+
+        await executeWorkflowRun("run-1");
+
+        const judgePrompt = mocks.executeCell.mock.calls.find(
+            ([model]) => model === "judge-model",
+        )?.[1].prompt;
+        expect(judgePrompt).toContain(
+            '<from node="Transcript">The delivery is delayed until Friday.</from>',
+        );
+        expect(judgePrompt).toContain(
+            '<from node="Summary">Delivery is due Friday.</from>',
+        );
+        expect(mocks.cells.map((cell) => cell.status)).toEqual([
+            "succeeded",
+            "succeeded",
+            "succeeded",
+        ]);
+    });
+
     it("executes judge nodes without a gold label", async () => {
         mocks.snapshot = {
             workflowId: "workflow-1",
