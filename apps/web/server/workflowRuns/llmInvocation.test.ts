@@ -441,6 +441,24 @@ describe("workflow explicit LLM invocation", () => {
         );
     });
 
+    it("identifies output exhaustion without exposing provider text", async () => {
+        const harness = deps({
+            complete: vi
+                .fn()
+                .mockRejectedValue(
+                    new Error(
+                        "OpenRouter reached the output token limit for google/gemini-3.8-flash.",
+                    ),
+                ),
+        });
+        await expect(
+            executeWorkflowLlmInvocation(invocation, harness),
+        ).rejects.toThrow("output_limit");
+        expect(harness.appendAttempts).toHaveBeenCalledWith("cell-1", [
+            expect.objectContaining({ errorClass: "output_limit" }),
+        ]);
+    });
+
     it("does not expose provider error payloads containing secrets", async () => {
         const harness = deps({
             complete: vi

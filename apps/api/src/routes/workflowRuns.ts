@@ -46,6 +46,7 @@ import {
 } from "../errors.js";
 import { resolveApiKeys } from "../secrets/resolveApiKeys.js";
 import { registryEntryFor } from "../modelRegistry.js";
+import { googleDefaultReasoningEffort } from "@mosaic/llm-core";
 import {
     sttConfigForSnapshot,
     validateSttConfigForRun,
@@ -1043,6 +1044,10 @@ function simpleWorkflowRoute(
     reasoningEffort: ReasoningEffort | undefined,
     isJudge: boolean,
 ): IWorkflowLlmRouteConfig {
+    reasoningEffort ??=
+        transport === "openrouter"
+            ? googleDefaultReasoningEffort(modelId)
+            : undefined;
     return {
         modelId,
         generation: {

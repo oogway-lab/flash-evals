@@ -53,10 +53,12 @@ export async function transcribeOpenRouterAudio(input: {
         timeout: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxRetries: 0,
     });
-    const response = await client.chat.completions.create({
+    const request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming & {
+        reasoning: { effort: "low" };
+    } = {
         model: input.modelId,
         max_completion_tokens: 8192,
-        reasoning_effort: "low",
+        reasoning: { effort: "low" },
         messages: [
             {
                 role: "system",
@@ -88,7 +90,8 @@ export async function transcribeOpenRouterAudio(input: {
                 ],
             },
         ],
-    });
+    };
+    const response = await client.chat.completions.create(request);
     if (response.choices[0]?.finish_reason === "length")
         throw new Error(
             "Audio transcript reached the output token limit; split the recording and try again.",

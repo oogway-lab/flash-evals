@@ -9,6 +9,7 @@ import type {
     UsageData,
 } from "../types.js";
 import { parseStructuredOutput } from "./structuredOutput.js";
+import { googleDefaultReasoningEffort } from "./googleReasoning.js";
 
 function isReasoningModel(model: string): boolean {
     return /^o\d/.test(model) || /^gpt-5/.test(model);
@@ -85,11 +86,11 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
                 stream: false,
             };
         if (this.transport === "openrouter") {
+            const effort =
+                req.reasoningEffort ?? googleDefaultReasoningEffort(req.model);
             Object.assign(createParams, {
                 provider: openRouterProviderOptions(req),
-                ...(req.reasoningEffort
-                    ? { reasoning: { effort: req.reasoningEffort } }
-                    : {}),
+                ...(effort ? { reasoning: { effort } } : {}),
             });
         }
         if (reasoning && req.reasoningEffort) {

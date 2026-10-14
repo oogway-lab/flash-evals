@@ -57,16 +57,30 @@ function provider(
 }
 
 describe("OpenAI-compatible route forwarding", () => {
-    it("forwards Gemini reasoning effort through OpenRouter", async () => {
+    it.each([
+        ["google/gemini-3.8-flash", "low"],
+        ["google/gemini-3.5-flash-lite", "minimal"],
+    ])("minimizes default thinking for %s", async (model, effort) => {
+        const harness = provider("openrouter");
+        await harness.provider.complete({
+            model,
+            prompt: "Translate",
+            maxTokens: 4096,
+        });
+        expect(harness.create.mock.calls[0]?.[0]).toMatchObject({
+            reasoning: { effort },
+        });
+    });
+    it("preserves an explicitly chosen Gemini reasoning effort", async () => {
         const harness = provider("openrouter");
         await harness.provider.complete({
             model: "google/gemini-3.8-flash",
             prompt: "Extract the receipt",
             maxTokens: 1024,
-            reasoningEffort: "low",
+            reasoningEffort: "high",
         });
         expect(harness.create.mock.calls[0]?.[0]).toMatchObject({
-            reasoning: { effort: "low" },
+            reasoning: { effort: "high" },
         });
     });
     it("rejects text cut off by the output token limit", async () => {
