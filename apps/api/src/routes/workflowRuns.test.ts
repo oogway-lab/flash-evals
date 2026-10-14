@@ -612,7 +612,7 @@ describe("workflow run LLM route resolution", () => {
     it("leaves Google text thinking unset while budgeting for long output", async () => {
         const fixture = createRunDb({
             selection: "simple",
-            pinnedModelId: "google/gemini-2.5-flash",
+            pinnedModelId: "google/gemini-3.8-flash",
         });
         await createWorkflowRunPayload(fixture.db, createRunInput);
         const snapshot = fixture.capturedSnapshot as {

@@ -1048,8 +1048,9 @@ function simpleWorkflowRoute(
         generation: {
             // Google thinking and visible output share this limit. Leave
             // thinking unchanged while allowing complete long translations.
-            maxOutputTokens:
-                registryEntryFor(modelId)?.provider === "google" ? 16384 : 4096,
+            maxOutputTokens: modelId.startsWith("google/gemini-3")
+                ? 16384
+                : 4096,
             ...(reasoningEffort ? { reasoningEffort } : {}),
         },
         transportConfig:

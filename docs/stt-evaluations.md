@@ -19,7 +19,7 @@ fails validation, and the adapter version prevents reuse of old native-script
 transcripts. Other STT providers retain their own output contracts.
 
 Thinking settings for translation and separate transliteration are unchanged:
-only explicitly selected effort is forwarded. New Simple Google text routes
+only explicitly selected effort is forwarded. New Simple Gemini 3 text routes
 allow 16,384 total output tokens because thinking and visible text share the
 budget; this is not a thinking-budget override. Exhaustion is reported as
 `output_limit`. OpenRouter currently requires thinking for Gemini 3.8 Flash,
