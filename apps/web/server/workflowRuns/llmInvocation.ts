@@ -36,7 +36,7 @@ import {
 import type { ModelPricing } from "../llm/pricing";
 import { retryAfterMs } from "../lib/retryAfter";
 
-const ADAPTER_BEHAVIOR_VERSION = 1;
+const ADAPTER_BEHAVIOR_VERSION = 2;
 
 interface IResolvedWorkflowCredential {
     apiKey: string;
@@ -665,6 +665,7 @@ function retryDelayMs(
 }
 
 type WorkflowProviderErrorClass =
+    | "output_limit"
     | "rate_limit"
     | "timeout"
     | "overloaded"
@@ -676,6 +677,7 @@ type WorkflowProviderErrorClass =
 function classifyProviderError(error: unknown): WorkflowProviderErrorClass {
     const message =
         error instanceof Error ? error.message.toLowerCase() : String(error);
+    if (/output token limit/.test(message)) return "output_limit";
     if (/429|rate.?limit/.test(message)) return "rate_limit";
     if (/timeout|timed out|abort/.test(message)) return "timeout";
     if (/overload|capacity/.test(message)) return "overloaded";

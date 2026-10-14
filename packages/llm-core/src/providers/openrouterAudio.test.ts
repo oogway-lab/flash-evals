@@ -39,6 +39,8 @@ it("sends encoded audio to Gemini and preserves billed usage", async () => {
     const [, options] = vi.mocked(fetch).mock.calls[0]!;
     const body = JSON.parse(String(options?.body));
     expect(body.model).toBe("google/gemini-3.8-flash");
+    expect(body.reasoning).toEqual({ effort: "low" });
+    expect(body).not.toHaveProperty("reasoning_effort");
     expect(body.messages[1].content[1]).toEqual({
         type: "input_audio",
         input_audio: {

@@ -30,6 +30,7 @@ export {
 } from "./providers/factory.js";
 export { GatewayEvalProvider } from "./providers/gateway.js";
 export { OpenAIEvalProvider } from "./providers/openai.js";
+export { googleDefaultReasoningEffort } from "./providers/googleReasoning.js";
 export {
     OPENROUTER_AUDIO_DEFAULT_MAX_BYTES,
     openAiTransportErrorClass,

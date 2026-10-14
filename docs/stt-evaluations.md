@@ -9,6 +9,15 @@ The route uses OpenRouter chat completions with audio input, an optional
 language hint, and vocabulary guidance. It returns plain transcripts. Speaker
 diarization and word timestamps are not supported by this adapter.
 
+OpenRouter requests explicitly use `reasoning.effort: low` for Gemini 3.8
+Flash audio. Simple Google text routes also capture a low-thinking default
+(minimal for Gemini 3.5 Flash Lite); explicit route effort settings take
+precedence. These routes require thinking in OpenRouter's current catalog,
+so this minimizes it rather than claiming to disable it. A zero native Google
+thinking budget is not interchangeable with OpenRouter's Gemini 3 thinking
+levels. Thinking shares the output-token budget with the actual transcript or
+translation; exhaustion is reported as `output_limit`.
+
 Each request carries at most 14 MB of WAV or MP3 audio and 10 minutes of
 speech (`STT_OPENROUTER_AUDIO_MAX_BYTES`, `STT_AUDIO_MAX_CHUNK_MS`). Recordings
 within both limits are sent unchanged. Larger or longer recordings, and other
