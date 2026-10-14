@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import type { IWorkflowRunDetailResponse } from "@mosaic/api-contract";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/cn";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Sheet,
@@ -28,10 +29,14 @@ import { Num } from "@/components/ui/num";
 import { toTranscriptMetricDetails } from "@/components/runs/types";
 import {
     formatTranscriptPercent,
+    ScoreVerdict,
     TranscriptJudgeBreakdown,
     TranscriptMetricBreakdown,
 } from "@/components/runs/transcript-score-details";
-import { LlmExecutionDetails } from "./llm-execution-provenance";
+import {
+    LlmExecutionDetails,
+    LlmExecutionSummary,
+} from "./llm-execution-provenance";
 
 import {
     BlockedCellLink,
@@ -466,6 +471,7 @@ function CellScoreInspector({
     const judgeScore = scores.find(
         (score) => score.scorerType === "transcript_judge",
     );
+    const execution = cell?.llmExecution;
     return (
         <Sheet
             open={cell !== undefined}
@@ -497,10 +503,7 @@ function CellScoreInspector({
                         </SheetTitle>
                         {cell ? <CellStatusBadge status={cell.status} /> : null}
                     </div>
-                    <InspectorMeta
-                        itemId={item?.id}
-                        score={inspectorScore(metricScore, judgeScore)}
-                    />
+                    <InspectorMeta itemId={item?.id} />
                 </SheetHeader>
                 <SheetBody>
                     <Tabs
@@ -508,20 +511,16 @@ function CellScoreInspector({
                         defaultValue="overview"
                         className="min-w-0"
                     >
-                        <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger value="overview">Overview</TabsTrigger>
-                            <TabsTrigger value="input">Input</TabsTrigger>
-                            <TabsTrigger value="output">Output</TabsTrigger>
-                        </TabsList>
+                        <InspectorTabsList hasRouting={!!execution} />
                         <TabsContent
                             value="overview"
-                            className="flex flex-col gap-6"
+                            className="flex flex-col gap-8"
                         >
-                            <LlmExecutionDetails
-                                execution={cell?.llmExecution}
+                            <InspectorOverview
+                                metricScore={metricScore}
+                                judgeScore={judgeScore}
+                                execution={execution}
                             />
-                            <TranscriptMetricBreakdown score={metricScore} />
-                            <TranscriptJudgeBreakdown score={judgeScore} />
                         </TabsContent>
                         <TabsContent
                             value="input"
@@ -571,10 +570,68 @@ function CellScoreInspector({
                                 </section>
                             )}
                         </TabsContent>
+                        {/* No trigger without an execution, so never shown. */}
+                        <TabsContent value="routing">
+                            <LlmExecutionDetails execution={execution} />
+                        </TabsContent>
                     </Tabs>
                 </SheetBody>
             </SheetContent>
         </Sheet>
+    );
+}
+
+/** Routing appears only for steps that made an LLM call. */
+function InspectorTabsList({ hasRouting }: { hasRouting: boolean }) {
+    return (
+        <TabsList
+            className={cn(
+                "grid w-full",
+                hasRouting ? "grid-cols-4" : "grid-cols-3",
+            )}
+        >
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="input">Input</TabsTrigger>
+            <TabsTrigger value="output">Output</TabsTrigger>
+            {hasRouting ? (
+                <TabsTrigger value="routing">Routing</TabsTrigger>
+            ) : null}
+        </TabsList>
+    );
+}
+
+type CellScore = IWorkflowRunDetailResponse["scoresByCell"][string][number];
+
+/** Answer first (scores, model, cost), then the evidence behind the score. */
+function InspectorOverview({
+    metricScore,
+    judgeScore,
+    execution,
+}: {
+    metricScore: CellScore | undefined;
+    judgeScore: CellScore | undefined;
+    execution: IWorkflowRunDetailResponse["cells"][number]["llmExecution"];
+}) {
+    if (!metricScore && !judgeScore && !execution)
+        return (
+            <p className="text-copy-14 text-muted-foreground">
+                This step has no scores or model call. Its input and output are
+                in the other tabs.
+            </p>
+        );
+    return (
+        <>
+            <div className="flex flex-col gap-6">
+                <ScoreVerdict
+                    metric={metricScore}
+                    judge={judgeScore}
+                    digits={STT_SCORE_DIGITS}
+                />
+                <LlmExecutionSummary execution={execution} />
+            </div>
+            <TranscriptJudgeBreakdown score={judgeScore} />
+            <TranscriptMetricBreakdown score={metricScore} />
+        </>
     );
 }
 
@@ -606,27 +663,13 @@ function InspectorInput({
     );
 }
 
-// The inspector's props take undefined, not the API's null.
-function inspectorScore(
-    metric: { score: number | null } | undefined,
-    judge: { score: number | null } | undefined,
-): number | undefined {
-    return metric?.score ?? judge?.score ?? undefined;
-}
-
 function inputTextOf(
     cell: IWorkflowRunDetailResponse["cells"][number] | undefined,
 ): string | undefined {
     return cell?.inputText ?? undefined;
 }
 
-function InspectorMeta({
-    itemId,
-    score,
-}: {
-    itemId: string | undefined;
-    score: number | undefined;
-}) {
+function InspectorMeta({ itemId }: { itemId: string | undefined }) {
     return (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-copy-14 text-muted-foreground">
             <span className="inline-flex items-center gap-1">
@@ -636,9 +679,6 @@ function InspectorMeta({
                 ) : (
                     <Num>{MISSING_VALUE}</Num>
                 )}
-            </span>
-            <span>
-                Score <Num>{fmtScore(score, STT_SCORE_DIGITS)}</Num>
             </span>
         </div>
     );

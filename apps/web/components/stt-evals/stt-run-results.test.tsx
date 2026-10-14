@@ -357,6 +357,10 @@ function detail(): IWorkflowRunDetailResponse {
     };
 }
 
+function openRouting(inspector: HTMLElement) {
+    fireEvent.click(within(inspector).getByRole("tab", { name: "Routing" }));
+}
+
 describe("SttRunResults", () => {
     it("summarizes scores and costs for a text pipeline without STT nodes", () => {
         const result = detail();
@@ -546,6 +550,7 @@ describe("SttRunResults", () => {
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Cleanup" });
+        openRouting(inspector);
 
         expect(within(inspector).getByText("Project default")).toBeVisible();
         expect(
@@ -572,6 +577,92 @@ describe("SttRunResults", () => {
         ).toBeVisible();
     });
 
+    it("leads the overview with the verdict and keeps the audit trail in Routing", () => {
+        const judged = detail();
+        judged.scoresByCell["cell-text-a"] = [
+            {
+                scorerType: "transcript_judge",
+                score: 0.71,
+                rationale: null,
+                detailsJson: {
+                    modelId: "google/gemini-3.8-flash",
+                    rubricPrompt: "Judge the summary.",
+                    criteria: [
+                        {
+                            name: "factual support",
+                            score: 0.5,
+                            reasoning: "Adds facts the article lacks.",
+                        },
+                        {
+                            name: "coverage",
+                            score: 0.85,
+                            reasoning: "Keeps the central event.",
+                        },
+                    ],
+                },
+            },
+        ];
+
+        render(<SttRunResults detail={judged} />);
+        fireEvent.click(
+            screen.getAllByRole("button", {
+                name: "Open details for Cleanup, item item-1",
+            })[0]!,
+        );
+        const inspector = screen.getByRole("dialog", { name: "Cleanup" });
+
+        expect(
+            within(inspector).getByText("Judge score").nextSibling,
+        ).toHaveTextContent("0.710");
+        expect(
+            within(inspector).getByText("Ran on").nextSibling,
+        ).toHaveTextContent("OpenRouter · azure");
+        expect(within(inspector).getByText("Fallback observed")).toBeVisible();
+        const factual = within(inspector).getByRole("row", {
+            name: /factual support/,
+        });
+        expect(factual).toHaveTextContent("Lowest");
+        expect(factual).toHaveTextContent("0.50");
+        expect(
+            within(inspector).getByRole("row", { name: /coverage/ }),
+        ).not.toHaveTextContent("Lowest");
+        expect(within(inspector).queryByText("Judge the summary.")).toBeNull();
+        expect(
+            within(inspector).queryByText("Mechanical metrics unavailable"),
+        ).toBeNull();
+        expect(within(inspector).queryByText("Captured settings")).toBeNull();
+        expect(within(inspector).queryByText("Requested")).toBeNull();
+
+        openRouting(inspector);
+        expect(within(inspector).getByText("Captured settings")).toBeVisible();
+        expect(within(inspector).getByText("Project default")).toBeVisible();
+        expect(within(inspector).queryByText("Credential")).toBeNull();
+        fireEvent.click(
+            within(inspector).getByRole("button", { name: "Identifiers" }),
+        );
+        expect(within(inspector).getByText("Credential")).toBeVisible();
+    });
+
+    it("omits the Routing tab for steps without an LLM call", () => {
+        render(<SttRunResults detail={detail()} />);
+        fireEvent.click(
+            screen.getAllByRole("button", {
+                name: "Open details for Diarized, item item-1",
+            })[0]!,
+        );
+        const inspector = screen.getByRole("dialog", { name: "Diarized" });
+
+        expect(within(inspector).getAllByRole("tab")).toHaveLength(3);
+        expect(
+            within(inspector).getByText("Accuracy").nextSibling,
+        ).toHaveTextContent("0.750");
+        expect(
+            within(inspector).getByText("Judge score").nextSibling,
+        ).toHaveTextContent("0.800");
+        // A single criterion has no "lowest".
+        expect(within(inspector).queryByText("Lowest")).toBeNull();
+    });
+
     it("does not label a same-route retry as fallback", () => {
         const retried = detail();
         const execution = retried.cells.find(
@@ -588,6 +679,7 @@ describe("SttRunResults", () => {
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Cleanup" });
+        openRouting(inspector);
 
         expect(
             within(inspector).getByText("No fallback observed"),
@@ -611,6 +703,7 @@ describe("SttRunResults", () => {
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Cleanup" });
+        openRouting(inspector);
 
         expect(
             within(inspector).getByText("Legacy routing evidence unavailable"),
@@ -643,6 +736,7 @@ describe("SttRunResults", () => {
                 name: "Open details for Cleanup, item item-1",
             })[0]!,
         );
+        openRouting(screen.getByRole("dialog", { name: "Cleanup" }));
         expect(
             within(screen.getByRole("dialog", { name: "Cleanup" })).getByText(
                 "$0.0031 · Provider reported",
@@ -695,6 +789,7 @@ describe("SttRunResults", () => {
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Cleanup" });
+        openRouting(inspector);
         // The "Flash Evals reuse" setting label, plus the cache result value.
         expect(
             within(inspector).getAllByText("Flash Evals reuse"),
@@ -743,6 +838,7 @@ describe("SttRunResults", () => {
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Cleanup" });
+        openRouting(inspector);
         expect(
             within(inspector).getByText("Provider response cache hit"),
         ).toBeVisible();
@@ -797,6 +893,9 @@ describe("SttRunResults", () => {
             within(inspector).getByText("Missed detection rate").nextSibling,
         ).toHaveTextContent("–");
         expect(within(inspector).getByText("Priyanshu: 12.5%")).toBeVisible();
+        fireEvent.click(
+            within(inspector).getByRole("button", { name: "Rubric" }),
+        );
         expect(
             within(inspector).getByText("Judge transcript fidelity."),
         ).toBeVisible();

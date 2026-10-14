@@ -1,8 +1,20 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { SectionTitle } from "@/components/layout/section-title";
-import { ScorePill } from "@/components/ui/score-pill";
-import { MISSING_VALUE } from "@/lib/format";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import { MISSING_VALUE, fmtScore } from "@/lib/format";
 import {
     type TranscriptMetricDetails,
     toTranscriptJudgeMetricDetails,
@@ -18,19 +30,69 @@ export interface ITranscriptScorePresentation {
     error?: string;
 }
 
+/**
+ * The answer to "how did this result score", shown before any evidence:
+ * one large value per scorer that ran on the result.
+ */
+export function ScoreVerdict({
+    metric,
+    judge,
+    digits,
+}: {
+    metric: ITranscriptScorePresentation | undefined;
+    judge: ITranscriptScorePresentation | undefined;
+    digits?: number;
+}) {
+    const judgeModel = toTranscriptJudgeMetricDetails(
+        judge?.detailsJson,
+    )?.modelId;
+    const verdicts = [
+        metric && { label: "Accuracy", score: metric.score },
+        judge && {
+            label: "Judge score",
+            score: judge.score,
+            note: judgeModel,
+        },
+    ].filter((verdict) => !!verdict);
+    if (!verdicts.length) return null;
+    return (
+        <dl className="flex flex-wrap gap-x-10 gap-y-4">
+            {verdicts.map((verdict) => (
+                <div key={verdict.label} className="flex flex-col gap-1">
+                    <dt className="text-label-12 text-muted-foreground">
+                        {verdict.label}
+                    </dt>
+                    <dd className="flex flex-wrap items-baseline gap-x-3">
+                        <span className="text-stat-32">
+                            {fmtScore(verdict.score, digits)}
+                        </span>
+                        {verdict.note ? (
+                            <span className="text-mono-13 text-muted-foreground">
+                                {verdict.note}
+                            </span>
+                        ) : null}
+                    </dd>
+                </div>
+            ))}
+        </dl>
+    );
+}
+
 export function TranscriptMetricBreakdown({
     score,
 }: {
     score: ITranscriptScorePresentation | undefined;
 }) {
-    const details = toTranscriptMetricDetails(score?.detailsJson);
+    // No metric scorer ran on this result: nothing to explain.
+    if (!score) return null;
+    const details = toTranscriptMetricDetails(score.detailsJson);
     if (!details) {
         return (
             <EvidenceMessage
                 title="Mechanical metrics unavailable"
                 message={
-                    score?.error ??
-                    score?.rationale ??
+                    score.error ??
+                    score.rationale ??
                     "No matching reference or metric result was recorded."
                 }
             />
@@ -41,10 +103,7 @@ export function TranscriptMetricBreakdown({
             className="flex flex-col gap-3"
             aria-label="Mechanical metrics"
         >
-            <div className="flex flex-wrap items-center gap-3">
-                <SectionTitle as="h3">Mechanical metrics</SectionTitle>
-                <ScorePill label="Accuracy" score={score?.score} />
-            </div>
+            <SectionTitle as="h3">Mechanical metrics</SectionTitle>
             <MetricList className="gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <Metric
                     label="WER"
@@ -135,7 +194,9 @@ export function TranscriptJudgeBreakdown({
 }: {
     score: ITranscriptScorePresentation | undefined;
 }) {
-    if (score?.status === "error") {
+    // No judge ran on this result: nothing to explain.
+    if (!score) return null;
+    if (score.status === "error") {
         return (
             <EvidenceMessage
                 title="Transcript judge failed"
@@ -145,56 +206,95 @@ export function TranscriptJudgeBreakdown({
             />
         );
     }
-    const details = toTranscriptJudgeMetricDetails(score?.detailsJson);
+    const details = toTranscriptJudgeMetricDetails(score.detailsJson);
     if (!details) {
         return (
             <EvidenceMessage
                 title="Transcript judge unavailable"
                 message={
-                    score?.rationale ??
+                    score.rationale ??
                     "No transcript judge result was recorded."
                 }
             />
         );
     }
+    const criteria = details.criteria ?? [];
+    const lowest = lowestCriterion(criteria);
     return (
         <section className="flex flex-col gap-3" aria-label="Transcript judge">
-            <div className="flex flex-wrap items-center gap-3">
-                <SectionTitle as="h3">Transcript judge</SectionTitle>
-                <ScorePill score={score?.score} />
-                <span className="text-mono-13 text-muted-foreground">
-                    {details.modelId}
-                </span>
-            </div>
-            <Card variant="inset" className="flex flex-col gap-1 p-3">
-                <p className="text-label-12 text-muted-foreground">Rubric</p>
-                <p className="whitespace-pre-wrap text-copy-14">
-                    {details.rubricPrompt}
+            <SectionTitle as="h3">Judge criteria</SectionTitle>
+            {criteria.length ? (
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead className="px-0">Criterion</TableHead>
+                            <TableHead align="numeric" className="px-0">
+                                Score
+                            </TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {criteria.map((criterion) => (
+                            <TableRow
+                                key={criterion.name}
+                                className="hover:bg-transparent"
+                            >
+                                <TableCell className="px-0">
+                                    <div className="flex flex-col gap-1">
+                                        <p className="flex flex-wrap items-baseline gap-x-2 text-label-14">
+                                            {criterion.name}
+                                            {criterion === lowest ? (
+                                                <span className="text-label-12 text-muted-foreground">
+                                                    Lowest
+                                                </span>
+                                            ) : null}
+                                        </p>
+                                        <p className="text-copy-14 text-muted-foreground">
+                                            {criterion.reasoning}
+                                        </p>
+                                    </div>
+                                </TableCell>
+                                <TableCell
+                                    align="numeric"
+                                    className="px-0 pl-3 text-label-14"
+                                >
+                                    {fmtScore(criterion.score)}
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            ) : score.rationale ? (
+                <p className="text-copy-14 text-muted-foreground">
+                    {score.rationale}
                 </p>
-            </Card>
-            {details.criteria?.map((criterion) => (
-                <Card
-                    key={criterion.name}
-                    variant="inset"
-                    className="flex flex-col gap-1 p-3"
-                >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-label-12">{criterion.name}</p>
-                        <ScorePill score={criterion.score} />
-                    </div>
-                    <p className="text-copy-14 text-muted-foreground">
-                        {criterion.reasoning}
-                    </p>
-                </Card>
-            ))}
+            ) : null}
             {details.error ? (
                 <EvidenceMessage
                     title="Judge detail error"
                     message={details.error}
                 />
             ) : null}
+            <Collapsible>
+                <CollapsibleTrigger>Rubric</CollapsibleTrigger>
+                <CollapsibleContent className="pt-2">
+                    <p className="whitespace-pre-wrap text-copy-14 text-muted-foreground">
+                        {details.rubricPrompt}
+                    </p>
+                </CollapsibleContent>
+            </Collapsible>
         </section>
     );
+}
+
+/** The single weakest criterion, when one clearly stands out. */
+function lowestCriterion<T extends { score: number }>(
+    criteria: readonly T[],
+): T | undefined {
+    if (criteria.length < 2) return undefined;
+    const min = Math.min(...criteria.map((criterion) => criterion.score));
+    const lowest = criteria.filter((criterion) => criterion.score === min);
+    return lowest.length === 1 ? lowest[0] : undefined;
 }
 
 function DiarizationMetricBoxes({
