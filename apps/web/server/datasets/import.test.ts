@@ -116,7 +116,9 @@ describe("prepareTextImport", () => {
 
         expect(result.rows).toHaveLength(17);
         expect(result.failures).toHaveLength(3);
-        expect(result.failures.map((failure) => failure.row)).toEqual([3, 8, 13]);
+        expect(result.failures.map((failure) => failure.row)).toEqual([
+            3, 8, 13,
+        ]);
     });
 
     it("parses CSV scalar columns into labels", () => {
@@ -177,7 +179,10 @@ describe("prepareTextImport", () => {
 
         expect(result.rows).toHaveLength(1);
         expect(result.failures).toEqual([
-            expect.objectContaining({ row: 2, reason: expect.stringContaining("line") }),
+            expect.objectContaining({
+                row: 2,
+                reason: expect.stringContaining("line"),
+            }),
         ]);
     });
 
@@ -196,12 +201,18 @@ describe("prepareTextImport", () => {
 
     it("rejects CSV for schemas with array fields", () => {
         expect(
-            prepareTextImport("inputText,items\nPlate,oatmeal\n", "csv", arraySchema.schema),
+            prepareTextImport(
+                "inputText,items\nPlate,oatmeal\n",
+                "csv",
+                arraySchema.schema,
+            ),
         ).toMatchObject({
             rejected: true,
             rows: [],
             failures: [
-                expect.objectContaining({ reason: expect.stringContaining("use JSONL") }),
+                expect.objectContaining({
+                    reason: expect.stringContaining("use JSONL"),
+                }),
             ],
         });
     });
@@ -209,12 +220,15 @@ describe("prepareTextImport", () => {
 
 describe("validateImageImportFiles", () => {
     it("rejects over-limit image batches without partial inserts", () => {
-        const files = Array.from({ length: MAX_IMPORT_FILE_COUNT + 1 }, (_, index) => ({
-            name: `image-${index}.png`,
-            type: "image/png",
-            size: 1,
-            arrayBuffer: async () => new ArrayBuffer(1),
-        }));
+        const files = Array.from(
+            { length: MAX_IMPORT_FILE_COUNT + 1 },
+            (_, index) => ({
+                name: `image-${index}.png`,
+                type: "image/png",
+                size: 1,
+                arrayBuffer: async () => new ArrayBuffer(1),
+            }),
+        );
 
         expect(validateImageImportFiles(files)).toMatchObject({
             importedCount: 0,
@@ -322,7 +336,9 @@ describe("importAudioItems", () => {
     it("imports valid audio files with source names", async () => {
         vi.mocked(addAudioItem).mockClear();
 
-        const summary = await importAudioItems("ds1", [fakeAudioFile("sample.webm")]);
+        const summary = await importAudioItems("ds1", [
+            fakeAudioFile("sample.webm"),
+        ]);
 
         expect(summary).toEqual({ importedCount: 1, failures: [] });
         expect(addAudioItem).toHaveBeenCalledWith(
@@ -422,7 +438,10 @@ describe("importImageItems", () => {
             "dup.png",
         );
         expect(summary.failures).toEqual([
-            { fileName: "dup.png", reason: "Unsupported image type: text/plain." },
+            {
+                fileName: "dup.png",
+                reason: "Unsupported image type: text/plain.",
+            },
         ]);
     });
 
@@ -448,26 +467,35 @@ describe("preparePairedImport", () => {
         const fileNames = Array.from({ length: 17 }, (_, i) => `img${i}.png`);
         const header = "filename,calories";
         const goodRows = fileNames.map((name) => `${name},100`);
-        const badRows = ["missingA.png,100", "missingB.png,100", "missingC.png,100"];
+        const badRows = [
+            "missingA.png,100",
+            "missingB.png,100",
+            "missingC.png,100",
+        ];
         const csv = [header, ...goodRows, ...badRows].join("\n");
 
         const plan = preparePairedImport(fileNames, csv, pairedSchema.schema);
 
         expect(plan.items).toHaveLength(17);
         expect(plan.failures).toHaveLength(3);
-        expect(plan.failures.every((f) => f.reason.includes("No uploaded image"))).toBe(
-            true,
-        );
+        expect(
+            plan.failures.every((f) => f.reason.includes("No uploaded image")),
+        ).toBe(true);
     });
 
     it("R13: reports a row with no image and an image with no row distinctly", () => {
         const csv = "filename,calories\na.png,100\nc.png,100";
-        const plan = preparePairedImport(["a.png", "b.png"], csv, pairedSchema.schema);
+        const plan = preparePairedImport(
+            ["a.png", "b.png"],
+            csv,
+            pairedSchema.schema,
+        );
 
         expect(plan.items.map((i) => i.fileName)).toEqual(["a.png"]);
         const rowFailure = plan.failures.find((f) => f.row !== undefined);
-        const fileFailure = plan.failures.find((f) => f.fileName !== undefined);
+        const fileFailure = plan.failures.find((f) => f.row === undefined);
         expect(rowFailure?.reason).toContain('No uploaded image named "c.png"');
+        expect(rowFailure?.fileName).toBe("c.png");
         expect(fileFailure).toEqual({
             fileName: "b.png",
             reason: "No spreadsheet row references this image.",
@@ -487,7 +515,11 @@ describe("preparePairedImport", () => {
 
     it("fails a row with an invalid factual field; valid rows still import", () => {
         const csv = "filename,calories\na.png,100\nb.png,";
-        const plan = preparePairedImport(["a.png", "b.png"], csv, pairedSchema.schema);
+        const plan = preparePairedImport(
+            ["a.png", "b.png"],
+            csv,
+            pairedSchema.schema,
+        );
 
         expect(plan.items.map((i) => i.fileName)).toEqual(["a.png"]);
         const failure = plan.failures.find((f) => f.row === 3);
@@ -495,13 +527,21 @@ describe("preparePairedImport", () => {
     });
 
     it("rejects array-typed schemas with a clear message", () => {
-        const plan = preparePairedImport(["a.png"], "filename\na.png", arraySchema.schema);
+        const plan = preparePairedImport(
+            ["a.png"],
+            "filename\na.png",
+            arraySchema.schema,
+        );
         expect(plan.rejected).toBe(true);
         expect(plan.failures[0].reason).toContain("array fields");
     });
 
     it("rejects a spreadsheet with no filename column", () => {
-        const plan = preparePairedImport(["a.png"], "calories\n100", pairedSchema.schema);
+        const plan = preparePairedImport(
+            ["a.png"],
+            "calories\n100",
+            pairedSchema.schema,
+        );
         expect(plan.rejected).toBe(true);
         expect(plan.failures[0].reason).toContain("filename");
     });
@@ -524,8 +564,9 @@ describe("preparePairedImport", () => {
 describe("importPairedItems", () => {
     it("R13: rejects over the file-count cap with zero inserts", async () => {
         vi.mocked(addImageItem).mockClear();
-        const files = Array.from({ length: MAX_IMPORT_FILE_COUNT + 1 }, (_, i) =>
-            fakeImageFile(`img${i}.png`),
+        const files = Array.from(
+            { length: MAX_IMPORT_FILE_COUNT + 1 },
+            (_, i) => fakeImageFile(`img${i}.png`),
         );
         const summary = await importPairedItems(
             "dataset-1",
@@ -578,7 +619,11 @@ describe("importPairedItems", () => {
         vi.mocked(addImageItem).mockClear();
         const summary = await importPairedItems(
             "dataset-1",
-            [fakeImageFile("a.png"), fakeImageFile("a.png"), fakeImageFile("b.png")],
+            [
+                fakeImageFile("a.png"),
+                fakeImageFile("a.png"),
+                fakeImageFile("b.png"),
+            ],
             "filename,calories\nb.png,200",
             pairedSchema.schema,
         );
@@ -596,7 +641,10 @@ describe("prepareGoldenAnswersByKey", () => {
         const plan = prepareGoldenAnswersByKey(
             ["a.png", "b.png"],
             [
-                JSON.stringify({ filename: "a.png", label: { answer: "salad" } }),
+                JSON.stringify({
+                    filename: "a.png",
+                    label: { answer: "salad" },
+                }),
                 JSON.stringify({ filename: "b.png", answer: "soup" }),
             ].join("\n"),
         );
@@ -619,6 +667,7 @@ describe("prepareGoldenAnswersByKey", () => {
             expect.arrayContaining([
                 expect.objectContaining({
                     row: 1,
+                    fileName: "c.png",
                     reason: expect.stringContaining("No uploaded image"),
                 }),
                 {
@@ -654,8 +703,14 @@ describe("importFreeformImageAnswerItems", () => {
             "dataset-1",
             [fakeImageFile("a.png"), fakeImageFile("b.png")],
             [
-                JSON.stringify({ filename: "a.png", label: { answer: "salad" } }),
-                JSON.stringify({ filename: "b.png", label: { answer: "soup" } }),
+                JSON.stringify({
+                    filename: "a.png",
+                    label: { answer: "salad" },
+                }),
+                JSON.stringify({
+                    filename: "b.png",
+                    label: { answer: "soup" },
+                }),
             ].join("\n"),
         );
 
@@ -691,7 +746,11 @@ describe("importFreeformImageAnswerItems", () => {
         vi.mocked(addImageItem).mockClear();
         const summary = await importFreeformImageAnswerItems(
             "dataset-1",
-            [fakeImageFile("a.png"), fakeImageFile("a.png"), fakeImageFile("b.png")],
+            [
+                fakeImageFile("a.png"),
+                fakeImageFile("a.png"),
+                fakeImageFile("b.png"),
+            ],
             JSON.stringify({ filename: "b.png", label: { answer: "soup" } }),
         );
 
@@ -718,9 +777,11 @@ describe("prepareGoldenAnswersForItems", () => {
     ];
 
     it("AE2: pairs eight matching keys and reports two orphan items", () => {
-        const lines = items.slice(0, 8).map((item) =>
-            JSON.stringify({ key: item.matchKeys[1], label: { score: 8 } }),
-        );
+        const lines = items
+            .slice(0, 8)
+            .map((item) =>
+                JSON.stringify({ key: item.matchKeys[1], label: { score: 8 } }),
+            );
         const plan = prepareGoldenAnswersForItems(items, lines.join("\n"));
 
         expect(plan.pairs).toHaveLength(8);
@@ -800,7 +861,9 @@ describe("prepareGoldenAnswersForItems", () => {
         );
         expect(plan.pairs).toHaveLength(2);
         // Item A is matched via its input_text, not overwritten by B.
-        expect(plan.pairs.find((pair) => pair.itemId === "item-a")?.label).toEqual({
+        expect(
+            plan.pairs.find((pair) => pair.itemId === "item-a")?.label,
+        ).toEqual({
             score: 1,
         });
     });

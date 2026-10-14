@@ -212,6 +212,7 @@ describe("FileDropzone", () => {
         ): IUploadProgress => ({
             ...IDLE_UPLOAD_PROGRESS,
             completedRun,
+            retryPending: status === "failed",
             files: {
                 [uploadProgressKey("images", failed)]: {
                     status,

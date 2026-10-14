@@ -29,12 +29,19 @@ export interface IUploadProgress {
      * files that made it and keep the rest (failed or left out) for a retry.
      */
     completedRun: number;
+    /**
+     * Set with each completed run: whether files are left for another run
+     * (uploads that failed, or files left out of this one). Companion pickers,
+     * such as an answers file or CSV, keep their file for that run.
+     */
+    retryPending: boolean;
 }
 
 export const IDLE_UPLOAD_PROGRESS: IUploadProgress = {
     phase: "idle",
     files: {},
     completedRun: 0,
+    retryPending: false,
 };
 
 /** Keys a file's progress by the form field it was picked in. */
@@ -50,3 +57,11 @@ export const UploadProgressContext = createContext<IUploadProgress | null>(
 export function useUploadProgress(): IUploadProgress | null {
     return useContext(UploadProgressContext);
 }
+
+/**
+ * Lets a file picker tell the enclosing import form which of its files were
+ * left out of the upload and still wait for a later run.
+ */
+export const LeftOutFilesContext = createContext<
+    ((field: string, fileNames: string[]) => void) | null
+>(null);

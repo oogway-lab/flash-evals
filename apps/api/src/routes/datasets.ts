@@ -3470,6 +3470,7 @@ function prepareGoldenAnswersByKey(
         if (!required.has(row.key)) {
             failures.push({
                 row: row.rowNumber,
+                fileName: row.key,
                 reason: `No uploaded ${mediaLabel} matches ${keyLabel} "${row.key}".`,
             });
             continue;
@@ -3695,6 +3696,7 @@ function preparePairedImport(
         if (!fileSet.has(fileName)) {
             failures.push({
                 row: rowNumber,
+                fileName,
                 reason: `No uploaded image named "${fileName}".`,
             });
             return;

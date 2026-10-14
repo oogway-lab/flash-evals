@@ -3,7 +3,9 @@
 import {
     Fragment,
     useActionState,
+    useCallback,
     useEffect,
+    useRef,
     useState,
     type ReactNode,
 } from "react";
@@ -19,6 +21,7 @@ import {
 } from "@/lib/uploads/upload-form-media";
 import {
     IDLE_UPLOAD_PROGRESS,
+    LeftOutFilesContext,
     UploadProgressContext,
     uploadProgressKey,
     type IFileUploadState,
@@ -88,6 +91,48 @@ function withoutDoneFiles(progress: IUploadProgress): IUploadProgress {
     };
 }
 
+/**
+ * A file not sent this run can only fail on the server for having no match in
+ * the answers file or CSV. Drops those failures: a failed upload is already
+ * listed, a left-out file waits for the next run, and a file an earlier run
+ * imported is done.
+ */
+function withoutUnsentFailures(
+    failures: IActionState["failures"] = [],
+    unsent: string[],
+    sent: string[],
+): NonNullable<IActionState["failures"]> {
+    const notSent = new Set(unsent);
+    sent.forEach((name) => notSent.delete(name));
+    return failures.filter(
+        (failure) => !(failure.fileName && notSent.has(failure.fileName)),
+    );
+}
+
+/** The media files each upload field's picker left out of this run. */
+function leftOutFileNames(
+    leftOut: Map<string, string[]>,
+    uploadFields: IUploadField[],
+): string[] {
+    return uploadFields.flatMap((spec) => leftOut.get(spec.field) ?? []);
+}
+
+/**
+ * Remembers the files a completed run imported while a retry still needs its
+ * answers file or CSV. A run that leaves nothing behind ends that chain.
+ */
+function rememberImported(
+    imported: Set<string>,
+    uploadedFileNames: string[],
+    retryPending: boolean,
+): void {
+    if (!retryPending) {
+        imported.clear();
+        return;
+    }
+    uploadedFileNames.forEach((name) => imported.add(name));
+}
+
 export function ImportFormShell({
     datasetId,
     action,
@@ -128,6 +173,15 @@ export function ImportFormShell({
             files: { ...current.files, [key]: next },
         }));
 
+    // The files each picker left out of the upload, by field name.
+    const leftOutRef = useRef(new Map<string, string[]>());
+    const reportLeftOut = useCallback((field: string, fileNames: string[]) => {
+        leftOutRef.current.set(field, fileNames);
+    }, []);
+    // Names imported by earlier runs while their answers file or CSV stays
+    // selected for a retry.
+    const importedRef = useRef(new Set<string>());
+
     // Once the pickers have pruned the files a completed run imported (child
     // effects run before this one), forget their "done" state: a file picked
     // again must show as a normal, removable row, not as "Uploaded".
@@ -158,11 +212,8 @@ export function ImportFormShell({
             phase: "preparing",
             files: {},
         }));
-        const { error, fileFailures } = await uploadFormMedia(
-            formData,
-            datasetId,
-            uploadFields,
-            {
+        const { error, fileFailures, uploadedFileNames } =
+            await uploadFormMedia(formData, datasetId, uploadFields, {
                 onQueued: (field, files) =>
                     setProgress((current) => ({
                         ...current,
@@ -189,8 +240,7 @@ export function ImportFormShell({
                         total: event.total,
                         error: event.error?.message,
                     }),
-            },
-        );
+            });
         const uploadFailures = fileFailures.map((failure) => ({
             fileName: failure.fileName,
             reason: `Upload failed: ${failure.reason}`,
@@ -216,6 +266,24 @@ export function ImportFormShell({
         setProgress((current) => ({ ...current, phase: "importing" }));
         const result = await action(prev, formData);
         const completed = !result.rejected && (result.importedCount ?? 0) > 0;
+        const leftOut = leftOutFileNames(leftOutRef.current, uploadFields);
+        const retryPending = fileFailures.length > 0 || leftOut.length > 0;
+        const serverFailures = withoutUnsentFailures(
+            result.failures,
+            [
+                ...importedRef.current,
+                ...leftOut,
+                ...fileFailures.map((failure) => failure.fileName),
+            ],
+            uploadedFileNames,
+        );
+        if (completed) {
+            rememberImported(
+                importedRef.current,
+                uploadedFileNames,
+                retryPending,
+            );
+        }
         setProgress((current) =>
             completed
                 ? {
@@ -224,15 +292,15 @@ export function ImportFormShell({
                       // Pickers drop what was imported and keep failed or
                       // left-out files for the next run.
                       completedRun: current.completedRun + 1,
+                      retryPending,
                   }
                 : // Nothing was imported: every file stays selected, and
                   // none of them should read as "Uploaded".
                   { ...withoutDoneFiles(current), phase: "idle" },
         );
-        if (uploadFailures.length === 0) return result;
         return {
             ...result,
-            failures: [...uploadFailures, ...(result.failures ?? [])],
+            failures: [...uploadFailures, ...serverFailures],
         };
     }
 
@@ -284,17 +352,19 @@ export function ImportFormShell({
             <UploadProgressContext.Provider
                 value={uploadFields?.length ? progress : null}
             >
-                <Fragment
-                    key={
-                        !uploadFields?.length &&
-                        state.importedCount !== undefined &&
-                        !state.rejected
-                            ? state.resetKey
-                            : undefined
-                    }
-                >
-                    {children}
-                </Fragment>
+                <LeftOutFilesContext.Provider value={reportLeftOut}>
+                    <Fragment
+                        key={
+                            !uploadFields?.length &&
+                            state.importedCount !== undefined &&
+                            !state.rejected
+                                ? state.resetKey
+                                : undefined
+                        }
+                    >
+                        {children}
+                    </Fragment>
+                </LeftOutFilesContext.Provider>
             </UploadProgressContext.Provider>
             {/* A rejected import's reason is already in the summary below. */}
             {state.formError && !summaryRepeatsFormError && (
