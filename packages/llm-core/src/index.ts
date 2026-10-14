@@ -30,7 +30,10 @@ export {
 } from "./providers/factory.js";
 export { GatewayEvalProvider } from "./providers/gateway.js";
 export { OpenAIEvalProvider } from "./providers/openai.js";
-export { transcribeOpenRouterAudio } from "./providers/openrouterAudio.js";
+export {
+    OPENROUTER_AUDIO_DEFAULT_MAX_BYTES,
+    transcribeOpenRouterAudio,
+} from "./providers/openrouterAudio.js";
 export { VercelAIEvalProvider } from "./providers/vercelAi.js";
 export {
     listAvailableModelMetadata,

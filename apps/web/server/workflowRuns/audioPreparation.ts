@@ -17,6 +17,7 @@ import {
     workflowItemLeaseMs,
     workflowPreparationWaitMs,
 } from "./itemLease";
+import { startLeaseHeartbeat } from "./leaseHeartbeat";
 
 export type WorkflowDatasetItem = typeof datasetItems.$inferSelect;
 type ResolvedKeys = Awaited<ReturnType<typeof resolveApiKeys>>;
@@ -35,6 +36,7 @@ export interface IPreparedWorkflowAudio {
 type PreparedWithPersistence = IPreparedWorkflowAudio & {
     persistence: {
         cacheHit: boolean;
+        incurredCostUsd: number | undefined;
         lookupLatencyMs: number;
         transcriptionLatencyMs: number;
         transliterationLatencyMs: number;
@@ -101,12 +103,27 @@ async function prepareWorkflowAudioItem(
     const claimedId = await claimPreparation(input, leaseOwner);
     if (!claimedId) return waitForPreparedWorkflowAudio(input, identity);
 
+    const stopHeartbeat = startLeaseHeartbeat(
+        () =>
+            db
+                .update(workflowRunItems)
+                .set({ claimedAt: new Date() })
+                .where(
+                    and(
+                        eq(workflowRunItems.id, claimedId),
+                        eq(workflowRunItems.leaseOwner, leaseOwner),
+                    ),
+                ),
+        workflowItemLeaseMs,
+        { workflowRunId: input.workflowRunId, workflowRunItemId: claimedId },
+    );
     try {
         const prepared = await transcribePreparedItem(
             input,
             claimedId,
             identity,
         );
+        stopHeartbeat();
         const completed = await completePreparation(
             claimedId,
             leaseOwner,
@@ -116,6 +133,7 @@ async function prepareWorkflowAudioItem(
             ? prepared
             : waitForPreparedWorkflowAudio(input, identity);
     } catch (error) {
+        stopHeartbeat();
         return failPreparedWorkflowAudio(
             claimedId,
             leaseOwner,
@@ -176,7 +194,7 @@ async function transcribePreparedItem(
     if (!item.storageKey || !item.mimeType)
         throw new Error("Audio item is missing stored audio bytes.");
     const transcriptionStartedAt = Date.now();
-    const { artifact, cacheHit, lookupLatencyMs } =
+    const { artifact, cacheHit, lookupLatencyMs, incurredCostUsd } =
         await getOrCreateAudioTranscriptArtifactWithProvenance({
             datasetItemId: item.id,
             storageKey: item.storageKey,
@@ -214,6 +232,7 @@ async function transcribePreparedItem(
         artifactCostSource: metadata?.costSource,
         persistence: {
             cacheHit,
+            incurredCostUsd,
             lookupLatencyMs,
             transcriptionLatencyMs: cacheHit
                 ? 0
@@ -246,12 +265,11 @@ async function completePreparation(
             lookupLatencyMs: persistence.lookupLatencyMs,
             transcriptionLatencyMs: persistence.transcriptionLatencyMs,
             transliterationLatencyMs: persistence.transliterationLatencyMs,
-            incurredCostUsd: persistence.cacheHit
-                ? 0
-                : prepared.artifactCostUsd,
-            incurredCostSource: persistence.cacheHit
-                ? "computed"
-                : prepared.artifactCostSource,
+            incurredCostUsd: persistence.incurredCostUsd,
+            incurredCostSource:
+                persistence.incurredCostUsd !== undefined
+                    ? "computed"
+                    : "unavailable",
             cacheHit: persistence.cacheHit,
             preparationStatus: "completed",
             claimedAt: null,

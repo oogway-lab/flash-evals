@@ -118,6 +118,27 @@ export async function createSttEvalRunAction(
     redirect(`/multiworkflow/${workflowId}/runs/${workflowRunId}`);
 }
 
+export async function retryWorkflowRunAction(
+    _state: IActionState,
+    formData: FormData,
+): Promise<IActionState> {
+    const principal = await requireActiveProject();
+    const workflowId = String(formData.get("workflowId") ?? "");
+    const workflowRunId = String(formData.get("runId") ?? "");
+    try {
+        await serverApiClient().retryWorkflowRun({
+            teamId: principal.teamId,
+            projectId: principal.projectId,
+            workflowId,
+            workflowRunId,
+        });
+    } catch (error) {
+        return workflowActionError(error);
+    }
+    revalidatePath(`/multiworkflow/${workflowId}/runs/${workflowRunId}`);
+    return { ok: true };
+}
+
 function workflowActionError(error: unknown): IActionState {
     if (error instanceof MosaicApiError && error.path) {
         const message = [error.message, error.remediation]

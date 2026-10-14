@@ -37,6 +37,7 @@ export async function deleteWorkflowAction(
 export const createSttEvalAction = sttEvalActions.createSttEvalAction;
 export const saveSttEvalAction = sttEvalActions.saveSttEvalAction;
 export const createSttEvalRunAction = sttEvalActions.createSttEvalRunAction;
+export const retryWorkflowRunAction = sttEvalActions.retryWorkflowRunAction;
 export async function createWorkflowLlmRouteForNode(
     input: Parameters<typeof createWorkflowLlmRoute>[0],
 ): Promise<Awaited<ReturnType<typeof createWorkflowLlmRoute>>> {

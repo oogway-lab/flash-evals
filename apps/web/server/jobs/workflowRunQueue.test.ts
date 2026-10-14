@@ -93,6 +93,7 @@ describe("workflow run queue", () => {
             {
                 retryLimit: 3,
                 retryBackoff: true,
+                singletonKey: "run-1",
             },
         );
     });

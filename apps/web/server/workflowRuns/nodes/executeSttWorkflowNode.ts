@@ -141,8 +141,10 @@ async function executeSttNode(
                 : undefined,
         },
         latencyMs: Date.now() - startedAt,
-        ...(result.artifact.providerMetadata?.costUsd !== undefined
-            ? { costUsd: result.artifact.providerMetadata.costUsd }
+        // Cell cost is new spend; a reused transcript keeps its original cost
+        // in providerMetadata but costs nothing in this run.
+        ...(result.incurredCostUsd !== undefined
+            ? { costUsd: result.incurredCostUsd }
             : {}),
     };
 }

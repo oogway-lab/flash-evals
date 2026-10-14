@@ -2,14 +2,25 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { retryRunAction, type IActionState } from "@/app/actions";
+import {
+    retryRunAction,
+    retryWorkflowRunAction,
+    type IActionState,
+} from "@/app/actions";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useActionToast } from "@/components/layout/use-action-toast";
 
-export function RetryFailedCellsForm({ runId }: { runId: string }) {
+export function RetryFailedCellsForm({
+    runId,
+    workflowId,
+}: {
+    runId: string;
+    /** Set for workflow runs; omitted for eval runs. */
+    workflowId?: string;
+}) {
     const [state, formAction] = useActionState<IActionState, FormData>(
-        retryRunAction,
+        workflowId ? retryWorkflowRunAction : retryRunAction,
         {},
     );
     useActionToast(state, "Retry queued. Failed cells will run again.");
@@ -19,6 +30,9 @@ export function RetryFailedCellsForm({ runId }: { runId: string }) {
             className="flex flex-col gap-2 sm:items-start"
         >
             <input type="hidden" name="runId" value={runId} />
+            {workflowId && (
+                <input type="hidden" name="workflowId" value={workflowId} />
+            )}
             <RetryButton />
             {state.formError && (
                 <Alert variant="destructive" className="sm:max-w-xs">

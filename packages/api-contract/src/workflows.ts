@@ -573,6 +573,19 @@ export interface ICreateWorkflowRunResponse {
     enqueueStatus: "pending_enqueue" | "queued";
 }
 
+/** Requeue a finished workflow run's failed cells, keeping successful ones. */
+export interface IRetryWorkflowRunRequest {
+    teamId: string;
+    projectId: string;
+    workflowId: string;
+    workflowRunId: string;
+}
+
+export interface IRetryWorkflowRunResponse extends ICreateWorkflowRunResponse {
+    /** Failed cells reset to pending, including blocked descendants. */
+    retriedCellCount: number;
+}
+
 export interface IWorkflowRunSummary {
     id: string;
     workflowId: string;

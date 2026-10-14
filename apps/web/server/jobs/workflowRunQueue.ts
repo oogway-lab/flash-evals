@@ -47,6 +47,9 @@ export async function enqueueWorkflowRun(workflowRunId: string) {
         {
             retryLimit: 3,
             retryBackoff: true,
+            // Matches the API publisher: one queued job per run, so recovery
+            // and explicit retries cannot stack duplicate executions.
+            singletonKey: workflowRunId,
         },
     );
 }

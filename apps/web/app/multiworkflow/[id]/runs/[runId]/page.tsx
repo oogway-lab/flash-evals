@@ -4,6 +4,7 @@ import { MosaicApiError } from "@mosaic/api-contract";
 import { Page } from "@/components/layout/page";
 import { PageHeader } from "@/components/layout/page-header";
 import { SttRunResults } from "@/components/stt-evals/stt-run-results";
+import { RetryFailedCellsForm } from "@/components/runs/retry-failed-cells-form";
 import { RunProgressCard } from "@/components/runs/run-progress-card";
 import { serverApiClient } from "@/server/api/client";
 import { requireActiveProject } from "@/server/projects/activeProject";
@@ -33,6 +34,12 @@ export default async function SttEvalRunPage({
                     { label: "Canvas", href: `/multiworkflow/${id}` as Route },
                     { label: "Run" },
                 ]}
+                action={
+                    detail.workflowRun.status === "partial" ||
+                    detail.workflowRun.status === "failed" ? (
+                        <RetryFailedCellsForm runId={runId} workflowId={id} />
+                    ) : undefined
+                }
             />
             <RunProgressCard
                 progressUrl={`/api/workflows/${id}/runs/${runId}/progress`}

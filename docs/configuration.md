@@ -337,16 +337,24 @@ local tokens, production OAuth, and `MOSAIC_MCP_ALLOWED_ORIGINS`.
 
 ## Limits and worker settings
 
-| Variable                            | Default                          | Meaning                                                                                        |
-| ----------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `MOSAIC_MAX_RUN_CELLS`              | 10000; maximum 16000             | Caps items × models, or items × workflow nodes, for a run.                                     |
-| `MOSAIC_TEAM_DAILY_SPEND_CAP_USD`   | Off                              | Refuses new runs after recorded spend for runs started in the last 24 hours reaches the limit. |
-| `MOSAIC_RATE_LIMIT_LLM_PER_MINUTE`  | 20                               | Per-user limit for cost-bearing setup tools such as prompt tests, validation, and probes.      |
-| `MOSAIC_RATE_LIMIT_RUNS_PER_MINUTE` | 10                               | Per-user limit for run creation and retries, including matching MCP tools.                     |
-| `EVAL_CONCURRENCY`                  | 5 for eval runs; 4 for workflows | Parallel cells within a run; minimum 1.                                                        |
-| `RUN_STALE_CLAIM_MS`                | 900000                           | Reclaim timeout for interrupted eval cells; minimum 60000.                                     |
-| `WORKFLOW_STALE_CLAIM_MS`           | 900000                           | Reclaim timeout for interrupted workflow cells; minimum 60000.                                 |
-| `MOSAIC_WORKER_DRAIN_TIMEOUT_MS`    | 20000                            | Bounded SIGTERM/SIGINT drain window in ms; minimum 1000, maximum 300000.                       |
+| Variable                            | Default                          | Meaning                                                                                                                                 |
+| ----------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `MOSAIC_MAX_RUN_CELLS`              | 10000; maximum 16000             | Caps items × models, or items × workflow nodes, for a run.                                                                              |
+| `MOSAIC_TEAM_DAILY_SPEND_CAP_USD`   | Off                              | Refuses new runs after recorded spend for runs started in the last 24 hours reaches the limit.                                          |
+| `MOSAIC_RATE_LIMIT_LLM_PER_MINUTE`  | 20                               | Per-user limit for cost-bearing setup tools such as prompt tests, validation, and probes.                                               |
+| `MOSAIC_RATE_LIMIT_RUNS_PER_MINUTE` | 10                               | Per-user limit for run creation and retries, including matching MCP tools.                                                              |
+| `EVAL_CONCURRENCY`                  | 5 for eval runs; 4 for workflows | Parallel cells within a run; minimum 1.                                                                                                 |
+| `RUN_STALE_CLAIM_MS`                | 900000                           | Reclaim timeout for interrupted eval cells; minimum 60000.                                                                              |
+| `WORKFLOW_STALE_CLAIM_MS`           | 900000                           | Reclaim timeout for interrupted workflow cells; minimum 60000.                                                                          |
+| `STT_REQUEST_TIMEOUT_MS`            | 180000                           | Per-request timeout for OpenRouter transcription; 10000–600000. Other STT providers keep their defaults.                                |
+| `STT_MAX_ATTEMPTS`                  | 3                                | Attempts per OpenRouter transcription request (or chunk) for timeouts, rate limits, and 5xx errors; 1–5. Permanent errors fail at once. |
+| `STT_OPENROUTER_AUDIO_MAX_BYTES`    | 14680064                         | Largest raw audio payload sent to Gemini on OpenRouter. Larger recordings are compressed and, if needed, split.                         |
+| `STT_AUDIO_MAX_CHUNK_MS`            | 600000                           | Longest audio per Gemini-on-OpenRouter request; longer recordings are split near silences; 60000–3600000.                               |
+| `STT_AUDIO_PREP_TIMEOUT_MS`         | 120000                           | Time limit for each FFmpeg/FFprobe step that prepares audio; minimum 5000.                                                              |
+| `STT_AUDIO_PREP_CONCURRENCY`        | 1                                | Audio preparations run at once per worker process, bounding CPU, memory, and temporary disk.                                            |
+| `FFMPEG_PATH`                       | `ffmpeg`                         | FFmpeg binary used for audio preparation.                                                                                               |
+| `FFPROBE_PATH`                      | `ffprobe`                        | FFprobe binary used to measure recordings.                                                                                              |
+| `MOSAIC_WORKER_DRAIN_TIMEOUT_MS`    | 20000                            | Bounded SIGTERM/SIGINT drain window in ms; minimum 1000, maximum 300000.                                                                |
 
 Set a rate limit to `0` only when you intentionally want it disabled. Spend
 checks use recorded costs and do not reserve funds for in-flight work. Treat
