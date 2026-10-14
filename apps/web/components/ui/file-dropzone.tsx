@@ -14,6 +14,7 @@ import {
     type IExcludedFile,
 } from "@/lib/uploads/upload-plan";
 import {
+    LeftOutFilesContext,
     uploadProgressKey,
     useUploadProgress,
     type IFileUploadState,
@@ -214,6 +215,7 @@ export function FileDropzone({
 
     const fileState = useFileUploadState(name);
     usePruneAfterImport(name, picked, update);
+    useReportLeftOut(name, plan.excluded);
 
     const dragging = dragDepth > 0 && !disabled;
     const excluded = plan.excluded;
@@ -366,10 +368,29 @@ function useFileUploadState(name: string | undefined) {
 }
 
 /**
+ * Tells the import form which files this picker left out of the upload, so a
+ * companion picker keeps its file for the run that sends them. Duplicates
+ * don't count: they are never sent.
+ */
+function useReportLeftOut(name: string | undefined, excluded: IExcludedFile[]) {
+    const report = React.useContext(LeftOutFilesContext);
+    // A string dependency, so the report reruns only when the names change.
+    const names = excluded
+        .filter((item) => item.reason !== "duplicate")
+        .map((item) => item.file.name)
+        .join("\u0000");
+    React.useEffect(() => {
+        if (!name || !report) return;
+        report(name, names ? names.split("\u0000") : []);
+        return () => report(name, []);
+    }, [name, report, names]);
+}
+
+/**
  * After an import goes through, drops the files it took. A picker whose files
  * were uploaded keeps the ones that failed or were left out, so the next
- * submit retries only those. Any other picker clears, unless some file failed
- * and will need it again on the retry.
+ * submit retries only those. Any other picker clears, unless some files
+ * failed or were left out and will need it again on the next run.
  */
 function usePruneAfterImport(
     name: string | undefined,
@@ -377,16 +398,27 @@ function usePruneAfterImport(
     update: (next: File[]) => void,
 ) {
     const progress = useUploadProgress();
-    const latest = React.useRef({ picked, update, states: progress?.files });
+    const snapshot = {
+        picked,
+        update,
+        states: progress?.files,
+        retryPending: progress?.retryPending ?? false,
+    };
+    const latest = React.useRef(snapshot);
     React.useEffect(() => {
-        latest.current = { picked, update, states: progress?.files };
+        latest.current = snapshot;
     });
     const completedRun = progress?.completedRun ?? 0;
     const seenRunRef = React.useRef(completedRun);
     React.useEffect(() => {
         if (completedRun === seenRunRef.current) return;
         seenRunRef.current = completedRun;
-        const { picked: current, update: apply, states = {} } = latest.current;
+        const {
+            picked: current,
+            update: apply,
+            states = {},
+            retryPending,
+        } = latest.current;
         const stateOf = (file: File) =>
             name ? states[uploadProgressKey(name, file)] : undefined;
         const uploadedHere = current.some((file) => stateOf(file));
@@ -394,11 +426,8 @@ function usePruneAfterImport(
             apply(current.filter((file) => stateOf(file)?.status !== "done"));
             return;
         }
-        // A companion picker (an answers file or CSV) is needed again to
-        // retry the files that failed, so it only clears when none did.
-        const retryPending = Object.values(states).some(
-            (state) => state.status === "failed",
-        );
+        // A companion picker (an answers file or CSV) is needed again for the
+        // files that failed or were left out, so it only clears when none were.
         if (!retryPending) apply([]);
     }, [completedRun, name]);
 }

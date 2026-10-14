@@ -185,7 +185,86 @@ describe("uploadFiles", () => {
         expect(result.failures).toHaveLength(1);
         expect(result.failures[0].fileName).toBe("bad.png");
         expect(result.failures[0].error).toBeInstanceOf(UploadError);
-        expect(result.failures[0].error.kind).toBe("expired");
+        expect(result.failures[0].error.kind).toBe("storage");
+        // A rejection that isn't an expired URL is final: no re-sign, no retry.
+        expect(
+            fetchMock.mock.calls.filter((c) => isSignCall(c[0])),
+        ).toHaveLength(1);
+        expect(
+            fetchMock.mock.calls.filter((c) => String(c[0]).includes("/put/1")),
+        ).toHaveLength(1);
+    });
+
+    it("re-signs a file whose URL storage reports as expired", async () => {
+        let signs = 0;
+        fetchMock.mockImplementation((input: RequestInfo | URL) => {
+            if (isSignCall(input)) {
+                signs += 1;
+                return Promise.resolve(signResponse([`k/${signs}`]));
+            }
+            return Promise.resolve(
+                signs === 1
+                    ? new Response(
+                          '{"statusCode":"403","error":"Unauthorized","message":"jwt expired"}',
+                          { status: 400 },
+                      )
+                    : new Response(null, { status: 200 }),
+            );
+        });
+
+        const result = await uploadFiles({
+            datasetId: "ds-1",
+            modality: "image",
+            files: [makeFile("a.png")],
+            retryDelayMs: 0,
+        });
+
+        expect(signs).toBe(2);
+        expect(result.failures).toHaveLength(0);
+        expect(result.uploaded.map((u) => u.storageKey)).toEqual(["k/2"]);
+    });
+
+    it("treats a 403 after the target's expiresAt as an expired URL", async () => {
+        let signs = 0;
+        fetchMock.mockImplementation((input: RequestInfo | URL) => {
+            if (isSignCall(input)) {
+                signs += 1;
+                return Promise.resolve(
+                    new Response(
+                        JSON.stringify({
+                            targets: [
+                                {
+                                    storageKey: `k/${signs}`,
+                                    signedUrl: `https://storage.example/put/${signs}`,
+                                    expiresAt:
+                                        signs === 1
+                                            ? new Date(
+                                                  Date.now() - 1_000,
+                                              ).toISOString()
+                                            : new Date(
+                                                  Date.now() + 60_000,
+                                              ).toISOString(),
+                                },
+                            ],
+                        }),
+                        { status: 200 },
+                    ),
+                );
+            }
+            return Promise.resolve(
+                new Response(null, { status: signs === 1 ? 403 : 200 }),
+            );
+        });
+
+        const result = await uploadFiles({
+            datasetId: "ds-1",
+            modality: "image",
+            files: [makeFile("a.png")],
+            retryDelayMs: 0,
+        });
+
+        expect(signs).toBe(2);
+        expect(result.failures).toHaveLength(0);
     });
 
     it("sign endpoint returning 400 throws UploadError(sign-failed) with the message", async () => {
@@ -305,7 +384,9 @@ describe("uploadFiles", () => {
                 const url = String(input);
                 // bad.png's first URL is rejected; its fresh URL works.
                 if (url.includes("bad.png?sign=1")) {
-                    return Promise.resolve(new Response(null, { status: 403 }));
+                    return Promise.resolve(
+                        new Response("Request has expired", { status: 403 }),
+                    );
                 }
                 return Promise.resolve(new Response(null, { status: 200 }));
             },

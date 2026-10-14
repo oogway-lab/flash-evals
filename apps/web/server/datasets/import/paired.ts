@@ -1,8 +1,6 @@
 import Papa from "papaparse";
 import type { IParsedSchemaDescriptor, LabelJson } from "../../db/jsonTypes";
-import {
-    addImageItem,
-} from "../service";
+import { addImageItem } from "../service";
 import { prepareGoldenAnswersByKey } from "./goldenAnswers";
 import {
     MAX_IMPORT_ROWS,
@@ -65,7 +63,9 @@ export function preparePairedImport(
         return {
             items: [],
             rejected: true,
-            failures: [{ reason: "Spreadsheet must have a 'filename' column." }],
+            failures: [
+                { reason: "Spreadsheet must have a 'filename' column." },
+            ],
         };
     }
 
@@ -92,11 +92,15 @@ export function preparePairedImport(
         return {
             items: [],
             rejected: true,
-            failures: [{ reason: `Import is limited to ${MAX_IMPORT_ROWS} rows.` }],
+            failures: [
+                { reason: `Import is limited to ${MAX_IMPORT_ROWS} rows.` },
+            ],
         };
     }
 
-    const fieldByName = new Map(schema.fields.map((field) => [field.name, field]));
+    const fieldByName = new Map(
+        schema.fields.map((field) => [field.name, field]),
+    );
     const fileSet = new Set(fileNames);
     const seenInCsv = new Set<string>();
     const matched = new Set<string>();
@@ -124,6 +128,7 @@ export function preparePairedImport(
         if (!fileSet.has(fileName)) {
             failures.push({
                 row: rowNumber,
+                fileName,
                 reason: `No uploaded image named "${fileName}".`,
             });
             return;

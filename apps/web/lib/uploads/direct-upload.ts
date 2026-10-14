@@ -229,13 +229,39 @@ async function requestSignedTargets(
     return body.targets;
 }
 
-function putErrorFromStatus(status: number, fileName: string): UploadError {
-    if (status === 400 || status === 401 || status === 403) {
-        // Supabase rejects an expired/invalid single-use token with these codes.
+/**
+ * Storage answers an expired URL with 400/401/403 and says so in the body:
+ * Supabase with "jwt expired" or "InvalidJWT", R2 with "Request has expired".
+ */
+const EXPIRED_BODY = /expired|invalid ?jwt/i;
+
+/**
+ * Whether storage rejected the PUT because its signed URL expired, so a fresh
+ * URL can fix it. Any other 400/401/403 is final: re-signing a file storage
+ * refuses would only send all of its bytes again.
+ */
+function isExpiredRejection(
+    status: number,
+    body: string,
+    target: ISignedUploadTarget,
+): boolean {
+    if (status !== 400 && status !== 401 && status !== 403) return false;
+    const expiresAt = target.expiresAt ? Date.parse(target.expiresAt) : NaN;
+    return expiresAt <= Date.now() || EXPIRED_BODY.test(body);
+}
+
+function putErrorFromStatus(
+    status: number,
+    body: string,
+    file: File,
+    target: ISignedUploadTarget,
+): UploadError {
+    const fileName = file.name;
+    if (isExpiredRejection(status, body, target)) {
         return new UploadError(
             "expired",
-            `The upload authorization for "${fileName}" expired or was rejected. Please retry.`,
-            { fileName },
+            `The upload authorization for "${fileName}" expired. Please retry.`,
+            { fileName, status },
         );
     }
     return new UploadError(
@@ -289,7 +315,14 @@ function putFileWithProgress(
             if (xhr.status >= 200 && xhr.status < 300) {
                 resolve(uploadedObject(file, target));
             } else {
-                reject(putErrorFromStatus(xhr.status, file.name));
+                reject(
+                    putErrorFromStatus(
+                        xhr.status,
+                        xhr.responseText,
+                        file,
+                        target,
+                    ),
+                );
             }
         };
         // An aborted or timed-out request fires neither `load` nor `error`;
@@ -332,7 +365,8 @@ async function putFile(
     }
 
     if (!res.ok) {
-        throw putErrorFromStatus(res.status, file.name);
+        const body = await res.text().catch(() => "");
+        throw putErrorFromStatus(res.status, body, file, target);
     }
 
     return uploadedObject(file, target);

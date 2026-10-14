@@ -40,6 +40,8 @@ export interface IUploadFormMediaOutcome {
      * ones are already in FormData, so the import goes ahead without these.
      */
     fileFailures: IUploadFileFailure[];
+    /** Names of the files that reached storage and go to the import. */
+    uploadedFileNames: string[];
 }
 
 /** Progress callbacks, reported per FormData field. */
@@ -91,6 +93,7 @@ export async function uploadFormMedia(
     progress: IUploadFormMediaProgress = {},
 ): Promise<IUploadFormMediaOutcome> {
     const fileFailures: IUploadFileFailure[] = [];
+    const uploadedFileNames: string[] = [];
     for (const spec of fields) {
         const files = formData
             .getAll(spec.field)
@@ -127,6 +130,7 @@ export async function uploadFormMedia(
                 return {
                     error: { field: spec.field, message: err.message },
                     fileFailures,
+                    uploadedFileNames,
                 };
             }
             throw err;
@@ -148,9 +152,11 @@ export async function uploadFormMedia(
                     message: `Could not upload ${result.failures.length} file${plural} (${names}). Please retry.`,
                 },
                 fileFailures,
+                uploadedFileNames,
             };
         }
 
+        uploadedFileNames.push(...result.uploaded.map((u) => u.fileName));
         formData.set(
             spec.targetField,
             JSON.stringify(
@@ -164,5 +170,5 @@ export async function uploadFormMedia(
         );
     }
 
-    return { fileFailures };
+    return { fileFailures, uploadedFileNames };
 }

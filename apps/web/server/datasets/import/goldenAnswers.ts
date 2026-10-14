@@ -49,7 +49,13 @@ export interface IGoldenAnswersByKeyPlan {
     rejected?: boolean;
 }
 
-const GOLDEN_KEY_ALIASES = new Set(["key", "itemId", "item_id", "filename", "id"]);
+const GOLDEN_KEY_ALIASES = new Set([
+    "key",
+    "itemId",
+    "item_id",
+    "filename",
+    "id",
+]);
 
 export function prepareGoldenAnswersForItems(
     items: IGoldenItemRef[],
@@ -98,7 +104,10 @@ export function prepareGoldenAnswersForItems(
 
     for (const { rowNumber, key, label } of parsedRows.rows) {
         if (!key) {
-            failures.push({ row: rowNumber, reason: "Missing key (use key, itemId, or filename)." });
+            failures.push({
+                row: rowNumber,
+                reason: "Missing key (use key, itemId, or filename).",
+            });
             continue;
         }
         if (seenKeys.has(key)) {
@@ -203,6 +212,7 @@ export function prepareGoldenAnswersByKey(
         if (!required.has(key)) {
             failures.push({
                 row: rowNumber,
+                fileName: key,
                 reason: `No uploaded ${mediaLabel} matches ${keyLabel} "${key}".`,
             });
             continue;
@@ -284,7 +294,11 @@ function parseGoldenAnswersPayload(content: string): {
             if (array.length > MAX_IMPORT_ROWS) {
                 return {
                     rows: [],
-                    failures: [{ reason: `Import is limited to ${MAX_IMPORT_ROWS} rows.` }],
+                    failures: [
+                        {
+                            reason: `Import is limited to ${MAX_IMPORT_ROWS} rows.`,
+                        },
+                    ],
                     rejected: true,
                 };
             }
@@ -384,9 +398,7 @@ function normalizeGoldenAnswerEntry(
 function assertGoldenLabelObject(
     value: unknown,
     rowNumber?: number,
-):
-    | { ok: true; label: LabelJson }
-    | { ok: false; failure: IImportFailure } {
+): { ok: true; label: LabelJson } | { ok: false; failure: IImportFailure } {
     if (!isRecord(value)) {
         return {
             ok: false,
