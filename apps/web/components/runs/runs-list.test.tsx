@@ -50,6 +50,23 @@ function rowFor(text: string) {
 }
 
 describe("RunsList", () => {
+    it("shows a pipeline judge score without naming a competing best model", () => {
+        render(
+            <RunsList
+                runs={[
+                    {
+                        ...run,
+                        noteTitle: "Judged pipeline",
+                        workflow: { id: "workflow-1", kind: "multi" },
+                        workflowScore: 0.973,
+                    },
+                ]}
+            />,
+        );
+        const row = rowFor("Judged pipeline");
+        expect(within(row).getByText("0.97")).toBeVisible();
+    });
+
     it.each([
         ["multi", "/multiworkflow"],
         ["stt", "/stt-evals"],
