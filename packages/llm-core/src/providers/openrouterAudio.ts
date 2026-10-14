@@ -31,12 +31,7 @@ function latinLanguageHint(language: string): string {
 /** Reject script drift rather than persisting it as a successful Latin transcript. */
 function requireLatinTranscript(text: string | undefined): string {
     if (!text) throw new Error("OpenRouter returned an empty transcript.");
-    if (
-        [...text].some(
-            (char) =>
-                /\p{Letter}/u.test(char) && !/\p{Script=Latin}/u.test(char),
-        )
-    )
+    if (/[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(text))
         throw new Error(
             "Audio transcription violated the Latin-script output requirement.",
         );

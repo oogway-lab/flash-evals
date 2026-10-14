@@ -3,7 +3,7 @@ import { transcribeOpenRouterAudio } from "./openrouterAudio.js";
 
 afterEach(() => vi.unstubAllGlobals());
 
-it.each(["नमस्ते", "வணக்கம்", "నమస్కారం", "নমস্কার"])(
+it.each(["नमस्ते", "வணக்கம்", "నమస్కారం", "নমস্কার", "vanakkam்"])(
     "rejects native-script drift: %s",
     async (text) => {
         vi.stubGlobal(
