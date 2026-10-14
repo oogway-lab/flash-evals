@@ -641,12 +641,12 @@ describe("NewRunForm model selection", () => {
                 enabled: true,
                 targetScript: "latin",
                 targetLanguage: "hi-Latn",
-                modelId: "gpt-4o-mini",
+                modelId: "gpt-6-luna",
                 temperature: 0.2,
             },
             evaluator: {
                 enabled: true,
-                modelId: "gpt-4o-mini",
+                modelId: "gpt-6-luna",
                 rubricPrompt:
                     "Score semantic accuracy and speaker attribution.",
             },

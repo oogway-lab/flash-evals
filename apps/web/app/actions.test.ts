@@ -1953,7 +1953,7 @@ describe("prompt management actions", () => {
                 projectId: "project-1",
                 content: "extract",
                 targetModelId: "gpt-4o",
-                optimizerModelId: "gpt-5.4-mini",
+                optimizerModelId: "gpt-6-luna",
                 jsonSchema,
                 createdBy: "user-1",
             }),
@@ -2627,7 +2627,9 @@ describe("delete actions report failures instead of throwing", () => {
                 {},
                 formData({ datasetId: "dataset-1", name: "New name" }),
             ),
-        ).resolves.toEqual({ formError: "Flash Evals API request failed (500)" });
+        ).resolves.toEqual({
+            formError: "Flash Evals API request failed (500)",
+        });
     });
 });
 
@@ -2879,7 +2881,7 @@ describe("test-draft actions require authentication", () => {
                 projectId: "project-1",
                 content: "Return the dish name as JSON.",
                 targetModelId: "gpt-4o",
-                generatorModelId: "gpt-5.4-mini",
+                generatorModelId: "gpt-6-luna",
                 createdBy: "user-1",
             }),
         );
