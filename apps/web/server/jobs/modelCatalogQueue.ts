@@ -1,5 +1,5 @@
 import PgBoss from "pg-boss";
-import { loadModelCatalog, refreshModelCatalog } from "@mosaic/llm-core";
+import { refreshModelCatalog } from "@mosaic/llm-core";
 import { modelCatalogStore } from "../llm/catalog";
 import { logWorkerEvent, safeWorkerError } from "./workerObservability";
 
@@ -15,14 +15,6 @@ export function startModelCatalogWorker(): Promise<void> {
     if (starting) return starting;
     stopping = false;
     starting = (async () => {
-        await loadModelCatalog(modelCatalogStore).catch((error) =>
-            logWorkerEvent(
-                "warn",
-                "catalog.load_failed",
-                safeWorkerError(error),
-            ),
-        );
-        if (stopping) return;
         const instance = new PgBoss({
             connectionString: process.env.DATABASE_URL,
             max: 1,

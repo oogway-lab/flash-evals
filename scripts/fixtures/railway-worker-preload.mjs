@@ -10,6 +10,9 @@ const fixtures = {
         exports.startModelCatalogWorker = async () => {};
         exports.stopModelCatalogWorker = async () => ({ remainingInFlight: 0 });
     `,
+    "../server/llm/catalog": `
+        exports.ensureModelCatalog = async () => {};
+    `,
     "../server/db/client": `
         exports.closeDatabasePool = async () => {
             clearInterval(globalThis.workerFixtureTimer);

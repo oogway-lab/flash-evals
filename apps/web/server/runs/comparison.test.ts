@@ -79,7 +79,7 @@ describe("buildComparison", () => {
         expect(d.qualityComparable).toBe(true);
     });
 
-    it("marks quality not comparable when a side has no judge score", () => {
+    it("marks quality not comparable when the runs share no scorer", () => {
         const result = buildComparison(
             [side({ modelId: "gpt-4o", avgFieldScore: 0.7 })],
             [side({ modelId: "gpt-4o", avgJudgeScore: 0.9 })],
@@ -87,6 +87,23 @@ describe("buildComparison", () => {
         const d = result[0].delta!;
         expect(d.qualityComparable).toBe(false);
         expect(d.quality).toBeUndefined();
+    });
+
+    it("falls back to field scores when only one run has a judge", () => {
+        const result = buildComparison(
+            [
+                side({
+                    modelId: "gpt-4o",
+                    avgFieldScore: 0.6,
+                    avgJudgeScore: 0.9,
+                }),
+            ],
+            [side({ modelId: "gpt-4o", avgFieldScore: 0.8 })],
+        );
+        expect(result[0].baseline?.qualitySource).toBe("field");
+        expect(result[0].baseline?.quality).toBe(0.6);
+        expect(result[0].delta?.qualityComparable).toBe(true);
+        expect(result[0].delta?.quality).toBeCloseTo(0.2);
     });
 
     it("uses the judge score as the quality axis and ignores the field score", () => {

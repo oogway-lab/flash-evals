@@ -5,7 +5,7 @@ function provider(
     transport: "openai" | "openrouter" = "openai",
     cacheStatus = "MISS",
     finishReason = "stop",
-    cost?: number,
+    usageExtras: Record<string, unknown> = {},
 ) {
     const response = {
         id: "gen-1",
@@ -16,7 +16,7 @@ function provider(
             prompt_tokens: 1,
             completion_tokens: 1,
             total_tokens: 2,
-            ...(cost === undefined ? {} : { cost }),
+            ...usageExtras,
         },
     };
     const create = vi.fn((..._args: unknown[]) => {
@@ -242,12 +242,38 @@ describe("OpenAI-compatible route forwarding", () => {
     });
 });
 
-it("preserves OpenRouter reported charges", async () => {
-    const harness = provider("openrouter", "MISS", "stop", 0.000042);
-    const result = await harness.provider.complete({
-        model: "google/gemini-2.5-flash",
-        prompt: "hi",
-        maxTokens: 10,
+describe("OpenRouter reported charges", () => {
+    async function reportedCost(usage: Record<string, unknown>) {
+        const harness = provider("openrouter", "MISS", "stop", usage);
+        const result = await harness.provider.complete({
+            model: "google/gemini-2.5-flash",
+            prompt: "hi",
+            maxTokens: 10,
+        });
+        return result.cost;
+    }
+
+    it("preserves OpenRouter reported charges", async () => {
+        expect(await reportedCost({ cost: 0.000042 })).toEqual({
+            usd: 0.000042,
+            source: "provider_reported",
+        });
     });
-    expect(result.cost).toEqual({ usd: 0.000042, source: "provider_reported" });
+
+    it("adds the upstream charge for BYOK requests", async () => {
+        expect(
+            await reportedCost({
+                cost: 0.00001,
+                is_byok: true,
+                cost_details: { upstream_inference_cost: 0.002 },
+            }),
+        ).toEqual({
+            usd: expect.closeTo(0.00201, 10),
+            source: "provider_reported",
+        });
+    });
+
+    it("falls back to catalog pricing when the BYOK upstream charge is unknown", async () => {
+        expect(await reportedCost({ cost: 0, is_byok: true })).toBeUndefined();
+    });
 });

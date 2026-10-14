@@ -2241,6 +2241,48 @@ describe("listRunsPayload", () => {
         expect(db.query).toHaveBeenCalledTimes(1);
     });
 
+    it("picks a best model for golden-only runs from field scores", async () => {
+        const db = dbWithRows([
+            [
+                {
+                    id: "run-golden",
+                    status: "completed",
+                    created_at: new Date("2026-07-06T08:00:00.000Z"),
+                    dataset_id: "dataset-1",
+                    dataset_name: "Food",
+                    models: ["gpt-4o", "gpt-4.1"],
+                    total: "4",
+                    done: "4",
+                    failed: "0",
+                    pending: "0",
+                    note_title: null,
+                    model_scores: [
+                        {
+                            model_id: "gpt-4o",
+                            judge: null,
+                            transcript: null,
+                            field: "0.5",
+                        },
+                        {
+                            model_id: "gpt-4.1",
+                            judge: null,
+                            transcript: null,
+                            field: 0.75,
+                        },
+                    ],
+                },
+            ],
+        ]);
+
+        const [row] = await listRunsPayload(db, "team-1", "project-1");
+
+        expect(row?.best).toMatchObject({
+            modelId: "gpt-4.1",
+            score: 0.75,
+            metric: "field",
+        });
+    });
+
     it("reports a partial winner as scored of total instead of a plain best", async () => {
         const db = dbWithRows([
             [

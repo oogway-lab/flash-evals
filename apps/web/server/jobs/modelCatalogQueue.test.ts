@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
-    load: vi.fn(async () => undefined),
     refresh: vi.fn(async () => [{ source: "openrouter", ok: true }]),
     start: vi.fn(async () => undefined),
     createQueue: vi.fn(async () => undefined),
@@ -25,7 +24,6 @@ vi.mock("pg-boss", () => ({
     },
 }));
 vi.mock("@mosaic/llm-core", () => ({
-    loadModelCatalog: mocks.load,
     refreshModelCatalog: mocks.refresh,
 }));
 vi.mock("../llm/catalog", () => ({ modelCatalogStore: {} }));
@@ -39,7 +37,7 @@ describe("daily model catalog worker", () => {
         vi.resetModules();
         vi.clearAllMocks();
     });
-    it("loads persisted data, registers one daily UTC cron, and bootstraps the first refresh", async () => {
+    it("registers one daily UTC cron, and bootstraps the first refresh", async () => {
         const {
             startModelCatalogWorker,
             stopModelCatalogWorker,
@@ -48,7 +46,7 @@ describe("daily model catalog worker", () => {
         } = await import("./modelCatalogQueue");
         await startModelCatalogWorker();
         await startModelCatalogWorker();
-        expect(mocks.load).toHaveBeenCalledTimes(1);
+        expect(mocks.start).toHaveBeenCalledTimes(1);
         expect(mocks.schedule).toHaveBeenCalledWith(
             MODEL_CATALOG_QUEUE,
             MODEL_CATALOG_CRON,

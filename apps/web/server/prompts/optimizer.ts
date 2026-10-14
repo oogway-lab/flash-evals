@@ -7,6 +7,7 @@ import type {
     IPromptOptimizerGuidanceSource,
     JsonSchemaObject,
 } from "../db/jsonTypes";
+import { ensureModelCatalog } from "../llm/catalog";
 import { registryEntryFor } from "../llm/modelRegistry";
 import { resolveReasoningEffort } from "../llm/reasoningConfig";
 import { validateDataAgainstSchema } from "./schemaValidation";
@@ -69,6 +70,7 @@ export async function optimizePrompt(input: {
     }
 
     const provider = getEvalProvider(input.apiKeys);
+    await ensureModelCatalog();
     const reasoningOptimizer =
         registryEntryFor(optimizerModelId)?.reasoning ?? false;
     const result = await provider.complete({

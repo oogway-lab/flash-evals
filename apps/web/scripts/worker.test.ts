@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+    ensureModelCatalog: vi.fn(async (): Promise<void> => undefined),
     startModelCatalogWorker: vi.fn(async (): Promise<void> => undefined),
     stopModelCatalogWorker: vi.fn(async () => ({ remainingInFlight: 0 })),
     closeDatabasePool: vi.fn(async (): Promise<void> => undefined),
@@ -15,6 +16,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../server/jobs/modelCatalogQueue", () => ({
     startModelCatalogWorker: mocks.startModelCatalogWorker,
     stopModelCatalogWorker: mocks.stopModelCatalogWorker,
+}));
+vi.mock("../server/llm/catalog", () => ({
+    ensureModelCatalog: mocks.ensureModelCatalog,
 }));
 vi.mock("../server/db/client", () => ({
     closeDatabasePool: mocks.closeDatabasePool,
@@ -113,6 +117,24 @@ describe("worker process shutdown", () => {
         expect(process.exit).not.toHaveBeenCalled();
 
         finishRunStartup();
+    });
+
+    it("keeps eval workers running when the catalog queue fails to start", async () => {
+        mocks.startModelCatalogWorker.mockRejectedValueOnce(
+            new Error("catalog queue down"),
+        );
+        await loadWorkerAndGetSignal("SIGTERM");
+
+        await vi.waitFor(() =>
+            expect(mocks.logWorkerEvent).toHaveBeenCalledWith(
+                "info",
+                "worker.ready",
+                expect.anything(),
+            ),
+        );
+        expect(mocks.ensureModelCatalog).toHaveBeenCalled();
+        expect(mocks.stopRunWorker).not.toHaveBeenCalled();
+        expect(process.exitCode).not.toBe(1);
     });
 
     it("forces exit on a repeated termination signal", async () => {
