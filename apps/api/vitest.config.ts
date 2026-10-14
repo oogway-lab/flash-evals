@@ -7,6 +7,10 @@ export default defineConfig({
         clearMocks: true,
         pool: "forks",
         isolate: true,
+        reporters: [
+            "default",
+            ["json", { outputFile: "../../test-results/apps-api.json" }],
+        ],
         coverage: {
             provider: "v8",
             reporter: ["text", "json", "html"],
