@@ -20,7 +20,15 @@ describe("planChunkSpans", () => {
                 silences: [],
                 maxChunkMs: 600_000,
             }),
-        ).toEqual([{ index: 0, startMs: 0, endMs: 120_000, hardCut: false }]);
+        ).toEqual([
+            {
+                index: 0,
+                startMs: 0,
+                endMs: 120_000,
+                hardCut: false,
+                silent: false,
+            },
+        ]);
     });
 
     it("cuts at the latest silence before each target without gaps or overlap", () => {
@@ -69,6 +77,48 @@ describe("planChunkSpans", () => {
     });
 });
 
+describe("planChunkSpans edge cases", () => {
+    it("never leaves a sliver of audio as the last chunk", () => {
+        const spans = planChunkSpans({
+            durationMs: 600_050,
+            silences: [],
+            maxChunkMs: 600_000,
+        });
+        expect(spans).toHaveLength(2);
+        expect(spans[1]!.endMs - spans[1]!.startMs).toBeGreaterThanOrEqual(
+            30_000,
+        );
+        expect(spans[0]!.endMs - spans[0]!.startMs).toBeLessThanOrEqual(
+            600_000,
+        );
+        expectContiguous(spans, 600_050);
+    });
+
+    it("marks spans that a detected silence covers entirely", () => {
+        const spans = planChunkSpans({
+            durationMs: 700_000,
+            silences: [
+                { startMs: 590_000, endMs: 592_000 },
+                { startMs: 640_000, endMs: 700_000 },
+            ],
+            maxChunkMs: 600_000,
+        });
+        expect(spans.map((span) => span.silent)).toEqual([false, false]);
+        const trailing = planChunkSpans({
+            durationMs: 1_300_000,
+            silences: [
+                { startMs: 599_000, endMs: 601_000 },
+                { startMs: 1_199_000, endMs: 1_300_000 },
+            ],
+            maxChunkMs: 600_000,
+        });
+        expect(trailing.at(-1)).toMatchObject({
+            startMs: 1_200_000,
+            silent: true,
+        });
+    });
+});
+
 describe("parseSilenceDetect", () => {
     it("pairs silence start and end lines in milliseconds", () => {
         expect(
@@ -85,5 +135,14 @@ describe("parseSilenceDetect", () => {
             { startMs: 12_500, endMs: 13_250 },
             { startMs: 0, endMs: 600 },
         ]);
+    });
+
+    it("closes a silence that runs to the end of the recording", () => {
+        expect(
+            parseSilenceDetect(
+                "[silencedetect @ 0x1] silence_start: 40",
+                45_000,
+            ),
+        ).toEqual([{ startMs: 40_000, endMs: 45_000 }]);
     });
 });

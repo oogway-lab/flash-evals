@@ -1,3 +1,4 @@
+import { TRANSCRIPT_CHUNK_KEY_MARKER } from "@mosaic/api-contract";
 import { describe, expect, it, vi } from "vitest";
 import { AUDIO_PREPARATION_VERSION, type PreparedAudio } from "../preparation";
 import {
@@ -43,6 +44,7 @@ const prepared: Extract<PreparedAudio, { kind: "prepared" }> = {
         bytes: Buffer.from(`chunk-${index}`),
         mimeType: "audio/mpeg",
         hardCut: index === 1,
+        silent: false,
     })),
 };
 
@@ -211,6 +213,99 @@ describe("executeTranscription", () => {
         expect(result.providerMetadata?.costUsd).toBeUndefined();
         expect(result.providerMetadata?.costSource).toBe("unavailable");
         expect(result.providerMetadata?.incurredCostUsd).toBeUndefined();
+    });
+});
+
+describe("executeTranscription chunk details", () => {
+    const run = (
+        chunks: typeof prepared.chunks,
+        dispatch: ReturnType<typeof vi.fn>,
+        seed: Record<string, ITranscriptArtifact> = {},
+    ) => {
+        const plan = { ...prepared, chunks };
+        return executeTranscription(
+            {
+                request,
+                storageKey: "audio/a.wav",
+                bytes: Buffer.alloc(1),
+                mimeType: "audio/wav",
+                policy,
+                chunkStore: memoryStore(seed).store,
+            },
+            { dispatch: dispatch as never, prepare: async () => plan },
+        );
+    };
+
+    it("marks chunk keys so transcript listings can exclude them", () => {
+        expect(
+            chunkStorageKey("audio/a.wav", prepared, prepared.chunks[0]!),
+        ).toContain(TRANSCRIPT_CHUNK_KEY_MARKER);
+    });
+
+    it("skips silent chunks without calling the provider", async () => {
+        const chunks = prepared.chunks.map((chunk) => ({
+            ...chunk,
+            silent: chunk.index === 2,
+        }));
+        const dispatch = vi
+            .fn()
+            .mockResolvedValueOnce(transcript("one", 0.01))
+            .mockResolvedValueOnce(transcript("two", 0.01));
+        const result = await run(chunks, dispatch);
+        expect(dispatch).toHaveBeenCalledTimes(2);
+        expect(result.text).toBe("one\ntwo");
+        expect(result.providerMetadata?.costUsd).toBeCloseTo(0.02);
+        expect(
+            result.providerMetadata?.audioPreparation?.chunks[2],
+        ).toMatchObject({ silent: true, attempts: 0 });
+    });
+
+    it("keeps warnings and cost uncertainty from chunks reused on resume", async () => {
+        const reused = transcript("one", 0.02);
+        reused.warnings = ["chunk one warning"];
+        reused.providerMetadata!.costUncertain = true;
+        const seed = {
+            [chunkStorageKey("audio/a.wav", prepared, prepared.chunks[0]!)]:
+                reused,
+        };
+        const dispatch = vi
+            .fn()
+            .mockResolvedValueOnce(transcript("two", 0.01))
+            .mockResolvedValueOnce(transcript("three", 0.01));
+        const result = await run(prepared.chunks, dispatch, seed);
+        expect(result.warnings).toContain("chunk one warning");
+        expect(result.providerMetadata?.costUncertain).toBe(true);
+        expect(result.providerMetadata?.incurredCostUsd).toBeCloseTo(0.02);
+    });
+
+    it("scopes speaker labels to their chunk instead of merging by id", async () => {
+        const withSpeaker = (text: string) => ({
+            ...transcript(text, 0.01),
+            segments: [{ text, speaker: "A" }],
+            speakers: [{ id: "A", label: "A" }],
+        });
+        const dispatch = vi
+            .fn()
+            .mockResolvedValueOnce(withSpeaker("interviewer"))
+            .mockResolvedValueOnce(withSpeaker("guest"))
+            .mockResolvedValueOnce(transcript("three", 0.01));
+        const result = await run(prepared.chunks, dispatch);
+        expect(result.speakers.map((speaker) => speaker.id)).toEqual([
+            "part1:A",
+            "part2:A",
+        ]);
+        expect(result.segments.map((segment) => segment.speaker)).toEqual([
+            "part1:A",
+            "part2:A",
+            undefined,
+        ]);
+        expect(result.warnings).toEqual(
+            expect.arrayContaining([
+                expect.stringContaining(
+                    "Speaker labels are assigned per chunk",
+                ),
+            ]),
+        );
     });
 });
 

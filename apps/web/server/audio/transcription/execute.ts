@@ -1,3 +1,4 @@
+import { TRANSCRIPT_CHUNK_KEY_MARKER } from "@mosaic/api-contract";
 import type {
     IAudioPreparationMetadata,
     ITranscriptionAttemptRecord,
@@ -39,13 +40,16 @@ export function cachedPreparationIsCurrent(
     return version === undefined || version === AUDIO_PREPARATION_VERSION;
 }
 
-/** Key for one prepared chunk; includes version and span so plans never mix. */
+/**
+ * Key for one prepared chunk; includes version and span so plans never mix.
+ * Readers that list an item's transcripts exclude keys with the marker.
+ */
 export function chunkStorageKey(
     storageKey: string,
     prepared: Extract<PreparedAudio, { kind: "prepared" }>,
     chunk: { index: number; startMs: number; endMs: number },
 ): string {
-    return `${storageKey}#${prepared.version}/${chunk.index + 1}-of-${prepared.chunks.length}@${chunk.startMs}-${chunk.endMs}`;
+    return `${storageKey}${TRANSCRIPT_CHUNK_KEY_MARKER}${prepared.version}/${chunk.index + 1}-of-${prepared.chunks.length}@${chunk.startMs}-${chunk.endMs}`;
 }
 
 /**
@@ -107,6 +111,15 @@ export async function executeTranscription(
         attempts: ITranscriptionAttemptRecord[];
     }> = [];
     for (const chunk of prepared.chunks) {
+        if (chunk.silent) {
+            results.push({
+                chunk,
+                artifact: SILENT_CHUNK,
+                cacheHit: false,
+                attempts: [],
+            });
+            continue;
+        }
         const key = chunkStorageKey(input.storageKey, prepared, chunk);
         const cached = await input.chunkStore.read(key);
         if (cached) {
@@ -137,6 +150,14 @@ export async function executeTranscription(
     }
     return assembleChunkTranscripts(prepared, input, results);
 }
+
+const SILENT_CHUNK: ITranscriptArtifact = {
+    text: "",
+    segments: [],
+    speakers: [],
+    warnings: [],
+    providerMetadata: { costUsd: 0, costSource: "computed" },
+};
 
 function withAttemptAccounting(
     artifact: ITranscriptArtifact,
@@ -185,9 +206,9 @@ export function assembleChunkTranscripts(
     const incurred = ordered
         .filter((result) => !result.cacheHit)
         .map((result) => result.artifact.providerMetadata?.costUsd);
+    // Reused chunks still carry their own cost uncertainty into the total.
     const costUncertain = ordered.some(
-        (result) =>
-            !result.cacheHit && result.artifact.providerMetadata?.costUncertain,
+        (result) => result.artifact.providerMetadata?.costUncertain,
     );
     const usageTotal = (
         key: "inputTokens" | "outputTokens" | "thinkingTokens" | "totalTokens",
@@ -199,12 +220,21 @@ export function assembleChunkTranscripts(
             ? sum(values)
             : undefined;
     };
-    const speakers = new Map(
-        ordered.flatMap((result) =>
-            result.artifact.speakers.map(
-                (speaker) => [speaker.id, speaker] as const,
-            ),
-        ),
+    // Each chunk is diarized on its own, so its labels only mean something
+    // within that chunk; scope them by part instead of merging by id.
+    const multiPart = ordered.length > 1;
+    const speakerId = (part: number, id: string) =>
+        multiPart ? `part${part + 1}:${id}` : id;
+    const speakers = ordered.flatMap((result) =>
+        result.artifact.speakers.map((speaker) => ({
+            ...speaker,
+            id: speakerId(result.chunk.index, speaker.id),
+            ...(multiPart
+                ? {
+                      label: `${speaker.label ?? speaker.id} (part ${result.chunk.index + 1})`,
+                  }
+                : {}),
+        })),
     );
     const hardCuts = ordered.filter((result) => result.chunk.hardCut).length;
     const audioPreparation: IAudioPreparationMetadata = {
@@ -226,13 +256,15 @@ export function assembleChunkTranscripts(
             bytes: result.chunk.bytes.byteLength,
             cacheHit: result.cacheHit,
             hardCut: result.chunk.hardCut,
+            ...(result.chunk.silent ? { silent: true } : {}),
             attempts: result.attempts.length,
             ...(result.artifact.providerMetadata?.costUsd !== undefined
                 ? { costUsd: result.artifact.providerMetadata.costUsd }
                 : {}),
         })),
     };
-    const first = ordered[0]?.artifact.providerMetadata;
+    const first = ordered.find((result) => !result.chunk.silent)?.artifact
+        .providerMetadata;
     return {
         text: ordered
             .map((result) => result.artifact.text.trim())
@@ -241,6 +273,14 @@ export function assembleChunkTranscripts(
         segments: ordered.flatMap((result) =>
             result.artifact.segments.map((segment) => ({
                 ...segment,
+                ...(segment.speaker
+                    ? {
+                          speaker: speakerId(
+                              result.chunk.index,
+                              segment.speaker,
+                          ),
+                      }
+                    : {}),
                 ...(segment.startMs !== undefined
                     ? { startMs: segment.startMs + result.chunk.startMs }
                     : {}),
@@ -249,7 +289,7 @@ export function assembleChunkTranscripts(
                     : {}),
             })),
         ),
-        speakers: [...speakers.values()],
+        speakers,
         ...(ordered.find((result) => result.artifact.detectedLanguage)
             ? {
                   detectedLanguage: ordered.find(
@@ -278,9 +318,12 @@ export function assembleChunkTranscripts(
             audioPreparation,
         },
         warnings: [
-            ...ordered.flatMap((result) =>
-                result.cacheHit ? [] : result.artifact.warnings,
-            ),
+            ...new Set(ordered.flatMap((result) => result.artifact.warnings)),
+            ...(multiPart && speakers.length > 0
+                ? [
+                      "Speaker labels are assigned per chunk; the same person can appear under different labels in different parts.",
+                  ]
+                : []),
             ...(hardCuts > 0
                 ? [
                       `${hardCuts} chunk boundar${hardCuts === 1 ? "y" : "ies"} had no nearby silence; check the transcript around ${hardCuts === 1 ? "that cut" : "those cuts"}.`,

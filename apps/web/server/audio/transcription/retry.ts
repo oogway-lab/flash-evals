@@ -1,4 +1,6 @@
+import { openAiTransportErrorClass } from "@mosaic/llm-core";
 import { errorMessage } from "../../lib/errors";
+import { retryAfterMs } from "../../lib/retryAfter";
 import type { ITranscriptionAttemptRecord } from "../../db/jsonTypes";
 import type { ITranscriptArtifact } from "./types";
 
@@ -40,17 +42,16 @@ export function classifyTranscriptionError(
     const status = statusOf(error);
     if (status !== undefined)
         return RETRYABLE_STATUSES.get(status) ?? "permanent";
+    const transport = openAiTransportErrorClass(error);
+    if (transport) return transport;
     if (
         error.name === "AbortError" ||
         error.name === "TimeoutError" ||
-        error.name === "APIConnectionTimeoutError" ||
         /\btimed out\b|\btimeout\b/i.test(error.message)
     )
         return "timeout";
-    const code = codeOf(error);
     if (
-        error.name === "APIConnectionError" ||
-        (code !== undefined && CONNECTION_CODES.has(code)) ||
+        errorCodes(error).some((code) => CONNECTION_CODES.has(code)) ||
         (error instanceof TypeError && /fetch failed/i.test(error.message))
     )
         return "connection";
@@ -65,24 +66,16 @@ function statusOf(error: Error): number | undefined {
     return match ? Number(match[1]) : undefined;
 }
 
-function codeOf(error: Error): string | undefined {
-    const own = (error as { code?: unknown }).code;
-    if (typeof own === "string") return own;
-    const cause = (error as { cause?: unknown }).cause;
-    const causeCode = (cause as { code?: unknown } | undefined)?.code;
-    return typeof causeCode === "string" ? causeCode : undefined;
-}
-
-function retryAfterMs(error: unknown): number | undefined {
-    const headers = (error as { headers?: unknown } | undefined)?.headers;
-    const value =
-        headers instanceof Headers
-            ? headers.get("retry-after")
-            : typeof headers === "object" && headers !== null
-              ? (headers as Record<string, unknown>)["retry-after"]
-              : undefined;
-    const seconds = Number(value);
-    return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
+/** Socket codes on the error and its causes (fetch nests them two deep). */
+function errorCodes(error: Error): string[] {
+    const codes: string[] = [];
+    let current: unknown = error;
+    for (let depth = 0; depth < 4 && current; depth += 1) {
+        const code = (current as { code?: unknown }).code;
+        if (typeof code === "string") codes.push(code);
+        current = (current as { cause?: unknown }).cause;
+    }
+    return codes;
 }
 
 /** A transcription that failed after every allowed attempt. */

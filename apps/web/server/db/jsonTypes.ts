@@ -256,6 +256,7 @@ export interface IAudioPreparationMetadata {
         bytes: number;
         cacheHit: boolean;
         hardCut: boolean;
+        silent?: boolean;
         attempts: number;
         costUsd?: number;
     }>;

@@ -9,6 +9,8 @@ export interface IChunkSpan {
     endMs: number;
     /** True when no silence was found near the target and the cut is mid-audio. */
     hardCut: boolean;
+    /** True when a detected silence covers the whole span; it is not sent. */
+    silent: boolean;
 }
 
 /**
@@ -16,13 +18,16 @@ export interface IChunkSpan {
  * `maxChunkMs`. Each cut is placed at the middle of the latest silence that
  * starts within `searchWindowMs` before the target, so words are not split.
  * Spans never overlap, so boundary speech is neither duplicated nor dropped
- * when a silence is available.
+ * when a silence is available. Targets are pulled earlier when needed so the
+ * final span is at least `minChunkMs` long; a sliver of audio would otherwise
+ * encode to an empty file or return an empty transcript.
  */
 export function planChunkSpans(input: {
     durationMs: number;
     silences: ISilenceInterval[];
     maxChunkMs: number;
     searchWindowMs?: number;
+    minChunkMs?: number;
 }): IChunkSpan[] {
     const { durationMs, maxChunkMs } = input;
     if (!(maxChunkMs > 0)) throw new Error("maxChunkMs must be positive.");
@@ -30,11 +35,15 @@ export function planChunkSpans(input: {
         input.searchWindowMs ?? 90_000,
         Math.floor(maxChunkMs / 2),
     );
+    const minChunkMs = Math.min(
+        input.minChunkMs ?? 30_000,
+        Math.floor(maxChunkMs / 4),
+    );
     const silences = [...input.silences].sort((a, b) => a.startMs - b.startMs);
-    const spans: IChunkSpan[] = [];
+    const spans: Array<Omit<IChunkSpan, "silent">> = [];
     let cursor = 0;
     while (durationMs - cursor > maxChunkMs) {
-        const target = cursor + maxChunkMs;
+        const target = Math.min(cursor + maxChunkMs, durationMs - minChunkMs);
         const windowStart = target - searchWindowMs;
         let cut: number | undefined;
         for (const silence of silences) {
@@ -55,5 +64,11 @@ export function planChunkSpans(input: {
         endMs: durationMs,
         hardCut: false,
     });
-    return spans;
+    return spans.map((span) => ({
+        ...span,
+        silent: silences.some(
+            (silence) =>
+                silence.startMs <= span.startMs && silence.endMs >= span.endMs,
+        ),
+    }));
 }

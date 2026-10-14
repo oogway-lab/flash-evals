@@ -34,6 +34,7 @@ import {
     workflowRunCells,
 } from "../db/schema";
 import type { ModelPricing } from "../llm/pricing";
+import { retryAfterMs } from "../lib/retryAfter";
 
 const ADAPTER_BEHAVIOR_VERSION = 1;
 
@@ -661,21 +662,6 @@ function retryDelayMs(
     if (retryAfter !== undefined) return Math.min(retryAfter, 30_000);
     const cap = Math.min(250 * 2 ** (failedAttempt - 1), 30_000);
     return Math.floor(Math.max(0, Math.min(1, random)) * cap);
-}
-
-function retryAfterMs(error: unknown): number | undefined {
-    if (!isRecord(error)) return undefined;
-    const direct = error.retryAfterMs;
-    if (typeof direct === "number" && Number.isFinite(direct) && direct >= 0)
-        return direct;
-    const headers = error.headers;
-    if (!isRecord(headers)) return undefined;
-    const value = headers["retry-after"];
-    if (typeof value !== "string") return undefined;
-    const seconds = Number(value);
-    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1_000;
-    const date = Date.parse(value);
-    return Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined;
 }
 
 type WorkflowProviderErrorClass =

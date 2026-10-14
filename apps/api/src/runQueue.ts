@@ -4,8 +4,30 @@ import type { IDb } from "./db.js";
 
 export const RUN_QUEUE = "eval-run";
 export const WORKFLOW_RUN_QUEUE = "workflow-run";
+const WORKFLOW_RUN_QUEUE_OPTIONS = {
+    name: WORKFLOW_RUN_QUEUE,
+    policy: "stately",
+} as const;
 
 let boss: Promise<PgBoss> | undefined;
+let workflowQueueReady: Promise<void> | undefined;
+
+/**
+ * pg-boss 10 enforces `singletonKey` only on non-standard queues. "stately"
+ * allows one created and one active job per key, so a run cannot be queued
+ * twice while still letting a retry queue behind a finishing job. Every send
+ * to this queue must carry a singletonKey. The worker applies the same policy.
+ */
+function ensureWorkflowRunQueue(b: PgBoss): Promise<void> {
+    workflowQueueReady ??= (async () => {
+        await b.createQueue(WORKFLOW_RUN_QUEUE, WORKFLOW_RUN_QUEUE_OPTIONS);
+        await b.updateQueue(WORKFLOW_RUN_QUEUE, WORKFLOW_RUN_QUEUE_OPTIONS);
+    })().catch((error: unknown) => {
+        workflowQueueReady = undefined;
+        throw error;
+    });
+    return workflowQueueReady;
+}
 
 async function getBoss(config: IApiConfig): Promise<PgBoss> {
     if (!boss) {
@@ -65,7 +87,7 @@ export async function enqueueWorkflowRun(
     workflowRunId: string,
 ): Promise<void> {
     const b = await getBoss(config);
-    await b.createQueue(WORKFLOW_RUN_QUEUE);
+    await ensureWorkflowRunQueue(b);
     await b.send(
         WORKFLOW_RUN_QUEUE,
         { workflowRunId },

@@ -69,6 +69,7 @@ export async function audioTranscriptPayload(
                 status, error, created_at
             from audio_transcripts
             where dataset_item_id = any($1::uuid[])
+                and strpos(storage_key, '#chunk/') = 0
                 and provider_id = $2
                 and route_id = $3
                 and canonical_model_id = $4
@@ -93,6 +94,7 @@ export async function audioTranscriptPayload(
                 status, error, created_at
             from audio_transcripts
             where dataset_item_id = any($1::uuid[])
+                and strpos(storage_key, '#chunk/') = 0
             order by created_at desc`,
               [audioItemIds],
           );

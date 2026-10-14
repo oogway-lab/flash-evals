@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import OpenAI, { APIConnectionError, APIConnectionTimeoutError } from "openai";
 
 const AUDIO_FORMATS = new Map<string, "wav" | "mp3">([
     ["audio/wav", "wav"],
@@ -10,6 +10,19 @@ const AUDIO_FORMATS = new Map<string, "wav" | "mp3">([
 /** Default inline audio budget; callers prepare larger recordings first. */
 export const OPENROUTER_AUDIO_DEFAULT_MAX_BYTES = 14 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 60_000;
+
+/**
+ * Transient transport failures raised by the OpenAI SDK, which sets neither
+ * `error.name` nor a socket code callers can rely on. HTTP errors carry
+ * `status` and are classified by the caller.
+ */
+export function openAiTransportErrorClass(
+    error: unknown,
+): "timeout" | "connection" | undefined {
+    if (error instanceof APIConnectionTimeoutError) return "timeout";
+    if (error instanceof APIConnectionError) return "connection";
+    return undefined;
+}
 
 /** Transcribe Gemini audio through OpenRouter's chat-completions audio input. */
 export async function transcribeOpenRouterAudio(input: {

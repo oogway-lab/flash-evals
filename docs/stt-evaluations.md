@@ -17,7 +17,10 @@ limit, split into ordered chunks near silences. The stored upload is never
 changed. Chunk transcripts are joined in order into one transcript, so
 translation and summary nodes still receive one transcript per recording.
 Preparation does not denoise or label speakers. A cut with no nearby silence
-adds a warning to the transcript; check that boundary by ear.
+adds a warning to the transcript; check that boundary by ear. A chunk that is
+entirely silence is skipped rather than sent. Each chunk is transcribed on its
+own, so any speaker labels are scoped to their part (`part2:A`) and the same
+person can appear under different labels in different parts.
 
 Timeouts, rate limits, and provider 5xx errors are retried with backoff
 (`STT_MAX_ATTEMPTS`, `STT_REQUEST_TIMEOUT_MS`); invalid audio and credential

@@ -21,6 +21,7 @@ vi.mock("pg-boss", () => ({
         on = vi.fn();
         start = vi.fn(async () => undefined);
         createQueue = vi.fn(async () => undefined);
+        updateQueue = vi.fn(async () => undefined);
         send = mocks.send;
         work = mocks.work;
         offWork = mocks.offWork;
