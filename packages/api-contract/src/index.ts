@@ -258,6 +258,8 @@ export interface IDashboardRun {
 }
 
 export interface IRunListRow extends IDashboardRun {
+    /** Average pipeline judge score; does not rank its sequential models. */
+    workflowScore?: number;
     /** Top model by judge score (transcript score for STT runs), if scored. */
     best?: IRunBestModel;
 }

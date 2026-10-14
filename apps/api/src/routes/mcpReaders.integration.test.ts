@@ -290,6 +290,7 @@ describe.skipIf(!databaseUrl)("bounded MCP readers (PostgreSQL)", () => {
         expect(runs).toHaveLength(listFixtureCount * 2);
         const pipeline = runs.find((run) => run.id === workflowRunId);
         expect(pipeline?.workflow).toEqual({ id: workflowId, kind: "prompt" });
+        expect(pipeline?.workflowScore).toBe(0.5);
         expect(pipeline?.progress).toMatchObject({
             total: totalItemCount,
             done: totalItemCount,
@@ -307,6 +308,46 @@ describe.skipIf(!databaseUrl)("bounded MCP readers (PostgreSQL)", () => {
         const otherProject = await dashboardPayload(db, teamId, randomUUID());
         expect(otherProject.stats.runCount).toBe(0);
         expect(otherProject.recentRuns).toEqual([]);
+    });
+
+    it("counts an STT provider route and its text model as one model", async () => {
+        const client = await pool.connect();
+        try {
+            await client.query("begin");
+            await client.query(
+                "update workflow_runs set workflow_snapshot=$2::jsonb where id=$1",
+                [
+                    workflowRunId,
+                    JSON.stringify({
+                        nodes: [
+                            {
+                                nodeConfig: {
+                                    sttConfig: {
+                                        modelId:
+                                            "openrouter:google/gemini-3.8-flash",
+                                    },
+                                },
+                            },
+                            { modelId: "google/gemini-3.8-flash" },
+                            { modelId: "google/gemini-3.5-flash-lite" },
+                        ],
+                    }),
+                ],
+            );
+            const scopedDb: IDb = {
+                query: (text, values) => client.query(text, values),
+            };
+            const runs = await listRunsPayload(scopedDb, teamId, projectId);
+            expect(
+                runs.find((run) => run.id === workflowRunId)?.models,
+            ).toEqual([
+                "google/gemini-3.5-flash-lite",
+                "google/gemini-3.8-flash",
+            ]);
+        } finally {
+            await client.query("rollback");
+            client.release();
+        }
     });
 
     it("recognizes golden labels independently of a labeling schema", async () => {

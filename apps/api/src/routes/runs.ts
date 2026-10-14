@@ -132,6 +132,7 @@ interface IRunNoteDbRow {
 interface IRunListDbRow {
     workflow_id?: string | null;
     workflow_kind?: WorkflowKind | null;
+    workflow_score?: number | string | null;
     id: string;
     status: RunStatus;
     created_at: Date | string;
@@ -365,7 +366,8 @@ async function runListRows(
                     where rm2.run_id = r.id
                     group by rm2.id, rm2.model_id
                 ) ms
-            ) as model_scores
+            ) as model_scores,
+            null::float8 as workflow_score
         from runs r
         inner join datasets d on d.id = r.dataset_id
         left join run_models rm on rm.run_id = r.id
@@ -380,14 +382,18 @@ async function runListRows(
             coalesce(r.workflow_snapshot->>'kind', w.kind) as workflow_kind,
             r.dataset_id, d.name as dataset_name,
             coalesce((select array_agg(distinct model_id order by model_id) filter(where model_id is not null)
-                from (select coalesce(n->'resolvedLlmExecution'->'route'->>'modelId', n->>'modelId', n->'nodeConfig'->'sttConfig'->>'modelId') as model_id
+                from (select coalesce(n->'resolvedLlmExecution'->'route'->>'modelId', n->>'modelId', regexp_replace(n->'nodeConfig'->'sttConfig'->>'modelId', '^[^:]+:', '')) as model_id
                     from jsonb_array_elements(coalesce(r.workflow_snapshot->'nodes', '[]'::jsonb)) n) models), array[]::text[]) as models,
             count(c.id)::int as total,
             count(c.id) filter(where c.status in ('succeeded','cached'))::int as done,
             count(c.id) filter(where c.status='failed')::int as failed,
             count(c.id) filter(where c.status in ('pending','running'))::int as pending,
             coalesce(r.workflow_snapshot->>'name', w.name) as note_title,
-            '[]'::json as model_scores
+            '[]'::json as model_scores,
+            (select avg(s.score)::float8
+                from workflow_cell_scores s
+                inner join workflow_run_cells scored on scored.id=s.workflow_run_cell_id
+                where scored.workflow_run_id=r.id and s.scorer_type in ('judge','transcript_judge')) as workflow_score
         from workflow_runs r
         inner join datasets d on d.id=r.dataset_id
         inner join prompt_workflows w on w.id=r.workflow_id
@@ -422,6 +428,7 @@ function runListPayloadRow(row: IRunListDbRow): IRunListRow {
             avgFieldScore: optionalNumber(score.field),
         })),
     );
+    const workflowScore = optionalNumber(row.workflow_score);
     return {
         id: row.id,
         status: row.status,
@@ -442,6 +449,7 @@ function runListPayloadRow(row: IRunListDbRow): IRunListRow {
         ...(row.workflow_id && row.workflow_kind
             ? { workflow: { id: row.workflow_id, kind: row.workflow_kind } }
             : {}),
+        ...(workflowScore !== undefined ? { workflowScore } : {}),
         ...(best ? { best } : {}),
     };
 }

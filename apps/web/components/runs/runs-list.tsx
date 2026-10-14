@@ -213,7 +213,11 @@ export function RunsList({ runs }: { runs: IRunListRow[] }) {
                                     <BestModelCell run={r} />
                                 </TableCell>
                                 <TableCell align="numeric">
-                                    <Num>{fmtScore(r.best?.score)}</Num>
+                                    <Num>
+                                        {fmtScore(
+                                            r.best?.score ?? r.workflowScore,
+                                        )}
+                                    </Num>
                                 </TableCell>
                                 <TableCell
                                     align="numeric"
