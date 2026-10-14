@@ -118,7 +118,7 @@ export function BlockedCellLink({
             Blocked by{" "}
             <a
                 href={href}
-                className="font-medium text-foreground underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className="text-foreground underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 onClick={(event) => {
                     if (
                         event.button !== 0 ||
