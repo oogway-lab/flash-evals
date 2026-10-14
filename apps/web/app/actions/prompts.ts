@@ -273,8 +273,9 @@ export async function testPromptDraftAction(
     const imageResult = await imageFromForm(formData);
     if (!imageResult.ok) return jsonFieldError("imageFile", imageResult.error);
     const image = imageResult.image;
+    // Catalog-only models must resolve before any registry lookup below.
+    await ensureModelCatalog();
     if (image) {
-        await ensureModelCatalog();
         const entry = registryEntryFor(targetModelId);
         if (entry && !entry.vision) {
             return jsonFieldError(
@@ -411,6 +412,7 @@ export async function testJudgeDraftAction(
         );
     }
 
+    await ensureModelCatalog();
     const resolvedReasoningEffort = resolveReasoningEffort(
         targetModelId,
         reasoningEffort as ReasoningEffort | undefined,
@@ -461,6 +463,7 @@ async function saveJudgePromptVersion(
             "Judge prompts must consume candidate output.",
         );
     }
+    await ensureModelCatalog();
     const resolvedEffort = resolveReasoningEffort(
         fields.targetModelId,
         fields.reasoningEffort as ReasoningEffort | undefined,
@@ -570,6 +573,7 @@ export async function saveRunnablePromptAction(
             formError: clientErrorMessage(err),
         };
     }
+    await ensureModelCatalog();
     const resolvedEffort = resolveReasoningEffort(
         targetModelId,
         reasoningEffort as ReasoningEffort | undefined,
@@ -668,6 +672,7 @@ export async function createJudgeAction(formData: FormData) {
     const p = await requirePrincipal();
     const modelId = String(formData.get("modelId") || "gpt-6-luna").trim();
     const rubricPrompt = String(formData.get("rubricPrompt") || "").trim();
+    await ensureModelCatalog();
     await serverApiClient().createJudgePrompt({
         teamId: p.teamId,
         projectId: p.projectId,

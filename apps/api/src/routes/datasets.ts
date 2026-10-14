@@ -1785,7 +1785,7 @@ export async function duplicateDatasetPayload(
                 item.mime_type,
             ],
         );
-        if (item.label_json) {
+        if (hasGoldenLabel(item.label_json)) {
             await db.query(
                 `insert into labels (dataset_item_id, label_json)
                 values ($1, $2)`,

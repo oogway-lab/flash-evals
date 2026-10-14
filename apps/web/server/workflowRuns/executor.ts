@@ -8,6 +8,7 @@ import {
 } from "../db/schema";
 import type { IWorkflowSnapshot } from "../db/jsonTypes";
 import { forEachPool } from "../lib/concurrency";
+import { ensureModelCatalog } from "../llm/catalog";
 import { pricingFor } from "../llm/pricing";
 import type { EvalImage } from "@mosaic/llm-core";
 import { WORKFLOW_LLM_EXECUTION_CONTRACT_VERSION } from "@mosaic/api-contract";
@@ -310,6 +311,7 @@ async function executeLayerTask(
 }
 
 export async function executeWorkflowRun(workflowRunId: string): Promise<void> {
+    await ensureModelCatalog();
     const [run] = await db
         .select()
         .from(workflowRuns)

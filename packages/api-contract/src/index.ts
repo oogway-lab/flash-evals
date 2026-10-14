@@ -1765,6 +1765,50 @@ export interface IComparableRun {
 
 export type QualitySource = "judge" | "field";
 
+export interface IQualityScores {
+    avgJudgeScore?: number;
+    avgFieldScore?: number;
+}
+
+/** The scorer both runs share: judge first, else golden field score. */
+export function sharedQualitySource(
+    baseline: IQualityScores,
+    current: IQualityScores,
+): QualitySource | undefined {
+    if (
+        baseline.avgJudgeScore !== undefined &&
+        current.avgJudgeScore !== undefined
+    )
+        return "judge";
+    if (
+        baseline.avgFieldScore !== undefined &&
+        current.avgFieldScore !== undefined
+    )
+        return "field";
+    return undefined;
+}
+
+/** One side's quality score, on the shared scorer when the runs have one. */
+export function sideQuality(
+    row: IQualityScores,
+    preferred?: QualitySource,
+): { quality: number | undefined; qualitySource: QualitySource | undefined } {
+    const qualitySource: QualitySource | undefined =
+        preferred ??
+        (row.avgJudgeScore !== undefined
+            ? "judge"
+            : row.avgFieldScore !== undefined
+              ? "field"
+              : undefined);
+    const quality =
+        qualitySource === "judge"
+            ? row.avgJudgeScore
+            : qualitySource === "field"
+              ? row.avgFieldScore
+              : undefined;
+    return { quality, qualitySource };
+}
+
 export type SttShipGateStatus = "pass" | "fail" | "insufficient_data";
 
 export interface ISttShipGateCheck {

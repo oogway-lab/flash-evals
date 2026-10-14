@@ -111,7 +111,8 @@ const OPENROUTER_MODEL_IDS: Readonly<Record<string, string>> = {
 // (`promptPerM` / `completionPerM`). These are published list prices as of
 // 2026-07-08, the last time they were updated; source:
 // https://openai.com/api/pricing/
-// Public catalog snapshots override these historical fallback prices.
+// These stay the entry's default price; public catalog snapshots add
+// per-transport prices (`pricingByTransport`) that win when a transport is known.
 function price(promptPerM: number, completionPerM: number): IModelPricing {
     return {
         promptPricePerToken: promptPerM / M,
@@ -650,6 +651,8 @@ const catalogSnapshots = new Map(
 );
 export let MODEL_REGISTRY: IModelRegistryEntry[] = [];
 let BY_ID_LENGTH_DESC: IModelRegistryEntry[] = [];
+// Exact id, gateway id and transport id lookups; the merged catalog is large.
+let BY_ALIAS = new Map<string, IModelRegistryEntry>();
 rebuildRegistry();
 
 function rebuildRegistry(): void {
@@ -660,6 +663,17 @@ function rebuildRegistry(): void {
     BY_ID_LENGTH_DESC = [...MODEL_REGISTRY].sort(
         (a, b) => b.id.length - a.id.length,
     );
+    const byAlias = new Map<string, IModelRegistryEntry>();
+    for (const entry of BY_ID_LENGTH_DESC) {
+        for (const alias of [
+            entry.id,
+            entry.gatewayModelId,
+            ...Object.values(entry.transports),
+        ]) {
+            if (alias && !byAlias.has(alias)) byAlias.set(alias, entry);
+        }
+    }
+    BY_ALIAS = byAlias;
 }
 
 /**
@@ -691,18 +705,15 @@ export function installModelCatalog(snapshot: IModelCatalogSnapshot): void {
 export function registryEntryFor(
     modelId: string,
 ): IModelRegistryEntry | undefined {
-    return BY_ID_LENGTH_DESC.find((entry) => {
-        if (
-            modelId === entry.id ||
-            modelId === entry.gatewayModelId ||
-            Object.values(entry.transports).includes(modelId)
-        )
-            return true;
-        if (entry.provider !== "openai" && entry.id.includes("/")) {
-            return false;
-        }
-        return modelId.startsWith(`${entry.id}-`);
-    });
+    return (
+        BY_ALIAS.get(modelId) ??
+        BY_ID_LENGTH_DESC.find((entry) => {
+            if (entry.provider !== "openai" && entry.id.includes("/")) {
+                return false;
+            }
+            return modelId.startsWith(`${entry.id}-`);
+        })
+    );
 }
 
 export function gatewayModelIdFor(modelId: string): string | undefined {

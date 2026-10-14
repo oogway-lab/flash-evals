@@ -362,13 +362,15 @@ function leaderboardLayout(
     };
 }
 
+// Same metric precedence as `pickBestModel`, so the default sort and the run
+// summary's best model agree.
 function defaultSort(rows: ILeaderboardRow[]): SortState {
     const key: SortKey = rows.some((r) => r.avgJudgeScore !== undefined)
         ? "avgJudgeScore"
-        : rows.some((r) => r.avgFieldScore !== undefined)
-          ? "avgFieldScore"
-          : rows.some((r) => r.avgTranscriptScore !== undefined)
-            ? "avgTranscriptScore"
+        : rows.some((r) => r.avgTranscriptScore !== undefined)
+          ? "avgTranscriptScore"
+          : rows.some((r) => r.avgFieldScore !== undefined)
+            ? "avgFieldScore"
             : "totalCostUsd";
     return { key, direction: DEFAULT_DIRECTION[key] };
 }

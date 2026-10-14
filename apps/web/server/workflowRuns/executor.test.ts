@@ -287,6 +287,9 @@ vi.mock("../audio/transliteration", () => ({
 vi.mock("../audio/customEvaluators", () => ({
     runTranscriptEvaluator: mocks.runTranscriptEvaluator,
 }));
+vi.mock("../llm/catalog", () => ({
+    ensureModelCatalog: vi.fn(async () => undefined),
+}));
 vi.mock("../llm/pricing", () => ({
     resolvePricingFor: vi.fn(async () => ({})),
     pricingFor: vi.fn(() => ({})),

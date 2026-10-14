@@ -21,6 +21,8 @@ import {
     buildLeaderboardRows,
     buildSttShipGate,
     pickBestModel,
+    sharedQualitySource,
+    sideQuality,
 } from "@mosaic/api-contract";
 import {
     getEvalProvider,
@@ -1040,50 +1042,13 @@ function buildComparison(
     });
 }
 
-type QualityScores = { avgJudgeScore?: number; avgFieldScore?: number };
-
-/** The scorer both runs share: judge first, else golden field score. */
-function sharedQualitySource(
-    baseline: QualityScores,
-    current: QualityScores,
-): "judge" | "field" | undefined {
-    if (
-        baseline.avgJudgeScore !== undefined &&
-        current.avgJudgeScore !== undefined
-    )
-        return "judge";
-    if (
-        baseline.avgFieldScore !== undefined &&
-        current.avgFieldScore !== undefined
-    )
-        return "field";
-    return undefined;
-}
-
-function qualitySourceFor(
-    row: QualityScores,
-    preferred: "judge" | "field" | undefined,
-): "judge" | "field" | undefined {
-    if (preferred) return preferred;
-    if (row.avgJudgeScore !== undefined) return "judge";
-    if (row.avgFieldScore !== undefined) return "field";
-    return undefined;
-}
-
 function side(
     input: IRunComparisonRow,
     preferredSource?: "judge" | "field",
 ): ISideMetrics {
     const { row } = input;
-    const qualitySource = qualitySourceFor(row, preferredSource);
     return {
-        quality:
-            qualitySource === "judge"
-                ? row.avgJudgeScore
-                : qualitySource === "field"
-                  ? row.avgFieldScore
-                  : undefined,
-        qualitySource,
+        ...sideQuality(row, preferredSource),
         cost: row.totalCostUsd,
         latency: row.avgLatencyMs,
         p95Latency: row.p95LatencyMs,
