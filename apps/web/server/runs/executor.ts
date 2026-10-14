@@ -56,6 +56,7 @@ import { executeCell } from "../jobs/runOrchestrator";
 import { resolveApiKeys } from "../secrets/resolveApiKeys";
 import { resolveReasoningEffort } from "../llm/reasoningConfig";
 import { resolvePricingFor } from "../llm/pricing";
+import { ensureModelCatalog } from "../llm/catalog";
 import { scoreOutput } from "../scoring/scoreOutput";
 import { runJudge, type JudgeOutcome } from "../scoring/judge";
 import {
@@ -70,6 +71,7 @@ import { logWorkerEvent, safeWorkerError } from "../jobs/workerObservability";
 const CONCURRENCY = Math.max(1, Number(process.env.EVAL_CONCURRENCY ?? 5) || 1);
 
 export async function executeRun(runId: string): Promise<void> {
+    await ensureModelCatalog();
     const run = await getRun(runId);
     if (!run) throw new Error(`run ${runId} not found`);
     const maxTokens = run.configSnapshot.maxTokens;
@@ -306,9 +308,13 @@ export async function executeRun(runId: string): Promise<void> {
                     label,
                     reference: referenceByItemId.get(item.id),
                     fieldConfigs,
-                    defaultFieldMatcher: isAudioItem(item)
-                        ? undefined
-                        : "exact",
+                    // Free-text cells are stored as `{ text }`, so key-by-key
+                    // label matching only applies to schema-backed output.
+                    defaultFieldMatcher:
+                        !isAudioItem(item) &&
+                        (await responseSchemaForRunModel(rm))
+                            ? "exact"
+                            : undefined,
                     judge,
                     judgePrompt,
                     runJudgeTransport: run.configSnapshot.judgeTransport,

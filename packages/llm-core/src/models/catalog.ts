@@ -303,30 +303,67 @@ export function mergeModelCatalogs(
                 aliases.get(model.id) ??
                 (model.id.startsWith("openai/") ? model.id.slice(7) : model.id);
             const prior = entries.get(id);
-            const preservedEffort = staticById.get(id)?.reasoningEffort;
-            const entry = entryFromCatalog(id, model, prior, preservedEffort);
+            const fromCatalog = entryFromCatalog(id, model, prior);
+            const pinned = staticById.get(id);
+            const entry = pinned
+                ? withStaticFacts(fromCatalog, pinned)
+                : fromCatalog;
             entries.set(id, entry);
             indexEntry(entry);
         }
     return [...entries.values()];
 }
 
-function catalogEffort(
-    model: ICatalogModel,
-    prior: IModelRegistryEntry | undefined,
-    preserved: IReasoningEffortCapability | undefined,
-): IReasoningEffortCapability | undefined {
-    if (!model.reasoning) return undefined;
-    return preserved ?? model.reasoningEffort ?? prior?.reasoningEffort;
+/** Catalog order defines last-wins precedence, so every merge must use the same order. */
+const SOURCE_PRECEDENCE: readonly CatalogSource[] = [
+    "models.dev",
+    "openrouter",
+    "gateway",
+];
+
+export function orderCatalogSnapshots(
+    snapshots: Iterable<IModelCatalogSnapshot>,
+): IModelCatalogSnapshot[] {
+    return [...snapshots].sort(
+        (a, b) =>
+            SOURCE_PRECEDENCE.indexOf(a.source) -
+            SOURCE_PRECEDENCE.indexOf(b.source),
+    );
+}
+
+/**
+ * Hand-curated registry entries own their capability flags, label and default
+ * price; catalogs only add transports and per-transport prices to them.
+ */
+function withStaticFacts(
+    merged: IModelRegistryEntry,
+    pinned: IModelRegistryEntry,
+): IModelRegistryEntry {
+    return {
+        ...merged,
+        label: pinned.label,
+        family: pinned.family,
+        provider: pinned.provider,
+        providerLabel: pinned.providerLabel,
+        reasoning: pinned.reasoning,
+        vision: pinned.vision,
+        structuredOutput: pinned.structuredOutput,
+        judgeSuitable: pinned.judgeSuitable,
+        pricing: pinned.pricing ?? merged.pricing,
+        reasoningEffort: pinned.reasoningEffort,
+    };
 }
 
 function entryFromCatalog(
     id: string,
     model: ICatalogModel,
     prior: IModelRegistryEntry | undefined,
-    preservedEffort: IReasoningEffortCapability | undefined,
 ): IModelRegistryEntry {
-    const reasoningEffort = catalogEffort(model, prior, preservedEffort);
+    // A source without effort or reasoning data must not erase what another source reported.
+    const reasoning = model.reasoning || prior?.reasoning === true;
+    const reasoningEffort = reasoning
+        ? (model.reasoningEffort ?? prior?.reasoningEffort)
+        : undefined;
     const provider =
         model.transport === "openai" ? "openai" : model.id.split("/")[0]!;
     const family = model.family.split(/[-_.]/)[0]!;
@@ -354,7 +391,7 @@ function entryFromCatalog(
         family,
         provider: prior?.provider ?? provider,
         providerLabel,
-        reasoning: model.reasoning,
+        reasoning,
         vision: model.vision,
         structuredOutput: model.structuredOutput,
         judgeSuitable: model.structuredOutput,

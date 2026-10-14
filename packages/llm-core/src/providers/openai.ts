@@ -118,16 +118,13 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
                     : JSON.stringify(sdkParsed)));
 
         const reportedCost =
-            response.usage && "cost" in response.usage
-                ? response.usage.cost
+            this.transport === "openrouter"
+                ? openRouterReportedCost(response.usage)
                 : undefined;
         const cost =
-            this.transport === "openrouter" &&
-            typeof reportedCost === "number" &&
-            Number.isFinite(reportedCost) &&
-            reportedCost >= 0
-                ? { usd: reportedCost, source: "provider_reported" as const }
-                : undefined;
+            reportedCost === undefined
+                ? undefined
+                : { usd: reportedCost, source: "provider_reported" as const };
         const usage: UsageData = {
             promptTokens: response.usage?.prompt_tokens,
             completionTokens: response.usage?.completion_tokens,
@@ -376,4 +373,30 @@ function stringProperty(value: object, key: string): string | undefined {
 
 function withCause(error: Error, cause: unknown): Error {
     return Object.assign(error, { cause });
+}
+
+function finiteNonNegative(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0
+        ? value
+        : undefined;
+}
+
+/**
+ * OpenRouter's `usage.cost` is only the OpenRouter charge. For BYOK requests the
+ * upstream provider bills separately (`cost_details.upstream_inference_cost`);
+ * when that is missing the total is unknown, so fall back to catalog pricing.
+ */
+function openRouterReportedCost(usage: unknown): number | undefined {
+    if (!usage || typeof usage !== "object") return undefined;
+    const record = usage as {
+        cost?: unknown;
+        is_byok?: unknown;
+        cost_details?: { upstream_inference_cost?: unknown } | null;
+    };
+    const cost = finiteNonNegative(record.cost);
+    if (cost === undefined || record.is_byok !== true) return cost;
+    const upstream = finiteNonNegative(
+        record.cost_details?.upstream_inference_cost,
+    );
+    return upstream === undefined ? undefined : cost + upstream;
 }

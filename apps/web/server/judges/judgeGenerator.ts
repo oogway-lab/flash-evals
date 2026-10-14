@@ -1,5 +1,6 @@
 import { getEvalProvider, type ApiKeys } from "@mosaic/llm-core";
 import type { JsonSchemaObject } from "../db/jsonTypes";
+import { ensureModelCatalog } from "../llm/catalog";
 import { registryEntryFor } from "../llm/modelRegistry";
 import { resolveReasoningEffort } from "../llm/reasoningConfig";
 
@@ -59,6 +60,7 @@ export async function generateJudgeFromContext(
         process.env.PROMPT_OPTIMIZER_MODEL ??
         "gpt-6-luna";
     const provider = getEvalProvider(input.apiKeys);
+    await ensureModelCatalog();
     const reasoning = registryEntryFor(generatorModelId)?.reasoning ?? false;
 
     const result = await provider.complete({

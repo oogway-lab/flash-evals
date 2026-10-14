@@ -54,14 +54,17 @@ export interface RunComparisonRow {
     effort: ReasoningEffort | undefined;
 }
 
-function side(input: RunComparisonRow): SideMetrics {
+function side(
+    input: RunComparisonRow,
+    preferredSource?: QualitySource,
+): SideMetrics {
     const { row } = input;
-    const quality = row.avgJudgeScore ?? row.avgFieldScore;
-    const qualitySource: QualitySource | undefined =
-        row.avgJudgeScore !== undefined
-            ? "judge"
-            : row.avgFieldScore !== undefined
-              ? "field"
+    const qualitySource = qualitySourceFor(row, preferredSource);
+    const quality =
+        qualitySource === "judge"
+            ? row.avgJudgeScore
+            : qualitySource === "field"
+              ? row.avgFieldScore
               : undefined;
     return {
         quality,
@@ -87,6 +90,36 @@ function diff(
     return a === undefined || b === undefined ? undefined : a - b;
 }
 
+type QualityScores = { avgJudgeScore?: number; avgFieldScore?: number };
+
+/** The scorer both runs share: judge first, else golden field score. */
+function sharedQualitySource(
+    baseline: QualityScores,
+    current: QualityScores,
+): "judge" | "field" | undefined {
+    if (
+        baseline.avgJudgeScore !== undefined &&
+        current.avgJudgeScore !== undefined
+    )
+        return "judge";
+    if (
+        baseline.avgFieldScore !== undefined &&
+        current.avgFieldScore !== undefined
+    )
+        return "field";
+    return undefined;
+}
+
+function qualitySourceFor(
+    row: QualityScores,
+    preferred: "judge" | "field" | undefined,
+): "judge" | "field" | undefined {
+    if (preferred) return preferred;
+    if (row.avgJudgeScore !== undefined) return "judge";
+    if (row.avgFieldScore !== undefined) return "field";
+    return undefined;
+}
+
 // Pure: join baseline + current per model and compute per-axis deltas
 // (see the `delta` field above for the sign convention).
 export function buildComparison(
@@ -102,14 +135,14 @@ export function buildComparison(
     return modelIds.map((modelId) => {
         const b = baseByModel.get(modelId);
         const c = curByModel.get(modelId);
-        const baselineSide = b ? side(b) : undefined;
-        const currentSide = c ? side(c) : undefined;
+        // Both sides use one scorer when they share one, so the delta is meaningful.
+        const shared = b && c ? sharedQualitySource(b.row, c.row) : undefined;
+        const baselineSide = b ? side(b, shared) : undefined;
+        const currentSide = c ? side(c, shared) : undefined;
 
         let delta: ModelComparison["delta"];
         if (baselineSide && currentSide) {
-            const qualityComparable =
-                baselineSide.qualitySource !== undefined &&
-                baselineSide.qualitySource === currentSide.qualitySource;
+            const qualityComparable = shared !== undefined;
             delta = {
                 quality: qualityComparable
                     ? diff(currentSide.quality, baselineSide.quality)

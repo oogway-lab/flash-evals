@@ -1,4 +1,4 @@
-import { installModelCatalog } from "./registry.js";
+import { installModelCatalog, installModelCatalogs } from "./registry.js";
 import {
     CATALOG_URLS,
     fetchModelCatalog,
@@ -16,10 +16,12 @@ export interface IModelCatalogStore {
 export async function loadModelCatalog(
     store: IModelCatalogStore,
 ): Promise<void> {
-    for (const value of await store.read()) {
-        const snapshot = readCatalogSnapshot(value);
-        if (snapshot) installModelCatalog(snapshot);
-    }
+    installModelCatalogs(
+        (await store.read()).flatMap((value) => {
+            const snapshot = readCatalogSnapshot(value);
+            return snapshot ? [snapshot] : [];
+        }),
+    );
 }
 
 /** Each source is replaced only after a successful fetch and durable write. */
@@ -41,19 +43,25 @@ export async function refreshModelCatalog(
     );
 }
 
-/** Coalesce reads per store and process. Failed reads retain the last good/bundled catalog. */
+/**
+ * Coalesce reads per store and process. Failed reads retain the last good/bundled
+ * catalog. Only the first load is awaited; later reloads run in the background so
+ * callers never wait on the database once a catalog is installed.
+ */
 export function createCatalogLoader(store: IModelCatalogStore, ttlMs = 60_000) {
     let expiresAt = 0;
+    let loaded = false;
     let inFlight: Promise<void> | undefined;
     return function ensureCatalog(): Promise<void> {
-        if (inFlight) return inFlight;
-        if (Date.now() < expiresAt) return Promise.resolve();
-        inFlight = loadModelCatalog(store)
-            .catch(() => undefined)
-            .finally(() => {
-                expiresAt = Date.now() + ttlMs;
-                inFlight = undefined;
-            });
-        return inFlight;
+        if (!inFlight && Date.now() >= expiresAt) {
+            inFlight = loadModelCatalog(store)
+                .catch(() => undefined)
+                .finally(() => {
+                    expiresAt = Date.now() + ttlMs;
+                    loaded = true;
+                    inFlight = undefined;
+                });
+        }
+        return loaded || !inFlight ? Promise.resolve() : inFlight;
     };
 }

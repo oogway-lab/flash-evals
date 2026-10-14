@@ -3,6 +3,7 @@ import {
     parseModelCatalog,
     readCatalogSnapshot,
     mergeModelCatalogs,
+    orderCatalogSnapshots,
     fetchModelCatalog,
     type ICatalogModel,
 } from "./catalog.js";
@@ -11,7 +12,13 @@ import {
     loadModelCatalog,
     refreshModelCatalog,
 } from "./catalogStore.js";
-import { registryEntryFor } from "./registry.js";
+import {
+    installModelCatalogs,
+    MODEL_REGISTRY,
+    registryEntryFor,
+    type IModelRegistryEntry,
+} from "./registry.js";
+import bundledCatalogs from "./catalog.snapshot.json" with { type: "json" };
 
 const model: ICatalogModel = {
     id: "google/gemini-3.5-flash-lite",
@@ -211,6 +218,95 @@ describe("model catalogs", () => {
         expect(updated[0]?.id).toBe("gpt-fixture");
         expect(updated[0]?.reasoningEffort?.defaultLevel).toBe("high");
     });
+    it("keeps hand-set capability flags on static entries", () => {
+        const pinned: IModelRegistryEntry = {
+            id: model.id,
+            gatewayModelId: model.id,
+            label: "Pinned label",
+            family: "gemini",
+            provider: "google",
+            providerLabel: "Gemini",
+            reasoning: false,
+            vision: false,
+            structuredOutput: true,
+            judgeSuitable: true,
+            supportsOpenAI: false,
+            supportsGateway: true,
+            transports: { gateway: model.id },
+            pricing: { promptPricePerToken: 1, completionPricePerToken: 2 },
+        };
+        const [entry] = mergeModelCatalogs(
+            [pinned],
+            [
+                {
+                    ...catalog,
+                    models: [
+                        {
+                            ...model,
+                            structuredOutput: false,
+                            reasoningEffort: {
+                                supportedLevels: ["low"],
+                                defaultLevel: "low",
+                            },
+                            pricing: {
+                                promptPricePerToken: 3,
+                                completionPricePerToken: 4,
+                            },
+                        },
+                    ],
+                },
+            ],
+        );
+        expect(entry).toMatchObject({
+            label: "Pinned label",
+            reasoning: false,
+            vision: false,
+            structuredOutput: true,
+            judgeSuitable: true,
+            pricing: pinned.pricing,
+            transports: { gateway: model.id, openrouter: model.id },
+            pricingByTransport: {
+                openrouter: {
+                    promptPricePerToken: 3,
+                    completionPricePerToken: 4,
+                },
+            },
+        });
+        expect(entry?.reasoningEffort).toBeUndefined();
+    });
+    it("keeps reasoning effort when a later source lacks reasoning data", () => {
+        const effort = {
+            supportedLevels: ["low", "high"] as const,
+            defaultLevel: "high" as const,
+        };
+        const [entry] = mergeModelCatalogs(
+            [],
+            [
+                {
+                    ...catalog,
+                    source: "models.dev",
+                    models: [{ ...model, reasoningEffort: effort }],
+                },
+                { ...catalog, models: [{ ...model, reasoning: false }] },
+            ],
+        );
+        expect(entry?.reasoning).toBe(true);
+        expect(entry?.reasoningEffort).toEqual(effort);
+    });
+    it("re-installing the bundled snapshots leaves the registry unchanged", () => {
+        const before = JSON.stringify(MODEL_REGISTRY);
+        const snapshots = bundledCatalogs.flatMap((value) => {
+            const snapshot = readCatalogSnapshot(value);
+            return snapshot
+                ? [{ ...snapshot, fetchedAt: "2029-01-01T00:00:00Z" }]
+                : [];
+        });
+        installModelCatalogs([...snapshots].reverse());
+        expect(JSON.stringify(MODEL_REGISTRY)).toBe(before);
+        expect(
+            orderCatalogSnapshots(snapshots).map((snapshot) => snapshot.source),
+        ).toEqual(["models.dev", "openrouter", "gateway"]);
+    });
     it("fails closed on HTTP errors", async () => {
         const fetcher = vi.fn(
             async () => new Response("down", { status: 503 }),
@@ -273,5 +369,27 @@ describe("catalog persistence", () => {
         await Promise.all([load(), load(), load()]);
         await load();
         expect(read).toHaveBeenCalledTimes(1);
+    });
+    it("reloads in the background after the first load", async () => {
+        let release!: () => void;
+        const read = vi
+            .fn<() => Promise<unknown[]>>()
+            .mockResolvedValueOnce([])
+            .mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        release = () => resolve([]);
+                    }),
+            );
+        const load = createCatalogLoader(
+            { read, write: async () => undefined },
+            0,
+        );
+        await load();
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        // The second read never settles until released, yet the caller is not blocked.
+        await load();
+        expect(read).toHaveBeenCalledTimes(2);
+        release();
     });
 });

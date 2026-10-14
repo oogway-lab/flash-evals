@@ -145,6 +145,7 @@ interface IRunModelScoreDbRow {
     model_id: string;
     judge: number | string | null;
     transcript: number | string | null;
+    field?: number | string | null;
 }
 
 interface IRunContextDbRow {
@@ -327,7 +328,8 @@ async function runListRows(
                 select coalesce(json_agg(json_build_object(
                     'model_id', ms.model_id,
                     'judge', ms.judge,
-                    'transcript', ms.transcript
+                    'transcript', ms.transcript,
+                    'field', ms.field
                 ) order by ms.model_id), '[]'::json)
                 from (
                     select
@@ -336,7 +338,8 @@ async function runListRows(
                         avg(cs.score) filter (
                             where cs.scorer_type = 'transcript_metric'
                             and coalesce(cs.details_json->>'metricKind', '') <> 'llm_judge'
-                        )::float8 as transcript
+                        )::float8 as transcript,
+                        avg(cs.score) filter (where cs.scorer_type = 'field_diff')::float8 as field
                     from run_models rm2
                     left join run_cells rc2
                         on rc2.run_model_id = rm2.id and rc2.run_id = r.id
@@ -373,6 +376,7 @@ function runListPayloadRow(row: IRunListDbRow): IRunListRow {
             modelId: score.model_id,
             avgJudgeScore: optionalNumber(score.judge),
             avgTranscriptScore: optionalNumber(score.transcript),
+            avgFieldScore: optionalNumber(score.field),
         })),
     );
     return {
@@ -999,14 +1003,19 @@ function buildComparison(
     return modelIds.map((modelId) => {
         const baselineRow = baseByModel.get(modelId);
         const currentRow = curByModel.get(modelId);
-        const baselineSide = baselineRow ? side(baselineRow) : undefined;
-        const currentSide = currentRow ? side(currentRow) : undefined;
+        // Both sides use one scorer when they share one, so the delta is meaningful.
+        const shared =
+            baselineRow && currentRow
+                ? sharedQualitySource(baselineRow.row, currentRow.row)
+                : undefined;
+        const baselineSide = baselineRow
+            ? side(baselineRow, shared)
+            : undefined;
+        const currentSide = currentRow ? side(currentRow, shared) : undefined;
 
         let delta: IModelComparison["delta"];
         if (baselineSide && currentSide) {
-            const qualityComparable =
-                baselineSide.qualitySource !== undefined &&
-                baselineSide.qualitySource === currentSide.qualitySource;
+            const qualityComparable = shared !== undefined;
             delta = {
                 quality: qualityComparable
                     ? diff(currentSide.quality, baselineSide.quality)
@@ -1031,16 +1040,50 @@ function buildComparison(
     });
 }
 
-function side(input: IRunComparisonRow): ISideMetrics {
+type QualityScores = { avgJudgeScore?: number; avgFieldScore?: number };
+
+/** The scorer both runs share: judge first, else golden field score. */
+function sharedQualitySource(
+    baseline: QualityScores,
+    current: QualityScores,
+): "judge" | "field" | undefined {
+    if (
+        baseline.avgJudgeScore !== undefined &&
+        current.avgJudgeScore !== undefined
+    )
+        return "judge";
+    if (
+        baseline.avgFieldScore !== undefined &&
+        current.avgFieldScore !== undefined
+    )
+        return "field";
+    return undefined;
+}
+
+function qualitySourceFor(
+    row: QualityScores,
+    preferred: "judge" | "field" | undefined,
+): "judge" | "field" | undefined {
+    if (preferred) return preferred;
+    if (row.avgJudgeScore !== undefined) return "judge";
+    if (row.avgFieldScore !== undefined) return "field";
+    return undefined;
+}
+
+function side(
+    input: IRunComparisonRow,
+    preferredSource?: "judge" | "field",
+): ISideMetrics {
     const { row } = input;
+    const qualitySource = qualitySourceFor(row, preferredSource);
     return {
-        quality: row.avgJudgeScore ?? row.avgFieldScore,
-        qualitySource:
-            row.avgJudgeScore !== undefined
-                ? "judge"
-                : row.avgFieldScore !== undefined
-                  ? "field"
+        quality:
+            qualitySource === "judge"
+                ? row.avgJudgeScore
+                : qualitySource === "field"
+                  ? row.avgFieldScore
                   : undefined,
+        qualitySource,
         cost: row.totalCostUsd,
         latency: row.avgLatencyMs,
         p95Latency: row.p95LatencyMs,

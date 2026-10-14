@@ -1,6 +1,7 @@
 import bundledCatalogs from "./catalog.snapshot.json" with { type: "json" };
 import {
     mergeModelCatalogs,
+    orderCatalogSnapshots,
     readCatalogSnapshot,
     type IModelCatalogSnapshot,
 } from "./catalog.js";
@@ -647,36 +648,44 @@ const catalogSnapshots = new Map(
         return snapshot ? [[snapshot.source, snapshot] as const] : [];
     }),
 );
-export let MODEL_REGISTRY: IModelRegistryEntry[] = mergeModelCatalogs(
-    STATIC_MODEL_REGISTRY,
-    [...catalogSnapshots.values()],
-);
-let BY_ID_LENGTH_DESC = [...MODEL_REGISTRY].sort(
-    (a, b) => b.id.length - a.id.length,
-);
+export let MODEL_REGISTRY: IModelRegistryEntry[] = [];
+let BY_ID_LENGTH_DESC: IModelRegistryEntry[] = [];
+rebuildRegistry();
 
-/** Install public metadata only; account-specific availability stays in provider discovery. */
-export function installModelCatalog(snapshot: IModelCatalogSnapshot): void {
-    const current = catalogSnapshots.get(snapshot.source);
-    if (
-        current &&
-        Date.parse(current.fetchedAt) > Date.parse(snapshot.fetchedAt)
-    )
-        return;
-    catalogSnapshots.set(snapshot.source, snapshot);
+function rebuildRegistry(): void {
     MODEL_REGISTRY = mergeModelCatalogs(
         STATIC_MODEL_REGISTRY,
-        [...catalogSnapshots.values()].sort((a, b) =>
-            a.source === "models.dev"
-                ? -1
-                : b.source === "models.dev"
-                  ? 1
-                  : a.source.localeCompare(b.source),
-        ),
+        orderCatalogSnapshots(catalogSnapshots.values()),
     );
     BY_ID_LENGTH_DESC = [...MODEL_REGISTRY].sort(
         (a, b) => b.id.length - a.id.length,
     );
+}
+
+/**
+ * Install public metadata only; account-specific availability stays in provider
+ * discovery. Snapshots no newer than the installed one are skipped, and the
+ * registry is rebuilt at most once per call.
+ */
+export function installModelCatalogs(
+    snapshots: readonly IModelCatalogSnapshot[],
+): void {
+    let changed = false;
+    for (const snapshot of snapshots) {
+        const current = catalogSnapshots.get(snapshot.source);
+        if (
+            current &&
+            Date.parse(current.fetchedAt) >= Date.parse(snapshot.fetchedAt)
+        )
+            continue;
+        catalogSnapshots.set(snapshot.source, snapshot);
+        changed = true;
+    }
+    if (changed) rebuildRegistry();
+}
+
+export function installModelCatalog(snapshot: IModelCatalogSnapshot): void {
+    installModelCatalogs([snapshot]);
 }
 
 export function registryEntryFor(

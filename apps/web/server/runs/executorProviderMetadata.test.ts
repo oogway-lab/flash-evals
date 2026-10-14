@@ -165,6 +165,7 @@ vi.mock("../judges/service", () => ({
 import { executeRun } from "./executor";
 import { scoreOutput } from "../scoring/scoreOutput";
 import { getLabelsForItems } from "../datasets/service";
+import { getPipeline } from "../pipelines/service";
 
 describe("executeRun provider metadata persistence", () => {
     beforeEach(() => {
@@ -305,6 +306,41 @@ it("enables golden matching when the worker scores cached text outputs", async (
             defaultFieldMatcher: "exact",
             fieldConfigs: [],
             label: { answer: "yes" },
+            output: outputJson,
+        }),
+    );
+});
+
+it("does not exact-match labels against free-text outputs", async () => {
+    vi.mocked(getPipeline).mockResolvedValueOnce(
+        undefined as unknown as Awaited<ReturnType<typeof getPipeline>>,
+    );
+    const outputJson = { text: "Paris" };
+    mocks.findCachedCell.mockResolvedValue({
+        outputJson,
+        latencyMs: 10,
+        costUsd: 0.001,
+        costSource: "computed",
+        promptTokens: 10,
+        completionTokens: 5,
+    });
+    mocks.getRunCells.mockResolvedValue([
+        {
+            id: "cell-1",
+            runModelId: "run-model-1",
+            datasetItemId: "item-1",
+            status: "cached",
+            outputJson,
+        },
+    ]);
+    vi.mocked(getLabelsForItems).mockResolvedValue(
+        new Map([["item-1", { answer: "Paris" }]]),
+    );
+    vi.mocked(scoreOutput).mockResolvedValue({});
+    await executeRun("run-1");
+    expect(scoreOutput).toHaveBeenCalledWith(
+        expect.objectContaining({
+            defaultFieldMatcher: undefined,
             output: outputJson,
         }),
     );

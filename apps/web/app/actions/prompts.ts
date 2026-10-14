@@ -4,6 +4,7 @@ import { clientErrorMessage, UserFacingError } from "@/server/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveProject as requirePrincipal } from "@/server/projects/activeProject";
 import { resolveReasoningEffort } from "@/server/llm/reasoningConfig";
+import { ensureModelCatalog } from "@/server/llm/catalog";
 import { registryEntryFor } from "@/server/llm/modelRegistry";
 import { serverApiClient } from "@/server/api/client";
 import {
@@ -273,6 +274,7 @@ export async function testPromptDraftAction(
     if (!imageResult.ok) return jsonFieldError("imageFile", imageResult.error);
     const image = imageResult.image;
     if (image) {
+        await ensureModelCatalog();
         const entry = registryEntryFor(targetModelId);
         if (entry && !entry.vision) {
             return jsonFieldError(

@@ -3,6 +3,7 @@ import {
     stopModelCatalogWorker,
 } from "../server/jobs/modelCatalogQueue";
 import { closeDatabasePool } from "../server/db/client";
+import { ensureModelCatalog } from "../server/llm/catalog";
 import { startRunWorker, stopRunWorker } from "../server/jobs/runQueue";
 import {
     startWorkflowRunWorker,
@@ -35,11 +36,18 @@ const drainTimeoutMs = parseDrainTimeoutMs(
 
 async function main(): Promise<void> {
     logWorkerEvent("info", "worker.starting");
+    // Install persisted catalog metadata before claiming any run jobs.
+    await ensureModelCatalog();
     await startRunWorker();
     if (shuttingDown) return;
     await startWorkflowRunWorker();
     if (shuttingDown) return;
-    await startModelCatalogWorker();
+    // The daily catalog refresh is optional; evals keep running on the last good catalog.
+    await startModelCatalogWorker().catch((error: unknown) =>
+        logWorkerEvent("error", "catalog.queue_start_failed", {
+            ...safeWorkerError(error),
+        }),
+    );
     if (shuttingDown) return;
     logWorkerEvent("info", "worker.ready", { readiness: "ready" });
 }
