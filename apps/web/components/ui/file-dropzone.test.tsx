@@ -193,6 +193,49 @@ describe("FileDropzone", () => {
         expect(list).toHaveTextContent("c.png");
     });
 
+    it("keeps a companion picker's file while another field has files to retry", () => {
+        const csv = new File(["filename"], "answers.csv", { type: "text/csv" });
+        const failed = png("bad.png");
+        const ui = (value: IUploadProgress) => (
+            <UploadProgressContext.Provider value={value}>
+                <FileDropzone
+                    name="spreadsheet"
+                    accept=".csv,text/csv"
+                    title="Drop a CSV"
+                    hint="CSV"
+                />
+            </UploadProgressContext.Provider>
+        );
+        const run = (
+            completedRun: number,
+            status: "done" | "failed",
+        ): IUploadProgress => ({
+            ...IDLE_UPLOAD_PROGRESS,
+            completedRun,
+            files: {
+                [uploadProgressKey("images", failed)]: {
+                    status,
+                    loaded: 0,
+                    total: 10,
+                },
+            },
+        });
+        const { rerender } = render(ui(IDLE_UPLOAD_PROGRESS));
+        drop([csv]);
+
+        // An image failed: the CSV is needed again for the retry.
+        rerender(ui(run(1, "failed")));
+        expect(
+            screen.getByRole("list", { name: "Selected files" }),
+        ).toHaveTextContent("answers.csv");
+
+        // Everything went through: the CSV clears.
+        rerender(ui(run(2, "done")));
+        expect(
+            screen.queryByRole("list", { name: "Selected files" }),
+        ).not.toBeInTheDocument();
+    });
+
     it("removes one file and clears all", () => {
         const onFilesChange = renderDropzone();
         drop([png("a.png"), png("b.png")]);

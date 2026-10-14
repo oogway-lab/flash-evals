@@ -273,7 +273,18 @@ function putFileWithProgress(
         for (const [header, value] of Object.entries(target.headers ?? {})) {
             xhr.setRequestHeader(header, value);
         }
-        xhr.upload.onprogress = (event) => onBytes(event.loaded);
+        // Progress events fire many times a second; report only whole-percent
+        // steps so a large batch doesn't re-render the form on every event.
+        let lastPercent = -1;
+        xhr.upload.onprogress = (event) => {
+            const percent =
+                file.size > 0
+                    ? Math.floor((event.loaded / file.size) * 100)
+                    : 100;
+            if (percent === lastPercent) return;
+            lastPercent = percent;
+            onBytes(event.loaded);
+        };
         xhr.onload = () => {
             if (xhr.status >= 200 && xhr.status < 300) {
                 resolve(uploadedObject(file, target));
@@ -281,7 +292,9 @@ function putFileWithProgress(
                 reject(putErrorFromStatus(xhr.status, file.name));
             }
         };
-        xhr.onerror = () =>
+        // An aborted or timed-out request fires neither `load` nor `error`;
+        // settle on those too so the upload pool never waits forever.
+        const failNetwork = () =>
             reject(
                 new UploadError(
                     "network",
@@ -289,6 +302,9 @@ function putFileWithProgress(
                     { fileName: file.name },
                 ),
             );
+        xhr.onerror = failNetwork;
+        xhr.onabort = failNetwork;
+        xhr.ontimeout = failNetwork;
         xhr.send(file);
     });
 }

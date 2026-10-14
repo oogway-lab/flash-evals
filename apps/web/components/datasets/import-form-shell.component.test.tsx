@@ -16,6 +16,8 @@ vi.mock("@/lib/uploads/upload-form-media", async (importActual) => ({
     uploadFormMedia: uploads.uploadFormMedia,
 }));
 
+import { FileDropzone } from "@/components/ui/file-dropzone";
+import type { IUploadFormMediaProgress } from "@/lib/uploads/upload-form-media";
 import { ImportFormShell } from "./import-form-shell";
 
 afterEach(() => {
@@ -120,4 +122,88 @@ describe("ImportFormShell outcomes", () => {
         ).toBeInTheDocument();
         expect(toast.success).not.toHaveBeenCalled();
     });
+    it.each([
+        [
+            "rejected",
+            {
+                ok: false,
+                rejected: true,
+                importedCount: 0,
+                failures: [{ reason: "Bad batch." }],
+                formError: "Bad batch.",
+                resetKey: 1,
+            },
+        ],
+        [
+            "imported nothing",
+            {
+                ok: true,
+                importedCount: 0,
+                failures: [{ fileName: "a.wav", reason: "Could not decode." }],
+                resetKey: 1,
+            },
+        ],
+    ])(
+        "keeps uploaded files selected and removable when the import %s",
+        async (_label, outcome) => {
+            const wav = new File([new Uint8Array(4)], "a.wav", {
+                type: "audio/wav",
+            });
+            uploads.uploadFormMedia.mockImplementation(
+                async (
+                    _formData: FormData,
+                    _datasetId: string,
+                    _fields: unknown,
+                    progress: IUploadFormMediaProgress,
+                ) => {
+                    progress.onQueued?.("audio", [wav]);
+                    progress.onFileProgress?.("audio", wav, {
+                        index: 0,
+                        status: "done",
+                        loaded: wav.size,
+                        total: wav.size,
+                    });
+                    return { fileFailures: [] };
+                },
+            );
+            render(
+                <ImportFormShell
+                    datasetId="dataset-1"
+                    submitLabel="Add audio"
+                    action={async () => outcome}
+                    uploadFields={[
+                        {
+                            field: "audio",
+                            targetField: "audioUploads",
+                            modality: "audio",
+                            multiple: true,
+                        },
+                    ]}
+                >
+                    <FileDropzone
+                        name="audio"
+                        accept="audio/wav"
+                        multiple
+                        title="Drop audio"
+                        hint="WAV"
+                    />
+                </ImportFormShell>,
+            );
+            fireEvent.drop(screen.getByRole("button", { name: /Drop audio/ }), {
+                dataTransfer: { files: [wav] },
+            });
+            fireEvent.click(screen.getByRole("button", { name: "Add audio" }));
+
+            expect(
+                await screen.findByText(/Nothing was imported/),
+            ).toBeInTheDocument();
+            expect(
+                screen.getByRole("list", { name: "Selected files" }),
+            ).toHaveTextContent("a.wav");
+            expect(screen.queryByText("Uploaded")).not.toBeInTheDocument();
+            expect(
+                screen.getByRole("button", { name: "Remove a.wav" }),
+            ).toBeInTheDocument();
+        },
+    );
 });

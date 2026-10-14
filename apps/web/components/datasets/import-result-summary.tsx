@@ -1,10 +1,8 @@
 import { CircleAlert, CircleCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/cn";
+import { plural } from "@/lib/format";
 import type { IImportFailure } from "@/server/datasets/import";
-
-const plural = (count: number, noun: string) =>
-    `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 function nextStep(
     importedCount: number,
@@ -96,7 +94,7 @@ export function ImportResultSummary({
             </div>
             {failed.length > 0 && (
                 <ul
-                    aria-label={`${plural(failed.length, "problem")}`}
+                    aria-label={plural(failed.length, "problem")}
                     className="flex max-h-72 flex-col gap-3 overflow-y-auto pr-1"
                 >
                     {failed.map((failure, index) => (

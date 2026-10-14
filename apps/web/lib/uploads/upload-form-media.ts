@@ -132,6 +132,13 @@ export async function uploadFormMedia(
             throw err;
         }
 
+        fileFailures.push(
+            ...result.failures.map((failure) => ({
+                field: spec.field,
+                fileName: failure.fileName,
+                reason: failure.error.message,
+            })),
+        );
         if (result.uploaded.length === 0 && result.failures.length > 0) {
             const names = result.failures.map((f) => f.fileName).join(", ");
             const plural = result.failures.length === 1 ? "" : "s";
@@ -140,23 +147,9 @@ export async function uploadFormMedia(
                     field: spec.field,
                     message: `Could not upload ${result.failures.length} file${plural} (${names}). Please retry.`,
                 },
-                fileFailures: [
-                    ...fileFailures,
-                    ...result.failures.map((failure) => ({
-                        field: spec.field,
-                        fileName: failure.fileName,
-                        reason: failure.error.message,
-                    })),
-                ],
+                fileFailures,
             };
         }
-        fileFailures.push(
-            ...result.failures.map((failure) => ({
-                field: spec.field,
-                fileName: failure.fileName,
-                reason: failure.error.message,
-            })),
-        );
 
         formData.set(
             spec.targetField,

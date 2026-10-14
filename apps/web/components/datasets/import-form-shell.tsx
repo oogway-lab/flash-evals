@@ -76,6 +76,18 @@ function SubmitButton({
     );
 }
 
+/** Progress with the "done" file states removed; failed ones are kept. */
+function withoutDoneFiles(progress: IUploadProgress): IUploadProgress {
+    const entries = Object.entries(progress.files);
+    if (!entries.some(([, file]) => file.status === "done")) return progress;
+    return {
+        ...progress,
+        files: Object.fromEntries(
+            entries.filter(([, file]) => file.status !== "done"),
+        ),
+    };
+}
+
 export function ImportFormShell({
     datasetId,
     action,
@@ -115,6 +127,13 @@ export function ImportFormShell({
             ...current,
             files: { ...current.files, [key]: next },
         }));
+
+    // Once the pickers have pruned the files a completed run imported (child
+    // effects run before this one), forget their "done" state: a file picked
+    // again must show as a normal, removable row, not as "Uploaded".
+    useEffect(() => {
+        setProgress((current) => withoutDoneFiles(current));
+    }, [progress.completedRun]);
 
     async function runAction(
         prev: IActionState,
@@ -177,7 +196,12 @@ export function ImportFormShell({
             reason: `Upload failed: ${failure.reason}`,
         }));
         if (error) {
-            setProgress((current) => ({ ...current, phase: "idle" }));
+            // Nothing was imported: files that did upload stay selected, so
+            // drop their "done" state to leave them removable.
+            setProgress((current) => ({
+                ...withoutDoneFiles(current),
+                phase: "idle",
+            }));
             return {
                 formError: error.message,
                 rejected: true,
@@ -191,15 +215,20 @@ export function ImportFormShell({
 
         setProgress((current) => ({ ...current, phase: "importing" }));
         const result = await action(prev, formData);
-        setProgress((current) => ({
-            ...current,
-            phase: "idle",
-            // Pickers drop what was imported and keep failed or left-out
-            // files for the next run.
-            completedRun: result.rejected
-                ? current.completedRun
-                : current.completedRun + 1,
-        }));
+        const completed = !result.rejected && (result.importedCount ?? 0) > 0;
+        setProgress((current) =>
+            completed
+                ? {
+                      ...current,
+                      phase: "idle",
+                      // Pickers drop what was imported and keep failed or
+                      // left-out files for the next run.
+                      completedRun: current.completedRun + 1,
+                  }
+                : // Nothing was imported: every file stays selected, and
+                  // none of them should read as "Uploaded".
+                  { ...withoutDoneFiles(current), phase: "idle" },
+        );
         if (uploadFailures.length === 0) return result;
         return {
             ...result,
