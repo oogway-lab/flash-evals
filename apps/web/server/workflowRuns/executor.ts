@@ -77,7 +77,12 @@ async function executeWorkflowNode(input: {
             node,
             inputText,
             images,
-            upstreamArtifact: upstreamCells[0]?.cell?.outputJson,
+            // A judge with multiple parents needs the assembled, labeled inputs,
+            // rather than one arbitrarily selected parent's artifact.
+            upstreamArtifact:
+                node.nodeType === "judge" && upstreamCells.length > 1
+                    ? undefined
+                    : upstreamCells[0]?.cell?.outputJson,
             apiKeys: context.apiKeys,
             sttProviderKeys: context.sttProviderKeys,
             labelsByItemId: context.scoringContext.labelsByItemId,
