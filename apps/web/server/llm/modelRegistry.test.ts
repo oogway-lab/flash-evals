@@ -43,8 +43,15 @@ describe("modelRegistry", () => {
                 "gpt-5.4-mini",
                 "gpt-5.4-nano",
                 "gpt-5.5",
+                "gpt-6-luna",
             ].sort(),
         );
+    });
+
+    it("registers gpt-6-luna as a vision model on the Gateway", () => {
+        const entry = registryEntryFor("gpt-6-luna");
+        expect(entry?.vision).toBe(true);
+        expect(entry?.gatewayModelId).toBe("openai/gpt-6-luna");
     });
 
     it("defines effort capabilities for gpt-5.5 and gpt-5.4 family models", () => {

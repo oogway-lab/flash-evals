@@ -96,10 +96,10 @@ describe("MCP OAuth validation with the real Clerk SDK", () => {
 
     it.each(["other-client", "", undefined])(
         "rejects a signed OAuth JWT whose client_id is %s",
-        async (client_id) => {
+        async (clientId) => {
             await expect(
                 resolveClerkOAuthSubject(
-                    syntheticToken({ client_id }),
+                    syntheticToken({ client_id: clientId }),
                     oauthConfig,
                 ),
             ).rejects.toThrow(

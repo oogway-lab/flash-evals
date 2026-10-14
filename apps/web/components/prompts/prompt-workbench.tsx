@@ -371,7 +371,7 @@ export function PromptWorkbench({
         () =>
             initialPrompt?.targetModelId ??
             firstSelectableModelId(availableModels) ??
-            "gpt-4o",
+            "gpt-6-luna",
     );
     const [transport, setTransport] = useState<ProviderTransport>();
     const workbenchModels = useMemo(
@@ -404,7 +404,7 @@ export function PromptWorkbench({
         ? targetModelId
         : (firstSelectableModelId(activeModelOptions) ??
           firstSelectableModelId(workbenchModels) ??
-          "gpt-4o");
+          "gpt-6-luna");
     const [testInput, setTestInput] = useState("");
     const [testImage, setTestImage] = useState<File>();
     // Bumped to clear the picker (it keeps its own file list).
@@ -850,8 +850,8 @@ export function PromptWorkbench({
                                                 )}
                                                 {activeModelOptions.length ===
                                                     0 && (
-                                                    <SelectItem value="gpt-4o">
-                                                        GPT-4o
+                                                    <SelectItem value="gpt-6-luna">
+                                                        GPT-6 Luna
                                                     </SelectItem>
                                                 )}
                                             </SelectContent>
@@ -1822,10 +1822,14 @@ function JudgeTestStateView({
 function firstSelectableModelId(
     availableModels: IWorkbenchModelOption[],
 ): string | undefined {
+    const selectable = (model: IWorkbenchModelOption) =>
+        model.available && model.structuredOutput;
     return (
         availableModels.find(
-            (model) => model.available && model.structuredOutput,
-        )?.id ?? availableModels.find((model) => model.structuredOutput)?.id
+            (model) => model.id === "gpt-6-luna" && selectable(model),
+        )?.id ??
+        availableModels.find(selectable)?.id ??
+        availableModels.find((model) => model.structuredOutput)?.id
     );
 }
 

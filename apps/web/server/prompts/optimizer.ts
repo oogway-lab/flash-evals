@@ -54,7 +54,9 @@ export async function optimizePrompt(input: {
     callOptimizer?: PromptOptimizerCall;
 }): Promise<IPromptOptimizationResult> {
     const optimizerModelId =
-        input.optimizerModelId ?? process.env.PROMPT_OPTIMIZER_MODEL ?? "gpt-5.4-mini";
+        input.optimizerModelId ??
+        process.env.PROMPT_OPTIMIZER_MODEL ??
+        "gpt-6-luna";
     const guidance = guidanceForModel(input.targetModelId);
     if (input.callOptimizer) {
         return input.callOptimizer({
@@ -71,8 +73,7 @@ export async function optimizePrompt(input: {
         registryEntryFor(optimizerModelId)?.reasoning ?? false;
     const result = await provider.complete({
         model: optimizerModelId,
-        system:
-            "You optimize prompts for non-technical product managers. Preserve the task intent, remove ambiguity, and make structured JSON output mandatory. Keep every field concise.",
+        system: "You optimize prompts for non-technical product managers. Preserve the task intent, remove ambiguity, and make structured JSON output mandatory. Keep every field concise.",
         prompt: [
             guidance.text,
             "",
@@ -107,7 +108,9 @@ export async function optimizePrompt(input: {
         parsed,
     );
     if (!validation.ok) {
-        throw new Error("Prompt optimizer response is missing required fields.");
+        throw new Error(
+            "Prompt optimizer response is missing required fields.",
+        );
     }
     const record = parsed as {
         proposedPrompt: string;

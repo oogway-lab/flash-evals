@@ -205,10 +205,9 @@ export async function optimizePromptAction(
     const p = await requirePrincipal();
     const content = String(formData.get("content") || "").trim();
     const targetModelId = String(
-        formData.get("targetModelId") || "gpt-4o",
+        formData.get("targetModelId") || "gpt-6-luna",
     ).trim();
-    const optimizerModelId =
-        process.env.PROMPT_OPTIMIZER_MODEL ?? "gpt-5.4-mini";
+    const optimizerModelId = process.env.PROMPT_OPTIMIZER_MODEL ?? "gpt-6-luna";
     const schemaResult = parseJsonField<IJsonSchemaObject>(
         String(formData.get("jsonSchema") || ""),
         "jsonSchema",
@@ -250,7 +249,7 @@ export async function testPromptDraftAction(
     const p = await requirePrincipal();
     const content = String(formData.get("content") || "").trim();
     const targetModelId = String(
-        formData.get("targetModelId") || "gpt-4o",
+        formData.get("targetModelId") || "gpt-6-luna",
     ).trim();
     const reasoningEffort =
         String(formData.get("reasoningEffort") || "").trim() || undefined;
@@ -342,7 +341,7 @@ export async function generateSchemaFromPromptAction(
     const p = await requirePrincipal();
     const content = String(formData.get("content") || "").trim();
     const targetModelId = String(
-        formData.get("targetModelId") || "gpt-4o",
+        formData.get("targetModelId") || "gpt-6-luna",
     ).trim();
     if (!content) {
         return jsonFieldError(
@@ -351,8 +350,7 @@ export async function generateSchemaFromPromptAction(
         );
     }
 
-    const generatorModelId =
-        process.env.PROMPT_OPTIMIZER_MODEL ?? "gpt-5.4-mini";
+    const generatorModelId = process.env.PROMPT_OPTIMIZER_MODEL ?? "gpt-6-luna";
     try {
         const result = await serverApiClient().generatePromptSchema({
             teamId: p.teamId,
@@ -380,7 +378,7 @@ export async function testJudgeDraftAction(
     const p = await requirePrincipal();
     const content = String(formData.get("content") || "").trim();
     const targetModelId = String(
-        formData.get("targetModelId") || "gpt-4o",
+        formData.get("targetModelId") || "gpt-6-luna",
     ).trim();
     const reasoningEffort =
         String(formData.get("reasoningEffort") || "").trim() || undefined;
@@ -512,7 +510,7 @@ export async function saveRunnablePromptAction(
     const description =
         String(formData.get("description") || "").trim() || undefined;
     const targetModelId = String(
-        formData.get("targetModelId") || "gpt-4o",
+        formData.get("targetModelId") || "gpt-6-luna",
     ).trim();
     const reasoningEffort =
         String(formData.get("reasoningEffort") || "").trim() || undefined;
@@ -666,7 +664,7 @@ export async function deletePromptAction(
 
 export async function createJudgeAction(formData: FormData) {
     const p = await requirePrincipal();
-    const modelId = String(formData.get("modelId") || "gpt-4o-mini").trim();
+    const modelId = String(formData.get("modelId") || "gpt-6-luna").trim();
     const rubricPrompt = String(formData.get("rubricPrompt") || "").trim();
     await serverApiClient().createJudgePrompt({
         teamId: p.teamId,

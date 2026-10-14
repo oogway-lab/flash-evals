@@ -51,7 +51,37 @@ export default [
         rules: {
             complexity: ["warn", { max: 18 }],
             "max-depth": ["warn", 5],
+            "max-lines": [
+                "warn",
+                { max: 1200, skipBlankLines: true, skipComments: true },
+            ],
             "no-console": ["warn", { allow: ["warn", "error", "info"] }],
+            // Values are camelCase; React components, error classes, and the
+            // schema values that stand in for types are PascalCase; constants
+            // are UPPER_CASE. snake_case and kebab-case names fail, and types
+            // and type parameters stay PascalCase.
+            "@typescript-eslint/naming-convention": [
+                "error",
+                {
+                    selector: "variable",
+                    format: ["camelCase", "PascalCase", "UPPER_CASE"],
+                    leadingUnderscore: "allow",
+                    trailingUnderscore: "allow",
+                },
+                { selector: "function", format: ["camelCase", "PascalCase"] },
+                {
+                    selector: "parameter",
+                    format: ["camelCase", "PascalCase"],
+                    leadingUnderscore: "allow",
+                },
+                { selector: "method", format: ["camelCase", "PascalCase"] },
+                { selector: "typeLike", format: ["PascalCase"] },
+                { selector: "typeParameter", format: ["PascalCase"] },
+                {
+                    selector: "enumMember",
+                    format: ["PascalCase", "UPPER_CASE"],
+                },
+            ],
             "@typescript-eslint/consistent-type-imports": [
                 "warn",
                 { prefer: "type-imports" },

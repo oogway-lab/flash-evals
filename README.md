@@ -113,9 +113,9 @@ compatibility. Use those identifiers exactly as documented.
 
 Focused bug reports and pull requests are welcome. Read [Contributing](CONTRIBUTING.md)
 and the [Code of Conduct](CODE_OF_CONDUCT.md), and remove secrets and personal or
-customer data before sharing reports publicly. There is no active private
-vulnerability-reporting channel yet; read the [security policy](SECURITY.md)
-before reporting a security concern, and do not post vulnerability details publicly.
+customer data before sharing reports publicly. To report a suspected vulnerability,
+use the private reporting address in the [security policy](SECURITY.md); do not post
+vulnerability details publicly.
 
 First-party source and documentation are licensed under [AGPL-3.0-only](LICENSE).
 Copyright © 2026 Oogway Labs Private Limited. See [License history](LICENSE_HISTORY.md)

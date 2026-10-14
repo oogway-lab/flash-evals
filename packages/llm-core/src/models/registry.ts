@@ -283,6 +283,16 @@ export const MODEL_REGISTRY: readonly IModelRegistryEntry[] = [
         promptPerM: 0.2,
         completionPerM: 1.25,
     }),
+    // Price from Vercel AI Gateway's model list (2026-10-12), not openai.com.
+    openAiEntry({
+        id: "gpt-6-luna",
+        label: "GPT-6 Luna",
+        family: "gpt-6",
+        reasoning: true,
+        vision: true,
+        promptPerM: 0.1,
+        completionPerM: 0.5,
+    }),
     gatewayEntry({
         id: "anthropic/claude-opus-4.8",
         label: "Claude Opus 4.8",
