@@ -403,8 +403,9 @@ describe("SttRunResults", () => {
         ).length;
         render(<SttRunResults detail={running} />);
 
-        const table = screen.getAllByRole("table").at(-1) as HTMLElement;
-        const rows = within(table).getAllByRole("row").slice(1);
+        const rows = Array.from(
+            document.querySelectorAll<HTMLElement>("[data-workflow-cell-id]"),
+        );
         const skeletonRows = rows.filter((row) =>
             row.querySelector('[data-slot="skeleton"]'),
         );
@@ -415,16 +416,13 @@ describe("SttRunResults", () => {
                 3,
             );
         }
-        const runningBadge = within(table).getByLabelText(
-            "Cell status: Running",
-        );
+        const runningBadge = screen.getByLabelText("Cell status: Running");
         expect(
             runningBadge.querySelector('[data-slot="status-running-dot"]'),
         ).toBeInTheDocument();
         // finished rows keep their real output
-        expect(within(table).queryAllByText("–").length).toBeLessThan(
-            rows.length,
-        );
+        const items = screen.getByRole("list", { name: "Items" });
+        expect(within(items).getByText("second transcript")).toBeVisible();
     });
 
     it("shows per-root usage without treating unavailable values as zero", () => {
@@ -457,16 +455,18 @@ describe("SttRunResults", () => {
     it("keeps artifacts compact and exposes full text in the detail sheet", () => {
         render(<SttRunResults detail={detail()} />);
 
-        const previews = screen.getAllByText("original audio context");
-        expect(previews).toHaveLength(2);
-        expect(previews[0]).toHaveClass("line-clamp-3");
+        // Inputs repeat the previous step's output, so only the sheet shows them.
+        expect(screen.queryByText("original audio context")).toBeNull();
+        expect(screen.getByText("clean transcript")).toHaveClass(
+            "line-clamp-2",
+        );
         expect(
             screen.getAllByText(/Speaker 1 0\.51s–2\.91s: first speaker turn/),
         ).not.toHaveLength(0);
 
         fireEvent.click(
             screen.getAllByRole("button", {
-                name: "Inspect score details for Diarized, item item-1",
+                name: "Open details for Diarized, item item-1",
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Diarized" });
@@ -495,12 +495,12 @@ describe("SttRunResults", () => {
     it("explains requested, resolved, actual, fallback, cache, usage, and cost provenance", () => {
         render(<SttRunResults detail={detail()} />);
 
-        expect(screen.getAllByText("openrouter · gpt-4o")).not.toHaveLength(0);
-        expect(screen.getAllByText("Actual azure")).not.toHaveLength(0);
+        expect(screen.getAllByText("gpt-4o")).not.toHaveLength(0);
+        expect(screen.getAllByText("openrouter → azure")).not.toHaveLength(0);
 
         fireEvent.click(
             screen.getAllByRole("button", {
-                name: "Inspect score details for Cleanup, item item-1",
+                name: "Open details for Cleanup, item item-1",
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Cleanup" });
@@ -542,7 +542,7 @@ describe("SttRunResults", () => {
         render(<SttRunResults detail={retried} />);
         fireEvent.click(
             screen.getAllByRole("button", {
-                name: "Inspect score details for Cleanup, item item-1",
+                name: "Open details for Cleanup, item item-1",
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Cleanup" });
@@ -565,7 +565,7 @@ describe("SttRunResults", () => {
         render(<SttRunResults detail={legacy} />);
         fireEvent.click(
             screen.getAllByRole("button", {
-                name: "Inspect score details for Cleanup, item item-1",
+                name: "Open details for Cleanup, item item-1",
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Cleanup" });
@@ -598,7 +598,7 @@ describe("SttRunResults", () => {
         const view = render(<SttRunResults detail={providerReported} />);
         fireEvent.click(
             screen.getAllByRole("button", {
-                name: "Inspect score details for Cleanup, item item-1",
+                name: "Open details for Cleanup, item item-1",
             })[0]!,
         );
         expect(
@@ -649,7 +649,7 @@ describe("SttRunResults", () => {
         render(<SttRunResults detail={reused} />);
         fireEvent.click(
             screen.getAllByRole("button", {
-                name: "Inspect score details for Cleanup, item item-1",
+                name: "Open details for Cleanup, item item-1",
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Cleanup" });
@@ -697,7 +697,7 @@ describe("SttRunResults", () => {
         render(<SttRunResults detail={cached} />);
         fireEvent.click(
             screen.getAllByRole("button", {
-                name: "Inspect score details for Cleanup, item item-1",
+                name: "Open details for Cleanup, item item-1",
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Cleanup" });
@@ -735,7 +735,7 @@ describe("SttRunResults", () => {
 
         fireEvent.click(
             screen.getAllByRole("button", {
-                name: "Inspect score details for Diarized, item item-1",
+                name: "Open details for Diarized, item item-1",
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", {
@@ -771,7 +771,7 @@ describe("SttRunResults", () => {
         expect(screen.queryByRole("dialog", { name: "Diarized" })).toBeNull();
         expect(
             screen.getAllByRole("button", {
-                name: "Inspect score details for Diarized, item item-1",
+                name: "Open details for Diarized, item item-1",
             })[0]!,
         ).toHaveAttribute("aria-expanded", "false");
     });
@@ -809,7 +809,7 @@ describe("blocked cell navigation", () => {
         render(<SttRunResults detail={blockedDetail()} />);
         fireEvent.click(
             screen.getAllByRole("button", {
-                name: "Inspect score details for Cleanup, item item-1",
+                name: "Open details for Cleanup, item item-1",
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Cleanup" });
@@ -871,6 +871,88 @@ describe("blocked cell navigation", () => {
     });
 });
 
+describe("item output groups", () => {
+    function stepLabels(item: HTMLElement) {
+        return Array.from(
+            item.querySelectorAll<HTMLElement>("[data-workflow-cell-id]"),
+        ).map((row) => row.querySelector("p")?.textContent);
+    }
+
+    it("groups each item's steps in pipeline order, branch by branch", () => {
+        const shuffled = detail();
+        shuffled.cells.reverse();
+        render(<SttRunResults detail={shuffled} />);
+
+        const items = Array.from(
+            screen.getByRole("list", { name: "Items" }).children,
+        ) as HTMLElement[];
+        expect(items).toHaveLength(2);
+        expect(stepLabels(items[0]!)).toEqual(["Diarized", "Cleanup", "Plain"]);
+        expect(stepLabels(items[1]!)).toEqual(["Diarized"]);
+        expect(within(items[0]!).getByText("3 of 3 succeeded")).toBeVisible();
+    });
+
+    it("filters items by ID and status and collapses their steps", () => {
+        const failed = detail();
+        failed.cells = failed.cells.map((cell) =>
+            cell.id === "cell-stt-a-2"
+                ? {
+                      ...cell,
+                      status: "failed",
+                      outputJson: undefined,
+                      error: "Provider timed out.",
+                  }
+                : cell,
+        );
+        render(<SttRunResults detail={failed} />);
+
+        fireEvent.click(screen.getByRole("button", { name: /^Failed/ }));
+        expect(screen.queryByText("clean transcript")).toBeNull();
+        expect(screen.getByText("1 failed")).toBeVisible();
+        expect(screen.getByText("Provider timed out.")).toHaveClass(
+            "text-danger",
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: /^All/ }));
+        fireEvent.change(screen.getByRole("searchbox"), {
+            target: { value: "ITEM-1" },
+        });
+        expect(screen.getByText("clean transcript")).toBeVisible();
+        expect(screen.queryByText("1 failed")).toBeNull();
+
+        const collapse = screen.getByRole("button", {
+            name: "Collapse item item-1",
+        });
+        fireEvent.click(collapse);
+        expect(collapse).toHaveAttribute("aria-expanded", "false");
+        expect(screen.getByText("clean transcript")).not.toBeVisible();
+        fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+        expect(screen.getByText("clean transcript")).toBeVisible();
+    });
+
+    it("renders markdown emphasis in previews and shows the configured STT model", () => {
+        const markdown = detail();
+        markdown.cells = markdown.cells.map((cell) =>
+            cell.id === "cell-text-a"
+                ? {
+                      ...cell,
+                      outputJson: {
+                          text: "**Main Topic:** pricing\n* units sold out",
+                      },
+                  }
+                : cell,
+        );
+        render(<SttRunResults detail={markdown} />);
+
+        const topic = screen.getByText("Main Topic:");
+        expect(topic.tagName).toBe("STRONG");
+        expect(topic.parentElement).toHaveTextContent(
+            "Main Topic: pricing units sold out",
+        );
+        expect(screen.getAllByText("soniox")).not.toHaveLength(0);
+    });
+});
+
 describe("original recording playback", () => {
     function audioInputDetail() {
         const result = detail();
@@ -902,7 +984,7 @@ describe("original recording playback", () => {
             <SttRunResults detail={audioInputDetail()} />,
         );
         const players = container.querySelectorAll("audio");
-        expect(players).toHaveLength(2); // desktop row and mobile card
+        expect(players).toHaveLength(1); // one responsive row per step
         for (const player of players) {
             expect(player).toHaveAttribute("controls");
             expect(player).toHaveAttribute("preload", "none");
@@ -914,7 +996,7 @@ describe("original recording playback", () => {
         }
         fireEvent.click(
             screen.getAllByRole("button", {
-                name: "Inspect score details for Audio input, item item-1",
+                name: "Open details for Audio input, item item-1",
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Audio input" });
@@ -939,7 +1021,7 @@ describe("original recording playback", () => {
         render(<SttRunResults detail={audioInputDetail()} />);
         fireEvent.click(
             screen.getAllByRole("button", {
-                name: "Inspect score details for Cleanup, item item-1",
+                name: "Open details for Cleanup, item item-1",
             })[0]!,
         );
         const inspector = screen.getByRole("dialog", { name: "Cleanup" });

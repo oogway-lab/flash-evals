@@ -15,39 +15,6 @@ import {
     labelFor,
 } from "@/lib/labels";
 
-export function LlmRouteSummary({
-    execution,
-}: {
-    execution: IWorkflowRunCellLlmExecution | undefined;
-}) {
-    if (!execution) return null;
-    if (execution.availability === "legacy_unavailable")
-        return (
-            <p className="text-label-12 text-muted-foreground">
-                Route unavailable
-            </p>
-        );
-    const transport = execution.resolved.route.transportConfig.transport;
-    const actualProvider =
-        execution.availability === "complete" && "identity" in execution.actual
-            ? execution.actual.identity?.upstreamProvider
-            : undefined;
-    return (
-        <div className="flex min-w-32 flex-col gap-1 text-label-12">
-            <p className="text-mono-13">
-                {transport} · {execution.resolved.route.modelId}
-            </p>
-            <p className="text-muted-foreground">
-                {execution.availability === "complete"
-                    ? actualProvider
-                        ? `Actual ${actualProvider}`
-                        : actualStatusLabel(execution.actual.status)
-                    : "Actual unavailable"}
-            </p>
-        </div>
-    );
-}
-
 // eslint-disable-next-line complexity -- provenance sections are independently optional by result state.
 export function LlmExecutionDetails({
     execution,
