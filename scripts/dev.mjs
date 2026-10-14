@@ -4,7 +4,10 @@ import path from "node:path";
 import { clearInterval, setInterval } from "node:timers";
 import { fileURLToPath } from "node:url";
 
-const webArgs = process.argv.slice(2);
+const webArgs = process.argv.slice(2).filter((arg) => arg !== "--");
+const hostArgs = optionValue(webArgs, ["-H", "--hostname"])
+    ? []
+    : ["--hostname", "127.0.0.1"];
 const webPort =
     optionValue(webArgs, ["-p", "--port"]) || process.env.PORT || "3000";
 // Not PORT: next dev reads PORT for web, so sharing it would collide.
@@ -28,7 +31,7 @@ const commands = [
     {
         name: "web",
         command: "pnpm",
-        args: ["--filter", "@mosaic/web", "dev", "--", ...webArgs],
+        args: ["--filter", "@mosaic/web", "dev", ...hostArgs, ...webArgs],
         env: {
             API_BASE_URL: apiOrigin,
             NEXT_PUBLIC_API_BASE_URL: apiOrigin,

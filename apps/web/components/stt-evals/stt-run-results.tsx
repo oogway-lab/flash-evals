@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { Eye } from "lucide-react";
 import type { IWorkflowRunDetailResponse } from "@mosaic/api-contract";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +48,13 @@ import {
     LlmExecutionDetails,
     LlmRouteSummary,
 } from "./llm-execution-provenance";
+
+import {
+    BlockedCellLink,
+    blockedByCell,
+    useWorkflowCellNavigation,
+    visibleWorkflowCell,
+} from "./workflow-cell-link";
 
 function rootByNode(detail: IWorkflowRunDetailResponse): Map<string, string> {
     const nodes = detail.workflowRun.workflowSnapshot.nodes;
@@ -144,6 +152,11 @@ export function SttRunResults({
     detail: IWorkflowRunDetailResponse;
 }) {
     const [selectedCellId, setSelectedCellId] = useState<string>();
+    const { highlightedCellId, revealCell } = useWorkflowCellNavigation(detail);
+    const revealUpstream = (id: string, href: string) => {
+        setSelectedCellId(undefined);
+        revealCell(id, href);
+    };
     const snapshotNodes = detail.workflowRun.workflowSnapshot.nodes;
     const ownership = rootByNode(detail);
     const roots = snapshotNodes.filter((node) => node.nodeType === "stt");
@@ -335,7 +348,7 @@ export function SttRunResults({
                 </CardHeader>
                 <CardContent>
                     <div className="hidden overflow-x-auto md:block">
-                        <Table>
+                        <Table containerClassName="overflow-visible">
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Item</TableHead>
@@ -356,7 +369,16 @@ export function SttRunResults({
                             </TableHeader>
                             <TableBody>
                                 {resultRows.map((row) => (
-                                    <TableRow key={row.cell.id}>
+                                    <TableRow
+                                        key={row.cell.id}
+                                        data-workflow-cell-id={row.cell.id}
+                                        tabIndex={-1}
+                                        className={
+                                            highlightedCellId === row.cell.id
+                                                ? "bg-muted outline-2 outline-ring outline-offset-[-2px] scroll-mt-24"
+                                                : undefined
+                                        }
+                                    >
                                         <TableCell className="text-mono-13">
                                             {row.item.id.slice(0, 8)}
                                         </TableCell>
@@ -381,12 +403,32 @@ export function SttRunResults({
                                             />
                                         </TableCell>
                                         <TableCell>
-                                            {isCellInFlight(row.cell.status) ? (
+                                            {row.node?.nodeType === "input" &&
+                                            isAudioItem(row.item) ? (
+                                                <AudioRecording
+                                                    item={row.item}
+                                                />
+                                            ) : isCellInFlight(
+                                                  row.cell.status,
+                                              ) ? (
                                                 <PendingPreview />
                                             ) : (
                                                 <ArtifactPreview
                                                     text={cellOutput(row.cell)}
-                                                />
+                                                >
+                                                    {blockedByCell(
+                                                        detail,
+                                                        row.cell,
+                                                    ) && (
+                                                        <BlockedCellLink
+                                                            detail={detail}
+                                                            cell={row.cell}
+                                                            onReveal={
+                                                                revealUpstream
+                                                            }
+                                                        />
+                                                    )}
+                                                </ArtifactPreview>
                                             )}
                                         </TableCell>
                                         <TableCell>
@@ -435,7 +477,9 @@ export function SttRunResults({
                         {resultRows.map((row) => (
                             <article
                                 key={row.cell.id}
-                                className="flex flex-col gap-4 border-t border-border pt-3 first:border-t-0 first:pt-0"
+                                data-workflow-cell-id={row.cell.id}
+                                tabIndex={-1}
+                                className={`flex flex-col gap-4 border-t border-border pt-3 first:border-t-0 first:pt-0 ${highlightedCellId === row.cell.id ? "bg-muted outline-2 outline-ring outline-offset-[-2px] scroll-mt-24" : ""}`}
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="flex flex-col gap-1">
@@ -455,7 +499,15 @@ export function SttRunResults({
                                         label="Input"
                                         text={row.cell.inputText}
                                     />
-                                    {isCellInFlight(row.cell.status) ? (
+                                    {row.node?.nodeType === "input" &&
+                                    isAudioItem(row.item) ? (
+                                        <div className="flex flex-col gap-1">
+                                            <p className="text-label-12">
+                                                Output
+                                            </p>
+                                            <AudioRecording item={row.item} />
+                                        </div>
+                                    ) : isCellInFlight(row.cell.status) ? (
                                         <div className="flex flex-col gap-1">
                                             <p className="text-label-12">
                                                 Output
@@ -466,7 +518,18 @@ export function SttRunResults({
                                         <LabeledPreview
                                             label="Output"
                                             text={cellOutput(row.cell)}
-                                        />
+                                        >
+                                            {blockedByCell(
+                                                detail,
+                                                row.cell,
+                                            ) && (
+                                                <BlockedCellLink
+                                                    detail={detail}
+                                                    cell={row.cell}
+                                                    onReveal={revealUpstream}
+                                                />
+                                            )}
+                                        </LabeledPreview>
                                     )}
                                     <LlmRouteSummary
                                         execution={row.cell.llmExecution}
@@ -502,6 +565,8 @@ export function SttRunResults({
             <CellScoreInspector
                 detail={detail}
                 cellId={selectedCellId}
+                highlightedCellId={highlightedCellId}
+                onReveal={revealUpstream}
                 onClose={() => setSelectedCellId(undefined)}
             />
         </div>
@@ -527,10 +592,63 @@ function totalCost(
     return format(costs.reduce((sum, cost) => sum + cost, 0));
 }
 
-function ArtifactPreview({ text }: { text: string | null | undefined }) {
+function isAudioItem(item: IWorkflowRunDetailResponse["items"][number]) {
+    return (
+        Boolean(item.storageKey) &&
+        (item.type === "audio" || item.mimeType?.startsWith("audio/") === true)
+    );
+}
+
+/** Use the existing authenticated media route; do not fetch audio until playback. */
+function AudioRecording({
+    item,
+}: {
+    item: IWorkflowRunDetailResponse["items"][number];
+}) {
+    const [failed, setFailed] = useState(false);
+    if (!isAudioItem(item) || !item.storageKey) return null;
+    const src = `/api/images/${item.storageKey.split("/").map(encodeURIComponent).join("/")}`;
+    return (
+        <>
+            <audio
+                controls
+                preload="none"
+                src={src}
+                aria-label={`Original recording ${item.id.slice(0, 8)}`}
+                className="w-full min-w-52 max-w-sm"
+                onError={() => setFailed(true)}
+                onPlaying={() => setFailed(false)}
+                onPlay={(event) => {
+                    for (const player of document.querySelectorAll("audio"))
+                        if (player !== event.currentTarget) player.pause();
+                }}
+            />
+            {failed && (
+                <span
+                    role="alert"
+                    className="block text-copy-14 text-destructive"
+                >
+                    Audio could not be loaded.{" "}
+                    <a href={src} className="underline underline-offset-4">
+                        Open original recording
+                    </a>
+                    .
+                </span>
+            )}
+        </>
+    );
+}
+
+function ArtifactPreview({
+    text,
+    children,
+}: {
+    text: string | null | undefined;
+    children?: ReactNode;
+}) {
     return (
         <p className="line-clamp-3 max-w-72 whitespace-pre-wrap wrap-break-word text-copy-14 leading-5 text-muted-foreground">
-            {text || MISSING_VALUE}
+            {children || text || MISSING_VALUE}
         </p>
     );
 }
@@ -549,14 +667,16 @@ function PendingPreview() {
 function LabeledPreview({
     label,
     text,
+    children,
 }: {
     label: string;
     text: string | null | undefined;
+    children?: ReactNode;
 }) {
     return (
         <div className="flex flex-col gap-1">
             <p className="text-label-12">{label}</p>
-            <ArtifactPreview text={text} />
+            <ArtifactPreview text={text}>{children}</ArtifactPreview>
         </div>
     );
 }
@@ -731,10 +851,14 @@ function InlineRates({
 function CellScoreInspector({
     detail,
     cellId,
+    highlightedCellId,
+    onReveal,
     onClose,
 }: {
     detail: IWorkflowRunDetailResponse;
     cellId: string | undefined;
+    highlightedCellId: string | undefined;
+    onReveal: (id: string, href: string) => void;
     onClose: () => void;
 }) {
     const cell = detail.cells.find((candidate) => candidate.id === cellId);
@@ -754,11 +878,27 @@ function CellScoreInspector({
     return (
         <Sheet
             open={cell !== undefined}
+            onOpenChangeComplete={(open) => {
+                if (!open && highlightedCellId) {
+                    requestAnimationFrame(() => {
+                        visibleWorkflowCell(highlightedCellId)?.focus({
+                            preventScroll: true,
+                        });
+                    });
+                }
+            }}
             onOpenChange={(open) => {
                 if (!open) onClose();
             }}
         >
-            <SheetContent className="max-w-2xl">
+            <SheetContent
+                className="max-w-2xl"
+                finalFocus={() =>
+                    highlightedCellId
+                        ? (visibleWorkflowCell(highlightedCellId) ?? true)
+                        : true
+                }
+            >
                 <SheetHeader>
                     <div className="flex flex-wrap items-center gap-2 pr-8">
                         <SheetTitle>
@@ -792,10 +932,14 @@ function CellScoreInspector({
                             <TranscriptMetricBreakdown score={metricScore} />
                             <TranscriptJudgeBreakdown score={judgeScore} />
                         </TabsContent>
-                        <TabsContent value="input">
-                            <FullArtifact
-                                label="Full input"
-                                text={inputTextOf(cell)}
+                        <TabsContent
+                            value="input"
+                            className="flex flex-col gap-6"
+                        >
+                            <InspectorInput
+                                item={item}
+                                cell={cell}
+                                isInputNode={node?.nodeType === "input"}
                             />
                         </TabsContent>
                         <TabsContent
@@ -806,7 +950,20 @@ function CellScoreInspector({
                             <FullArtifact
                                 label="Full output"
                                 text={cell ? cellOutput(cell) : undefined}
-                            />
+                                audioItem={
+                                    node?.nodeType === "input"
+                                        ? item
+                                        : undefined
+                                }
+                            >
+                                {cell && blockedByCell(detail, cell) && (
+                                    <BlockedCellLink
+                                        detail={detail}
+                                        cell={cell}
+                                        onReveal={onReveal}
+                                    />
+                                )}
+                            </FullArtifact>
                             {cell?.outputJson && (
                                 <section
                                     aria-label="Raw output payload"
@@ -827,6 +984,34 @@ function CellScoreInspector({
                 </SheetBody>
             </SheetContent>
         </Sheet>
+    );
+}
+
+function InspectorInput({
+    item,
+    cell,
+    isInputNode,
+}: {
+    item: IWorkflowRunDetailResponse["items"][number] | undefined;
+    cell: IWorkflowRunDetailResponse["cells"][number] | undefined;
+    isInputNode: boolean;
+}) {
+    const audioItem = item && isAudioItem(item) ? item : undefined;
+    return (
+        <>
+            {audioItem && (
+                <section
+                    aria-label="Original recording"
+                    className="flex flex-col gap-2"
+                >
+                    <SectionTitle as="h3">Original recording</SectionTitle>
+                    <AudioRecording key={audioItem.id} item={audioItem} />
+                </section>
+            )}
+            {(!isInputNode || !audioItem) && (
+                <FullArtifact label="Full input" text={inputTextOf(cell)} />
+            )}
+        </>
     );
 }
 
@@ -871,9 +1056,13 @@ function InspectorMeta({
 function FullArtifact({
     label,
     text,
+    children,
+    audioItem,
 }: {
     label: string;
     text: string | undefined;
+    children?: ReactNode;
+    audioItem?: IWorkflowRunDetailResponse["items"][number];
 }) {
     return (
         <section aria-label={label} className="flex flex-col gap-2">
@@ -883,7 +1072,11 @@ function FullArtifact({
             </div>
             <Card variant="inset" className="p-4">
                 <p className="max-w-prose whitespace-pre-wrap wrap-break-word text-copy-14">
-                    {text || MISSING_VALUE}
+                    {audioItem && isAudioItem(audioItem) ? (
+                        <AudioRecording key={audioItem.id} item={audioItem} />
+                    ) : (
+                        children || text || MISSING_VALUE
+                    )}
                 </p>
             </Card>
         </section>

@@ -1043,14 +1043,14 @@ function simpleWorkflowRoute(
     reasoningEffort: ReasoningEffort | undefined,
     isJudge: boolean,
 ): IWorkflowLlmRouteConfig {
+    const isGemini3 = modelId.startsWith("google/gemini-3");
+    const timeoutMs = isGemini3 ? 300_000 : 60_000;
     return {
         modelId,
         generation: {
             // Google thinking and visible output share this limit. Leave
             // thinking unchanged while allowing complete long translations.
-            maxOutputTokens: modelId.startsWith("google/gemini-3")
-                ? 16384
-                : 4096,
+            maxOutputTokens: isGemini3 ? 32768 : 4096,
             ...(reasoningEffort ? { reasoningEffort } : {}),
         },
         transportConfig:
@@ -1080,11 +1080,11 @@ function simpleWorkflowRoute(
             : { mode: "text" },
         retry:
             transport === "gateway"
-                ? { owner: "gateway", timeoutMs: 60_000 }
+                ? { owner: "gateway", timeoutMs }
                 : {
                       owner: "mosaic",
                       maxAttempts: 1,
-                      timeoutMs: 60_000,
+                      timeoutMs,
                       retryableErrorClasses: [],
                   },
         cache: { mosaicReuse: "force_fresh", providerCaching: "allow" },

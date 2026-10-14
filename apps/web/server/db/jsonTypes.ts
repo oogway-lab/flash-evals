@@ -224,6 +224,7 @@ export interface IAudioTranscriptMetadata {
     };
     diarizationMode?: "native" | "prompt-derived";
     promptSupported?: boolean;
+    scriptRepair?: { modelId: string; fragmentCount: number };
     /** Provider spend for producing this artifact now; excludes reused chunks. */
     incurredCostUsd?: number;
     /** A timed-out request may have been billed; costs exclude it. */

@@ -4,12 +4,17 @@ import {
     render,
     screen,
     within,
+    waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IWorkflowRunDetailResponse } from "@mosaic/api-contract";
 import { SttRunResults } from "./stt-run-results";
 
-afterEach(cleanup);
+afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    window.history.replaceState(null, "", "/");
+});
 
 function detail(): IWorkflowRunDetailResponse {
     const nodes = [
@@ -511,7 +516,9 @@ describe("SttRunResults", () => {
         ).toBeVisible();
         expect(within(inspector).getByText("Fallback observed")).toBeVisible();
         expect(
-            within(inspector).getByText("Live generation · Flash Evals reuse miss"),
+            within(inspector).getByText(
+                "Live generation · Flash Evals reuse miss",
+            ),
         ).toBeVisible();
         expect(within(inspector).getByText("Reasoning tokens")).toBeVisible();
         expect(within(inspector).getByText("Cache read tokens")).toBeVisible();
@@ -647,7 +654,9 @@ describe("SttRunResults", () => {
         );
         const inspector = screen.getByRole("dialog", { name: "Cleanup" });
         // The "Flash Evals reuse" setting label, plus the cache result value.
-        expect(within(inspector).getAllByText("Flash Evals reuse")).toHaveLength(2);
+        expect(
+            within(inspector).getAllByText("Flash Evals reuse"),
+        ).toHaveLength(2);
         expect(within(inspector).getByText("origin-run")).toBeVisible();
         expect(within(inspector).getByText("origin-cell")).toBeVisible();
         expect(
@@ -765,5 +774,194 @@ describe("SttRunResults", () => {
                 name: "Inspect score details for Diarized, item item-1",
             })[0]!,
         ).toHaveAttribute("aria-expanded", "false");
+    });
+});
+
+describe("blocked cell navigation", () => {
+    function blockedDetail() {
+        const result = detail();
+        result.cells = result.cells.map((cell) =>
+            cell.id === "cell-text-a"
+                ? {
+                      ...cell,
+                      status: "failed",
+                      outputJson: undefined,
+                      error: "Blocked by failed node stt-a.",
+                  }
+                : cell.id === "cell-stt-a"
+                  ? { ...cell, status: "failed", error: "Provider unavailable" }
+                  : cell,
+        );
+        result.cells.unshift({
+            ...result.cells[0]!,
+            id: "other-item-cell",
+            datasetItemId: "item-2",
+        });
+        return result;
+    }
+
+    it("links the blocked output to the exact upstream recording and closes the inspector", async () => {
+        window.history.replaceState(
+            null,
+            "",
+            "/multiworkflow/workflow-1/runs/run-1",
+        );
+        render(<SttRunResults detail={blockedDetail()} />);
+        fireEvent.click(
+            screen.getAllByRole("button", {
+                name: "Inspect score details for Cleanup, item item-1",
+            })[0]!,
+        );
+        const inspector = screen.getByRole("dialog", { name: "Cleanup" });
+        fireEvent.click(within(inspector).getByRole("tab", { name: "Output" }));
+        const link = within(inspector).getByRole("link", { name: "Diarized" });
+        expect(link).toHaveAttribute(
+            "href",
+            "/multiworkflow/workflow-1/runs/run-1#cell=cell-stt-a",
+        );
+        fireEvent.click(link);
+        await waitFor(() =>
+            expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+        );
+        expect(window.location.hash).toBe("#cell=cell-stt-a");
+        for (const target of document.querySelectorAll(
+            '[data-workflow-cell-id="cell-stt-a"]',
+        ))
+            expect(target).toHaveClass("outline-2");
+        expect(
+            document.querySelector('[data-workflow-cell-id="other-item-cell"]'),
+        ).not.toHaveClass("outline-2");
+    });
+
+    it("restores a direct cell link on load and follows back navigation", async () => {
+        window.history.replaceState(
+            null,
+            "",
+            "/multiworkflow/workflow-1/runs/run-1#cell=cell-stt-a",
+        );
+        render(<SttRunResults detail={blockedDetail()} />);
+        await waitFor(() =>
+            expect(
+                document.querySelector('[data-workflow-cell-id="cell-stt-a"]'),
+            ).toHaveClass("outline-2"),
+        );
+        window.history.replaceState(
+            null,
+            "",
+            "/multiworkflow/workflow-1/runs/run-1#cell=unknown",
+        );
+        fireEvent(window, new PopStateEvent("popstate"));
+        await waitFor(() =>
+            expect(
+                document.querySelector('[data-workflow-cell-id="cell-stt-a"]'),
+            ).not.toHaveClass("outline-2"),
+        );
+    });
+
+    it("does not fabricate a link when the source is missing or not a captured dependency", () => {
+        const result = blockedDetail();
+        result.edges = [];
+        render(<SttRunResults detail={result} />);
+        expect(
+            screen.queryByRole("link", { name: "Diarized" }),
+        ).not.toBeInTheDocument();
+        expect(
+            screen.getAllByText("Blocked by failed node stt-a.").length,
+        ).toBeGreaterThan(0);
+    });
+});
+
+describe("original recording playback", () => {
+    function audioInputDetail() {
+        const result = detail();
+        const node: IWorkflowRunDetailResponse["nodes"][number] = {
+            id: "node-input",
+            workflowId: "workflow-1",
+            nodeKey: "input-1",
+            label: "Audio input",
+            nodeType: "input",
+            nodeConfig: { type: "input", modality: "audio" },
+            evalConfig: { type: "none" },
+        };
+        result.workflowRun.workflowSnapshot.nodes.push(node);
+        result.cells.push({
+            id: "cell-input",
+            workflowRunId: "run-1",
+            datasetItemId: "item-1",
+            nodeKey: "input-1",
+            status: "succeeded",
+            inputText: "<input></input>",
+            outputJson: { text: "[Audio input: audio/wav]" },
+        });
+        result.items[0]!.storageKey = "datasets/audio/recording one.wav";
+        return result;
+    }
+
+    it("renders lazy native players in input rows and both sheet tabs", () => {
+        const { container } = render(
+            <SttRunResults detail={audioInputDetail()} />,
+        );
+        const players = container.querySelectorAll("audio");
+        expect(players).toHaveLength(2); // desktop row and mobile card
+        for (const player of players) {
+            expect(player).toHaveAttribute("controls");
+            expect(player).toHaveAttribute("preload", "none");
+            expect(player).toHaveAttribute(
+                "src",
+                "/api/images/datasets/audio/recording%20one.wav",
+            );
+            expect(player).not.toHaveAttribute("autoplay");
+        }
+        fireEvent.click(
+            screen.getAllByRole("button", {
+                name: "Inspect score details for Audio input, item item-1",
+            })[0]!,
+        );
+        const inspector = screen.getByRole("dialog", { name: "Audio input" });
+        fireEvent.click(within(inspector).getByRole("tab", { name: "Input" }));
+        expect(
+            within(inspector)
+                .getByRole("region", { name: "Original recording" })
+                .querySelector("audio"),
+        ).toHaveAttribute(
+            "src",
+            "/api/images/datasets/audio/recording%20one.wav",
+        );
+        fireEvent.click(within(inspector).getByRole("tab", { name: "Output" }));
+        expect(
+            within(inspector)
+                .getByRole("region", { name: "Full output" })
+                .querySelector("audio"),
+        ).toBeInTheDocument();
+    });
+
+    it("keeps downstream text visible alongside the original recording and explains media failures", () => {
+        render(<SttRunResults detail={audioInputDetail()} />);
+        fireEvent.click(
+            screen.getAllByRole("button", {
+                name: "Inspect score details for Cleanup, item item-1",
+            })[0]!,
+        );
+        const inspector = screen.getByRole("dialog", { name: "Cleanup" });
+        fireEvent.click(within(inspector).getByRole("tab", { name: "Input" }));
+        expect(
+            within(inspector).getByRole("region", { name: "Full input" }),
+        ).toHaveTextContent("raw transcript");
+        fireEvent.error(
+            within(inspector)
+                .getByRole("region", { name: "Original recording" })
+                .querySelector("audio")!,
+        );
+        expect(within(inspector).getByRole("alert")).toHaveTextContent(
+            "Audio could not be loaded",
+        );
+        expect(
+            within(inspector).getByRole("link", {
+                name: "Open original recording",
+            }),
+        ).toHaveAttribute(
+            "href",
+            "/api/images/datasets/audio/recording%20one.wav",
+        );
     });
 });

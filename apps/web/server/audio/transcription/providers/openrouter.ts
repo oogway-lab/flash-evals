@@ -42,10 +42,17 @@ export async function transcribeWithOpenRouter(
             text: result.text,
             segments: [],
             speakers: [],
-            warnings: [],
+            warnings: result.scriptRepair
+                ? [
+                      `Automatically romanized ${result.scriptRepair.fragmentCount} native-script fragment(s) using ${result.scriptRepair.modelId}.`,
+                  ]
+                : [],
             providerMetadata: {
                 promptSupported: true,
                 usage: result.usage,
+                ...(result.scriptRepair
+                    ? { scriptRepair: result.scriptRepair }
+                    : {}),
                 ...(result.costUsd !== undefined
                     ? {
                           costUsd: result.costUsd,

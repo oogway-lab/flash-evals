@@ -1614,5 +1614,9 @@ if (isEntrypoint) {
         );
     }
     const server = createApiServer(config);
-    server.listen(config.port, () => {});
+    server.listen(
+        config.port,
+        config.storageAdapter === "local" ? "127.0.0.1" : undefined,
+        () => {},
+    );
 }
