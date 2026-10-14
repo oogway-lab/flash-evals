@@ -90,6 +90,16 @@ the seeded examples. Explore a dataset, a prompt, and a completed run. The recei
 images are flat placeholder images and the saved outputs are synthetic; use real,
 consented samples before drawing conclusions about a model.
 
+If port 3000 is occupied, choose another port:
+
+```bash
+pnpm run dev --port 3100
+```
+
+Open <http://localhost:3100>. The launcher updates the web/API connection and
+allowed browser origin together. The local web and disk-storage API listeners
+bind to loopback by default.
+
 For a basic process check, in a second terminal run:
 
 ```bash

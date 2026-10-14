@@ -609,7 +609,7 @@ describe("workflow run LLM route resolution", () => {
         });
     });
 
-    it("leaves Google text thinking unset while budgeting for long output", async () => {
+    it("leaves Google text thinking unset while budgeting time and tokens for long output", async () => {
         const fixture = createRunDb({
             selection: "simple",
             pinnedModelId: "google/gemini-3.8-flash",
@@ -618,13 +618,19 @@ describe("workflow run LLM route resolution", () => {
         const snapshot = fixture.capturedSnapshot as {
             nodes: Array<{
                 resolvedLlmExecution: {
-                    route: { generation: Record<string, unknown> };
+                    route: {
+                        generation: Record<string, unknown>;
+                        retry: { timeoutMs: number };
+                    };
                 };
             }>;
         };
         expect(
             snapshot.nodes[0]?.resolvedLlmExecution.route.generation,
-        ).toEqual({ maxOutputTokens: 16384 });
+        ).toEqual({ maxOutputTokens: 32768 });
+        expect(
+            snapshot.nodes[0]?.resolvedLlmExecution.route.retry.timeoutMs,
+        ).toBe(300_000);
     });
 
     it("runs Simple mode directly with the current provider key", async () => {

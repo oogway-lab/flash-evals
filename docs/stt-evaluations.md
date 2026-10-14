@@ -13,15 +13,26 @@ Gemini 3.8 Flash audio uses `reasoning.effort: low`, temperature zero, and
 Latin-only transcription with four code-mixed examples (Hindi, Tamil, Telugu,
 Bengali). Speech stays in its original language, written phonetically in Latin
 script; English words, names, numbers, and `[inaudible]` markers are preserved.
+For recordings without speech, the prompt requests exactly `[no speech]` rather
+than invented words or sound descriptions. `[inaudible]` is reserved for speech
+whose words cannot be understood.
 Selected language hints use `hi-Latn`, `ta-Latn`, `te-Latn`, `bn-Latn`, or `en-IN`;
-an empty hint still means automatic language detection. Native-script output
-fails validation, and the adapter version prevents reuse of old native-script
-transcripts. Other STT providers retain their own output contracts.
+an empty hint still means automatic language detection. If native-script fragments
+remain, internal Gemini 3.5 Flash Lite calls romanize them in batches of up to
+32 distinct fragments. The
+application gives invalid replacement entries or malformed JSON one correction
+attempt, copies every other character verbatim, and validates the repaired
+transcript before storing it. All calls contribute to usage and reported cost;
+missing billing stays unknown. Repair uses provider-default thinking and records
+its model and fragment count in transcript metadata. The adapter version prevents
+reuse of transcripts made before this recovery behavior. Other STT providers
+retain their own output contracts.
 
 Thinking settings for translation and separate transliteration are unchanged:
 only explicitly selected effort is forwarded. New Simple Gemini 3 text routes
-allow 16,384 total output tokens because thinking and visible text share the
-budget; this is not a thinking-budget override. Exhaustion is reported as
+allow 32,768 total output tokens and five minutes per request because thinking
+and visible text share the budget; this is not a thinking-budget override.
+Existing captured routes retain their settings. Exhaustion is reported as
 `output_limit`. OpenRouter currently requires thinking for Gemini 3.8 Flash,
 so audio uses its minimum supported level rather than claiming a zero budget.
 
