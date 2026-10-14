@@ -32,6 +32,7 @@ export { GatewayEvalProvider } from "./providers/gateway.js";
 export { OpenAIEvalProvider } from "./providers/openai.js";
 export {
     OPENROUTER_AUDIO_DEFAULT_MAX_BYTES,
+    openAiTransportErrorClass,
     transcribeOpenRouterAudio,
 } from "./providers/openrouterAudio.js";
 export { VercelAIEvalProvider } from "./providers/vercelAi.js";

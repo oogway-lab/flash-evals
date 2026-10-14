@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
     stop: vi.fn(),
     send: vi.fn(),
     createQueue: vi.fn(),
+    updateQueue: vi.fn(),
     on: vi.fn(),
 }));
 vi.mock("pg-boss", () => ({
@@ -15,6 +16,7 @@ vi.mock("pg-boss", () => ({
         stop = mocks.stop;
         send = mocks.send;
         createQueue = mocks.createQueue;
+        updateQueue = mocks.updateQueue;
         on = mocks.on;
     },
 }));
@@ -30,7 +32,25 @@ describe("ordinary queue publication", () => {
         mocks.start.mockResolvedValue(undefined);
         mocks.stop.mockResolvedValue(undefined);
         mocks.createQueue.mockResolvedValue(undefined);
+        mocks.updateQueue.mockResolvedValue(undefined);
         mocks.send.mockResolvedValue("job");
+    });
+
+    it("publishes workflow runs to a stately queue keyed by run so duplicates are dropped", async () => {
+        const { enqueueWorkflowRun } = await import("./runQueue.js");
+        await enqueueWorkflowRun(config, "wf-run");
+        await enqueueWorkflowRun(config, "wf-run");
+        const options = { name: "workflow-run", policy: "stately" };
+        expect(mocks.createQueue).toHaveBeenCalledWith("workflow-run", options);
+        expect(mocks.updateQueue).toHaveBeenCalledExactlyOnceWith(
+            "workflow-run",
+            options,
+        );
+        expect(mocks.send).toHaveBeenCalledWith(
+            "workflow-run",
+            { workflowRunId: "wf-run" },
+            { singletonKey: "wf-run" },
+        );
     });
 
     it("passes the durable job identity and caller transaction to pg-boss", async () => {

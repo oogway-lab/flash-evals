@@ -4,9 +4,12 @@ import {
     encodeSpeechMp3,
     probeAudio,
     withAudioWorkspace,
+    withHeavyAudioSlot,
     type IAudioProbe,
 } from "./ffmpeg";
-import { planChunkSpans } from "./plan";
+import { planChunkSpans, type IChunkSpan } from "./plan";
+
+export { PREPARED_AUDIO_BITRATE_BPS } from "./ffmpeg";
 
 /**
  * Bump when the encoding or chunking changes so transcripts made from older
@@ -29,6 +32,8 @@ export interface IPreparedAudioChunk {
     bytes: Buffer;
     mimeType: string;
     hardCut: boolean;
+    /** Entirely silent; transcribed as empty text without a provider call. */
+    silent: boolean;
 }
 
 export type PreparedAudio =
@@ -60,34 +65,9 @@ export async function prepareAudioForTranscription(input: {
             const probe = await probeAudio(workspace.inputPath);
             if (fitsAsIs && probe.durationMs <= policy.maxDurationMs)
                 return { kind: "original" as const, probe };
-            const spans =
-                probe.durationMs <= policy.maxDurationMs
-                    ? [
-                          {
-                              index: 0,
-                              startMs: 0,
-                              endMs: probe.durationMs,
-                              hardCut: false,
-                          },
-                      ]
-                    : planChunkSpans({
-                          durationMs: probe.durationMs,
-                          silences: await detectSilences(workspace.inputPath),
-                          maxChunkMs: policy.maxDurationMs,
-                      });
-            const chunks: IPreparedAudioChunk[] = [];
-            for (const span of spans) {
-                const chunkBytes = await encodeSpeechMp3(
-                    workspace,
-                    spans.length === 1 ? { index: 0 } : span,
-                );
-                validateChunk(chunkBytes, policy, span.index);
-                chunks.push({
-                    ...span,
-                    bytes: chunkBytes,
-                    mimeType: "audio/mpeg",
-                });
-            }
+            const chunks = await withHeavyAudioSlot(() =>
+                encodeChunks(workspace, probe.durationMs, policy),
+            );
             return {
                 kind: "prepared" as const,
                 version: AUDIO_PREPARATION_VERSION,
@@ -105,6 +85,45 @@ export async function prepareAudioForTranscription(input: {
             );
         throw error;
     }
+}
+
+async function encodeChunks(
+    workspace: { dir: string; inputPath: string },
+    durationMs: number,
+    policy: IAudioPreparationPolicy,
+): Promise<IPreparedAudioChunk[]> {
+    const spans: IChunkSpan[] =
+        durationMs <= policy.maxDurationMs
+            ? [
+                  {
+                      index: 0,
+                      startMs: 0,
+                      endMs: durationMs,
+                      hardCut: false,
+                      silent: false,
+                  },
+              ]
+            : planChunkSpans({
+                  durationMs,
+                  silences: await detectSilences(
+                      workspace.inputPath,
+                      durationMs,
+                  ),
+                  maxChunkMs: policy.maxDurationMs,
+              });
+    const chunks: IPreparedAudioChunk[] = [];
+    for (const span of spans) {
+        // Silent spans are kept for ordering and offsets but never sent.
+        const chunkBytes = span.silent
+            ? Buffer.alloc(0)
+            : await encodeSpeechMp3(
+                  workspace,
+                  spans.length === 1 ? { index: 0 } : span,
+              );
+        if (!span.silent) validateChunk(chunkBytes, policy, span.index);
+        chunks.push({ ...span, bytes: chunkBytes, mimeType: "audio/mpeg" });
+    }
+    return chunks;
 }
 
 function validateChunk(

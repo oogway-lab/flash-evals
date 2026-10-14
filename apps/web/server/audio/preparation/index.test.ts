@@ -12,6 +12,7 @@ import {
     vi,
 } from "vitest";
 import { AUDIO_PREPARATION_VERSION, prepareAudioForTranscription } from ".";
+import { withAudioWorkspace, withHeavyAudioSlot } from "./ffmpeg";
 
 const hasFfmpeg =
     spawnSync("ffmpeg", ["-version"]).status === 0 &&
@@ -73,6 +74,22 @@ describe.skipIf(!hasFfmpeg)("prepareAudioForTranscription with FFmpeg", () => {
         expect(result.kind).toBe("original");
     });
 
+    it("probes small files while a long conversion holds the heavy slot", async () => {
+        let releaseHeavy!: () => void;
+        const held = withHeavyAudioSlot(
+            () => new Promise<void>((resolve) => (releaseHeavy = resolve)),
+        );
+        await expect(
+            prepareAudioForTranscription({
+                bytes: shortWav,
+                mimeType: "audio/wav",
+                policy,
+            }),
+        ).resolves.toMatchObject({ kind: "original" });
+        releaseHeavy();
+        await held;
+    });
+
     it("compresses and splits oversized audio at silences", async () => {
         expect(longWav.byteLength).toBeGreaterThan(policy.maxBytes);
         const result = await prepareAudioForTranscription({
@@ -126,6 +143,27 @@ describe.skipIf(!hasFfmpeg)("prepareAudioForTranscription with FFmpeg", () => {
                 policy: { ...policy, maxBytes: 1 },
             }),
         ).rejects.toThrow(/FFprobe could not read the audio/);
+    });
+});
+
+describe("audio workspace limits", () => {
+    it("does not hold work back after a temp directory or heavy step fails", async () => {
+        vi.stubEnv("TMPDIR", "/nonexistent/mosaic-tmp");
+        await expect(
+            withAudioWorkspace(Buffer.alloc(1), async () => 1),
+        ).rejects.toThrow();
+        vi.unstubAllEnvs();
+        await expect(
+            withHeavyAudioSlot(async () => {
+                throw new Error("encode failed");
+            }),
+        ).rejects.toThrow("encode failed");
+        await expect(withHeavyAudioSlot(async () => "next")).resolves.toBe(
+            "next",
+        );
+        await expect(
+            withAudioWorkspace(Buffer.alloc(1), async () => "ok"),
+        ).resolves.toBe("ok");
     });
 });
 

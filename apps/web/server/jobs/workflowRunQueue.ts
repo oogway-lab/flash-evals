@@ -8,6 +8,10 @@ import { logWorkerEvent, safeWorkerError } from "./workerObservability";
 import { WORKFLOW_RUN_QUEUE } from "./queueNames";
 
 export { WORKFLOW_RUN_QUEUE } from "./queueNames";
+const WORKFLOW_RUN_QUEUE_OPTIONS = {
+    name: WORKFLOW_RUN_QUEUE,
+    policy: "stately",
+} as const;
 interface IWorkflowRunJob {
     workflowRunId: string;
 }
@@ -33,7 +37,11 @@ async function getBoss() {
             });
         });
         await boss.start();
-        await boss.createQueue(WORKFLOW_RUN_QUEUE);
+        // pg-boss 10 enforces singletonKey only on non-standard queues;
+        // "stately" keeps one created and one active job per run. Matches the
+        // API publisher; every send to this queue carries a singletonKey.
+        await boss.createQueue(WORKFLOW_RUN_QUEUE, WORKFLOW_RUN_QUEUE_OPTIONS);
+        await boss.updateQueue(WORKFLOW_RUN_QUEUE, WORKFLOW_RUN_QUEUE_OPTIONS);
     }
     return boss;
 }
@@ -47,8 +55,8 @@ export async function enqueueWorkflowRun(workflowRunId: string) {
         {
             retryLimit: 3,
             retryBackoff: true,
-            // Matches the API publisher: one queued job per run, so recovery
-            // and explicit retries cannot stack duplicate executions.
+            // With the stately queue policy, at most one queued and one
+            // running job per run, so recovery and retries cannot stack.
             singletonKey: workflowRunId,
         },
     );

@@ -17,6 +17,21 @@ function statusError(status: number, name = "APIError") {
     return Object.assign(new Error(`${status} status code`), { status, name });
 }
 
+describe("classifyTranscriptionError transport errors", () => {
+    it("reads socket codes nested two causes deep, as fetch reports them", () => {
+        const socket = Object.assign(new Error("other side closed"), {
+            code: "UND_ERR_SOCKET",
+        });
+        const fetchError = Object.assign(new TypeError("terminated"), {
+            cause: socket,
+        });
+        const sdkError = Object.assign(new Error("Connection error."), {
+            cause: fetchError,
+        });
+        expect(classifyTranscriptionError(sdkError)).toBe("connection");
+    });
+});
+
 describe("classifyTranscriptionError", () => {
     it.each([
         [

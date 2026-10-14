@@ -1,5 +1,8 @@
 import { OPENROUTER_AUDIO_DEFAULT_MAX_BYTES } from "@mosaic/llm-core";
-import type { IAudioPreparationPolicy } from "../preparation";
+import {
+    PREPARED_AUDIO_BITRATE_BPS,
+    type IAudioPreparationPolicy,
+} from "../preparation";
 import { isOpenRouterChatAudioModel } from "./providers/openrouter";
 import type { ITranscriptIdentity } from "./types";
 
@@ -24,7 +27,7 @@ const WAV_OR_MP3 = new Set([
  */
 export function sttExecutionPolicy(
     identity: Pick<ITranscriptIdentity, "providerId" | "canonicalModelId">,
-    env: NodeJS.ProcessEnv = process.env,
+    env: Record<string, string | undefined> = process.env,
 ): ISttExecutionPolicy {
     if (identity.providerId !== "openrouter") return { maxAttempts: 1 };
     const base = {
@@ -43,11 +46,14 @@ export function sttExecutionPolicy(
         maxAudioBytes,
         preparation: {
             maxBytes: maxAudioBytes,
-            maxDurationMs: intEnv(
-                env.STT_AUDIO_MAX_CHUNK_MS,
-                600_000,
-                60_000,
-                3_600_000,
+            // A chunk must also fit the byte budget once encoded; keep 5% headroom.
+            maxDurationMs: Math.min(
+                intEnv(env.STT_AUDIO_MAX_CHUNK_MS, 600_000, 60_000, 3_600_000),
+                Math.floor(
+                    ((maxAudioBytes * 8) / PREPARED_AUDIO_BITRATE_BPS) *
+                        1000 *
+                        0.95,
+                ),
             ),
             acceptedMimeTypes: WAV_OR_MP3,
         },

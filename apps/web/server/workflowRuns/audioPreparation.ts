@@ -13,6 +13,7 @@ import type { resolveApiKeys } from "../secrets/resolveApiKeys";
 import { loadImage } from "../images/source";
 import {
     nextPreparationPollDelay,
+    nextPreparationWaitDeadline,
     preparationLeaseExpired,
     workflowItemLeaseMs,
     workflowPreparationWaitMs,
@@ -316,9 +317,11 @@ async function waitForPreparedWorkflowAudio(
     input: PreparedAudioInput,
     identity: ReturnType<typeof transcriptIdentity>,
 ): Promise<IPreparedWorkflowAudio> {
-    const deadline = Date.now() + workflowPreparationWaitMs;
+    let wait: { deadlineMs: number; lastClaimedAtMs?: number } = {
+        deadlineMs: Date.now() + workflowPreparationWaitMs,
+    };
     let delayMs = 50;
-    while (Date.now() < deadline) {
+    while (Date.now() < wait.deadlineMs) {
         const [row] = await db
             .select()
             .from(workflowRunItems)
@@ -335,6 +338,7 @@ async function waitForPreparedWorkflowAudio(
             throw new Error(row.error ?? "Audio transcription failed.");
         if (row && preparationLeaseExpired(row, Date.now()))
             return prepareWorkflowAudioItem(input);
+        wait = nextPreparationWaitDeadline(wait, row?.claimedAt, Date.now());
         await new Promise((resolve) => setTimeout(resolve, delayMs));
         delayMs = nextPreparationPollDelay(delayMs);
     }

@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { createSemaphore } from "../../lib/concurrency";
 import type { ISilenceInterval } from "./plan";
 
 /** FFmpeg or FFprobe is not installed on this worker. */
@@ -49,42 +50,37 @@ function prepConcurrency(): number {
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1;
 }
 
-let activeWorkspaces = 0;
-const workspaceWaiters: Array<() => void> = [];
-
-async function acquireWorkspace(): Promise<() => void> {
-    if (activeWorkspaces >= prepConcurrency()) {
-        await new Promise<void>((resolve) => workspaceWaiters.push(resolve));
-    } else {
-        activeWorkspaces += 1;
-    }
-    let released = false;
-    return () => {
-        if (released) return;
-        released = true;
-        const next = workspaceWaiters.shift();
-        if (next) next();
-        else activeWorkspaces -= 1;
-    };
-}
+const heavySteps = createSemaphore(prepConcurrency);
 
 /**
- * Run `fn` with the audio written to a private temporary directory. Conversions
- * are serialized per process (STT_AUDIO_PREP_CONCURRENCY) to bound CPU, memory,
- * and temporary storage, and the directory is removed afterwards.
+ * Run `fn` with the audio written to a private temporary directory, removed
+ * afterwards even when setup fails part-way.
  */
 export async function withAudioWorkspace<T>(
     bytes: Buffer,
     fn: (workspace: { dir: string; inputPath: string }) => Promise<T>,
 ): Promise<T> {
-    const release = await acquireWorkspace();
-    const dir = await mkdtemp(join(tmpdir(), "mosaic-audio-"));
+    let dir: string | undefined;
     try {
+        dir = await mkdtemp(join(tmpdir(), "mosaic-audio-"));
         const inputPath = join(dir, "source");
         await writeFile(inputPath, bytes);
         return await fn({ dir, inputPath });
     } finally {
-        await rm(dir, { recursive: true, force: true });
+        if (dir) await rm(dir, { recursive: true, force: true });
+    }
+}
+
+/**
+ * Run CPU-heavy FFmpeg work (silence detection, encoding) with at most
+ * STT_AUDIO_PREP_CONCURRENCY jobs per process. Probing stays outside this
+ * limit so small recordings are not queued behind a long conversion.
+ */
+export async function withHeavyAudioSlot<T>(fn: () => Promise<T>): Promise<T> {
+    const release = await heavySteps.acquire();
+    try {
+        return await fn();
+    } finally {
         release();
     }
 }
@@ -184,6 +180,7 @@ export async function probeAudio(inputPath: string): Promise<IAudioProbe> {
 /** Silence intervals FFmpeg detects; used only to place chunk boundaries. */
 export async function detectSilences(
     inputPath: string,
+    durationMs: number,
 ): Promise<ISilenceInterval[]> {
     const { stderr } = await runTool(ffmpegPath(), "FFmpeg", [
         "-hide_banner",
@@ -198,10 +195,14 @@ export async function detectSilences(
         "null",
         "-",
     ]);
-    return parseSilenceDetect(stderr);
+    return parseSilenceDetect(stderr, durationMs);
 }
 
-export function parseSilenceDetect(stderr: string): ISilenceInterval[] {
+/** A silence still open at end of input runs to `durationMs` when given. */
+export function parseSilenceDetect(
+    stderr: string,
+    durationMs?: number,
+): ISilenceInterval[] {
     const silences: ISilenceInterval[] = [];
     let start: number | undefined;
     for (const match of stderr.matchAll(
@@ -214,8 +215,13 @@ export function parseSilenceDetect(stderr: string): ISilenceInterval[] {
             start = undefined;
         }
     }
+    if (start !== undefined && durationMs !== undefined && durationMs > start)
+        silences.push({ startMs: start, endMs: durationMs });
     return silences;
 }
+
+/** Bitrate of prepared audio; budgets derive chunk length from it. */
+export const PREPARED_AUDIO_BITRATE_BPS = 48_000;
 
 /**
  * Encode a span as mono 16 kHz MP3. Speech models resample to 16 kHz mono, so
@@ -250,7 +256,7 @@ export async function encodeSpeechMp3(
         "-c:a",
         "libmp3lame",
         "-b:a",
-        "48k",
+        String(PREPARED_AUDIO_BITRATE_BPS),
         "-y",
         outputPath,
     ]);

@@ -40,3 +40,31 @@ export async function forEachPool<T>(
         await worker(item);
     });
 }
+
+/**
+ * A counting semaphore. `limit` is read on each acquire so it can follow
+ * configuration; the returned release function is idempotent.
+ */
+export function createSemaphore(limit: () => number): {
+    acquire(): Promise<() => void>;
+} {
+    let active = 0;
+    const waiters: Array<() => void> = [];
+    return {
+        async acquire() {
+            if (active >= Math.max(1, limit())) {
+                await new Promise<void>((resolve) => waiters.push(resolve));
+            } else {
+                active += 1;
+            }
+            let released = false;
+            return () => {
+                if (released) return;
+                released = true;
+                const next = waiters.shift();
+                if (next) next();
+                else active -= 1;
+            };
+        },
+    };
+}

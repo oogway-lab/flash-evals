@@ -7,7 +7,7 @@ import {
     workflowRuns,
 } from "../db/schema";
 import type { IWorkflowSnapshot } from "../db/jsonTypes";
-import { forEachPool } from "../lib/concurrency";
+import { createSemaphore, forEachPool } from "../lib/concurrency";
 import { ensureModelCatalog } from "../llm/catalog";
 import { pricingFor } from "../llm/pricing";
 import type { EvalImage } from "@mosaic/llm-core";
@@ -122,23 +122,10 @@ const concurrency = Math.max(
     1,
     Number.parseInt(process.env.EVAL_CONCURRENCY ?? "4", 10),
 );
-let activeExecutions = 0;
-const executionWaiters: Array<() => void> = [];
+const executionPermits = createSemaphore(() => concurrency);
 
-async function acquireExecutionPermit(): Promise<() => void> {
-    if (activeExecutions >= concurrency) {
-        await new Promise<void>((resolve) => executionWaiters.push(resolve));
-    } else {
-        activeExecutions += 1;
-    }
-    let released = false;
-    return () => {
-        if (released) return;
-        released = true;
-        const next = executionWaiters.shift();
-        if (next) next();
-        else activeExecutions -= 1;
-    };
+function acquireExecutionPermit(): Promise<() => void> {
+    return executionPermits.acquire();
 }
 
 async function markCellBlocked(

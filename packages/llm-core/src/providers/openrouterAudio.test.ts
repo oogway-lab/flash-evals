@@ -105,3 +105,20 @@ it("lets the caller raise the inline audio budget", async () => {
     ).rejects.toThrow("up to 2 MB");
     expect(fetcher).not.toHaveBeenCalled();
 });
+
+it("classifies SDK transport failures that carry no name or status", async () => {
+    const { APIConnectionError, APIConnectionTimeoutError } =
+        await import("openai");
+    const { openAiTransportErrorClass } = await import("./openrouterAudio.js");
+    expect(openAiTransportErrorClass(new APIConnectionTimeoutError())).toBe(
+        "timeout",
+    );
+    expect(
+        openAiTransportErrorClass(
+            new APIConnectionError({ cause: new TypeError("fetch failed") }),
+        ),
+    ).toBe("connection");
+    expect(openAiTransportErrorClass(new Error("Connection error."))).toBe(
+        undefined,
+    );
+});

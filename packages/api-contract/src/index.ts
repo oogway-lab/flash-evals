@@ -317,6 +317,13 @@ export type AudioRunMode = "stt_metrics" | "prompt_eval";
 
 export const STT_METRICS_MODEL_PREFIX = "stt:";
 
+/**
+ * Marks `audio_transcripts.storage_key` rows that hold one chunk of a prepared
+ * recording. Only the assembled row (the plain storage key) is a transcript of
+ * the item; readers that list an item's transcripts exclude marked keys.
+ */
+export const TRANSCRIPT_CHUNK_KEY_MARKER = "#chunk/";
+
 export function sttMetricsModelId(
     sttModelId: string,
     variantKey?: string,
