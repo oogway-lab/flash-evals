@@ -2,10 +2,8 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Eye } from "lucide-react";
 import type { IWorkflowRunDetailResponse } from "@mosaic/api-contract";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Sheet,
@@ -14,12 +12,9 @@ import {
     SheetHeader,
     SheetTitle,
 } from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
     BranchStatusBadge,
     CellStatusBadge,
-    PendingScore,
-    isCellInFlight,
     type BranchStatus,
 } from "@/components/ui/status-badge";
 import { SectionTitle } from "@/components/layout/section-title";
@@ -36,18 +31,7 @@ import {
     TranscriptJudgeBreakdown,
     TranscriptMetricBreakdown,
 } from "@/components/runs/transcript-score-details";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
-import {
-    LlmExecutionDetails,
-    LlmRouteSummary,
-} from "./llm-execution-provenance";
+import { LlmExecutionDetails } from "./llm-execution-provenance";
 
 import {
     BlockedCellLink,
@@ -55,6 +39,21 @@ import {
     useWorkflowCellNavigation,
     visibleWorkflowCell,
 } from "./workflow-cell-link";
+import {
+    ItemOutputs,
+    pipelineOrder,
+    type ItemGroup,
+    type ResultRow,
+} from "./item-outputs";
+import {
+    AudioRecording,
+    STT_SCORE_DIGITS,
+    cellOutput,
+    formatTimeRange,
+    isAudioItem,
+    speakerLabel,
+    transcriptSegments,
+} from "./run-artifacts";
 
 function rootByNode(detail: IWorkflowRunDetailResponse): Map<string, string> {
     const nodes = detail.workflowRun.workflowSnapshot.nodes;
@@ -181,36 +180,47 @@ export function SttRunResults({
                 : costs.reduce((sum, cost) => sum + cost, 0);
         }),
     );
-    const resultRows = detail.items.flatMap((item) =>
-        detail.cells
-            .filter((cell) => cell.datasetItemId === item.id)
-            .map((cell) => {
-                const node = snapshotNodes.find(
-                    (candidate) => candidate.nodeKey === cell.nodeKey,
-                );
-                const root = roots.find(
-                    (candidate) =>
-                        candidate.nodeKey === ownership.get(cell.nodeKey),
-                );
-                const scores = detail.scoresByCell[cell.id] ?? [];
-                const metricScore = scores.find(
-                    (score) => score.scorerType === "transcript_metric",
-                );
-                const judgeScore = scores.find(
-                    (score) => score.scorerType === "transcript_judge",
-                );
-                return {
-                    item,
-                    cell,
-                    node,
-                    root,
-                    metricScore,
-                    judgeScore,
-                    metricDetails: toTranscriptMetricDetails(
-                        metricScore?.detailsJson,
-                    ),
-                };
-            }),
+    const stepOrder = pipelineOrder(detail, ownership, roots);
+    const itemGroups: ItemGroup[] = detail.items
+        .map((item) => ({
+            item,
+            rows: detail.cells
+                .filter((cell) => cell.datasetItemId === item.id)
+                .sort(
+                    (a, b) =>
+                        (stepOrder.get(a.nodeKey) ?? Infinity) -
+                        (stepOrder.get(b.nodeKey) ?? Infinity),
+                )
+                .map((cell): ResultRow => {
+                    const scores = detail.scoresByCell[cell.id] ?? [];
+                    const metricScore = scores.find(
+                        (score) => score.scorerType === "transcript_metric",
+                    );
+                    const judgeScore = scores.find(
+                        (score) => score.scorerType === "transcript_judge",
+                    );
+                    return {
+                        item,
+                        cell,
+                        node: snapshotNodes.find(
+                            (candidate) => candidate.nodeKey === cell.nodeKey,
+                        ),
+                        root: roots.find(
+                            (candidate) =>
+                                candidate.nodeKey ===
+                                ownership.get(cell.nodeKey),
+                        ),
+                        metricScore,
+                        judgeScore,
+                        metricDetails: toTranscriptMetricDetails(
+                            metricScore?.detailsJson,
+                        ),
+                    };
+                }),
+        }))
+        .filter((group) => group.rows.length > 0);
+    const hasScores = Object.values(detail.scoresByCell).some(
+        (scores) => scores.length > 0,
     );
     return (
         <div className="flex flex-col gap-6">
@@ -332,236 +342,16 @@ export function SttRunResults({
                     );
                 })}
             </div>
-            <Card>
-                <CardHeader className="flex-col items-start justify-between gap-4 sm:flex-row">
-                    <div className="flex flex-col gap-1">
-                        <CardTitle as="h2">Item outputs</CardTitle>
-                        <p className="text-copy-14 text-muted-foreground">
-                            Compact previews keep long transcripts out of the
-                            results list. Open a row for complete evidence.
-                        </p>
-                    </div>
-                    <p className="text-copy-14 text-muted-foreground">
-                        <Num>{resultRows.length}</Num> result
-                        {resultRows.length === 1 ? "" : "s"}
-                    </p>
-                </CardHeader>
-                <CardContent>
-                    <div className="hidden overflow-x-auto md:block">
-                        <Table containerClassName="overflow-visible">
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Item</TableHead>
-                                    <TableHead>Path</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead className="w-[28%]">
-                                        Input preview
-                                    </TableHead>
-                                    <TableHead className="w-[28%]">
-                                        Output preview
-                                    </TableHead>
-                                    <TableHead>Route</TableHead>
-                                    <TableHead align="numeric">Score</TableHead>
-                                    <TableHead>
-                                        <span className="sr-only">Actions</span>
-                                    </TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {resultRows.map((row) => (
-                                    <TableRow
-                                        key={row.cell.id}
-                                        data-workflow-cell-id={row.cell.id}
-                                        tabIndex={-1}
-                                        className={
-                                            highlightedCellId === row.cell.id
-                                                ? "bg-muted outline-2 outline-ring outline-offset-[-2px] scroll-mt-24"
-                                                : undefined
-                                        }
-                                    >
-                                        <TableCell className="text-mono-13">
-                                            {row.item.id.slice(0, 8)}
-                                        </TableCell>
-                                        <TableCell>
-                                            <p className="text-label-14">
-                                                {row.node?.label ??
-                                                    row.cell.nodeKey}
-                                            </p>
-                                            <p className="text-label-12 text-muted-foreground">
-                                                {row.root?.label ??
-                                                    MISSING_VALUE}
-                                            </p>
-                                        </TableCell>
-                                        <TableCell>
-                                            <CellStatusBadge
-                                                status={row.cell.status}
-                                            />
-                                        </TableCell>
-                                        <TableCell>
-                                            <ArtifactPreview
-                                                text={row.cell.inputText}
-                                            />
-                                        </TableCell>
-                                        <TableCell>
-                                            {row.node?.nodeType === "input" &&
-                                            isAudioItem(row.item) ? (
-                                                <AudioRecording
-                                                    item={row.item}
-                                                />
-                                            ) : isCellInFlight(
-                                                  row.cell.status,
-                                              ) ? (
-                                                <PendingPreview />
-                                            ) : (
-                                                <ArtifactPreview
-                                                    text={cellOutput(row.cell)}
-                                                >
-                                                    {blockedByCell(
-                                                        detail,
-                                                        row.cell,
-                                                    ) && (
-                                                        <BlockedCellLink
-                                                            detail={detail}
-                                                            cell={row.cell}
-                                                            onReveal={
-                                                                revealUpstream
-                                                            }
-                                                        />
-                                                    )}
-                                                </ArtifactPreview>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <LlmRouteSummary
-                                                execution={
-                                                    row.cell.llmExecution
-                                                }
-                                            />
-                                        </TableCell>
-                                        <TableCell align="numeric">
-                                            {isCellInFlight(row.cell.status) ? (
-                                                <PendingScore />
-                                            ) : (
-                                                <ScoreSummary
-                                                    metricScore={
-                                                        row.metricScore?.score
-                                                    }
-                                                    judgeScore={
-                                                        row.judgeScore?.score
-                                                    }
-                                                    details={row.metricDetails}
-                                                />
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <InspectButton
-                                                cellId={row.cell.id}
-                                                itemId={row.item.id}
-                                                nodeLabel={
-                                                    row.node?.label ??
-                                                    row.cell.nodeKey
-                                                }
-                                                expanded={
-                                                    selectedCellId ===
-                                                    row.cell.id
-                                                }
-                                                onInspect={setSelectedCellId}
-                                            />
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </div>
-                    <div className="flex flex-col gap-3 md:hidden">
-                        {resultRows.map((row) => (
-                            <article
-                                key={row.cell.id}
-                                data-workflow-cell-id={row.cell.id}
-                                tabIndex={-1}
-                                className={`flex flex-col gap-4 border-t border-border pt-3 first:border-t-0 first:pt-0 ${highlightedCellId === row.cell.id ? "bg-muted outline-2 outline-ring outline-offset-[-2px] scroll-mt-24" : ""}`}
-                            >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="flex flex-col gap-1">
-                                        <p className="text-label-14">
-                                            {row.node?.label ??
-                                                row.cell.nodeKey}
-                                        </p>
-                                        <p className="text-mono-13 text-muted-foreground">
-                                            {row.item.id.slice(0, 8)} ·{" "}
-                                            {row.root?.label ?? MISSING_VALUE}
-                                        </p>
-                                    </div>
-                                    <CellStatusBadge status={row.cell.status} />
-                                </div>
-                                <div className="grid gap-3">
-                                    <LabeledPreview
-                                        label="Input"
-                                        text={row.cell.inputText}
-                                    />
-                                    {row.node?.nodeType === "input" &&
-                                    isAudioItem(row.item) ? (
-                                        <div className="flex flex-col gap-1">
-                                            <p className="text-label-12">
-                                                Output
-                                            </p>
-                                            <AudioRecording item={row.item} />
-                                        </div>
-                                    ) : isCellInFlight(row.cell.status) ? (
-                                        <div className="flex flex-col gap-1">
-                                            <p className="text-label-12">
-                                                Output
-                                            </p>
-                                            <PendingPreview />
-                                        </div>
-                                    ) : (
-                                        <LabeledPreview
-                                            label="Output"
-                                            text={cellOutput(row.cell)}
-                                        >
-                                            {blockedByCell(
-                                                detail,
-                                                row.cell,
-                                            ) && (
-                                                <BlockedCellLink
-                                                    detail={detail}
-                                                    cell={row.cell}
-                                                    onReveal={revealUpstream}
-                                                />
-                                            )}
-                                        </LabeledPreview>
-                                    )}
-                                    <LlmRouteSummary
-                                        execution={row.cell.llmExecution}
-                                    />
-                                </div>
-                                <div className="flex items-end justify-between gap-3 border-t border-border pt-3">
-                                    {isCellInFlight(row.cell.status) ? (
-                                        <PendingScore />
-                                    ) : (
-                                        <ScoreSummary
-                                            metricScore={row.metricScore?.score}
-                                            judgeScore={row.judgeScore?.score}
-                                            details={row.metricDetails}
-                                        />
-                                    )}
-                                    <InspectButton
-                                        cellId={row.cell.id}
-                                        itemId={row.item.id}
-                                        nodeLabel={
-                                            row.node?.label ?? row.cell.nodeKey
-                                        }
-                                        expanded={
-                                            selectedCellId === row.cell.id
-                                        }
-                                        onInspect={setSelectedCellId}
-                                    />
-                                </div>
-                            </article>
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
+            <ItemOutputs
+                detail={detail}
+                groups={itemGroups}
+                showBranch={roots.length > 1}
+                showScores={hasScores}
+                highlightedCellId={highlightedCellId}
+                selectedCellId={selectedCellId}
+                onInspect={setSelectedCellId}
+                onReveal={revealUpstream}
+            />
             <CellScoreInspector
                 detail={detail}
                 cellId={selectedCellId}
@@ -572,9 +362,6 @@ export function SttRunResults({
         </div>
     );
 }
-
-// STT metric scores (WER-style fractions) read to three places.
-const STT_SCORE_DIGITS = 3;
 
 function averageScore(scores: number[]): string {
     if (scores.length === 0) return MISSING_VALUE;
@@ -590,193 +377,6 @@ function totalCost(
 ): string {
     if (costs.length === 0) return MISSING_VALUE;
     return format(costs.reduce((sum, cost) => sum + cost, 0));
-}
-
-function isAudioItem(item: IWorkflowRunDetailResponse["items"][number]) {
-    return (
-        Boolean(item.storageKey) &&
-        (item.type === "audio" || item.mimeType?.startsWith("audio/") === true)
-    );
-}
-
-/** Use the existing authenticated media route; do not fetch audio until playback. */
-function AudioRecording({
-    item,
-}: {
-    item: IWorkflowRunDetailResponse["items"][number];
-}) {
-    const [failed, setFailed] = useState(false);
-    if (!isAudioItem(item) || !item.storageKey) return null;
-    const src = `/api/images/${item.storageKey.split("/").map(encodeURIComponent).join("/")}`;
-    return (
-        <>
-            <audio
-                controls
-                preload="none"
-                src={src}
-                aria-label={`Original recording ${item.id.slice(0, 8)}`}
-                className="w-full min-w-52 max-w-sm"
-                onError={() => setFailed(true)}
-                onPlaying={() => setFailed(false)}
-                onPlay={(event) => {
-                    for (const player of document.querySelectorAll("audio"))
-                        if (player !== event.currentTarget) player.pause();
-                }}
-            />
-            {failed && (
-                <span
-                    role="alert"
-                    className="block text-copy-14 text-destructive"
-                >
-                    Audio could not be loaded.{" "}
-                    <a href={src} className="underline underline-offset-4">
-                        Open original recording
-                    </a>
-                    .
-                </span>
-            )}
-        </>
-    );
-}
-
-function ArtifactPreview({
-    text,
-    children,
-}: {
-    text: string | null | undefined;
-    children?: ReactNode;
-}) {
-    return (
-        <p className="line-clamp-3 max-w-72 whitespace-pre-wrap wrap-break-word text-copy-14 leading-5 text-muted-foreground">
-            {children || text || MISSING_VALUE}
-        </p>
-    );
-}
-
-// Stands in for a transcript preview (two `leading-5` lines) until the cell
-// produces output.
-function PendingPreview() {
-    return (
-        <div className="flex max-w-72 flex-col gap-2 py-0.5">
-            <Skeleton className="h-3.5 w-56 max-w-full" />
-            <Skeleton className="h-3.5 w-36" />
-        </div>
-    );
-}
-
-function LabeledPreview({
-    label,
-    text,
-    children,
-}: {
-    label: string;
-    text: string | null | undefined;
-    children?: ReactNode;
-}) {
-    return (
-        <div className="flex flex-col gap-1">
-            <p className="text-label-12">{label}</p>
-            <ArtifactPreview text={text}>{children}</ArtifactPreview>
-        </div>
-    );
-}
-
-function ScoreSummary({
-    metricScore,
-    judgeScore,
-    details,
-}: {
-    metricScore: number | null | undefined;
-    judgeScore: number | null | undefined;
-    details: ReturnType<typeof toTranscriptMetricDetails>;
-}) {
-    return (
-        <div className="flex min-w-28 flex-col items-end">
-            <Num>{fmtScore(metricScore ?? judgeScore, STT_SCORE_DIGITS)}</Num>
-            <InlineRates details={details} />
-        </div>
-    );
-}
-
-function InspectButton({
-    cellId,
-    itemId,
-    nodeLabel,
-    expanded,
-    onInspect,
-}: {
-    cellId: string;
-    itemId: string;
-    nodeLabel: string;
-    expanded: boolean;
-    onInspect: (cellId: string) => void;
-}) {
-    return (
-        <Button
-            type="button"
-            variant="secondary"
-            aria-expanded={expanded}
-            aria-label={`Inspect score details for ${nodeLabel}, item ${itemId.slice(0, 8)}`}
-            onClick={() => onInspect(cellId)}
-        >
-            <Eye className="size-4" aria-hidden="true" />
-            View
-        </Button>
-    );
-}
-
-function cellOutput(
-    cell: IWorkflowRunDetailResponse["cells"][number],
-): string | undefined {
-    const segments = transcriptSegments(cell);
-    if (segments.length > 0) {
-        return segments
-            .map(
-                (segment) =>
-                    `${speakerLabel(segment.speaker)} ${formatTimeRange(segment)}: ${segment.text}`,
-            )
-            .join(" ");
-    }
-    return cell.outputJson?.text || cell.error || undefined;
-}
-
-type TranscriptSegment = NonNullable<
-    NonNullable<
-        IWorkflowRunDetailResponse["cells"][number]["outputJson"]
-    >["segments"]
->[number];
-
-function transcriptSegments(
-    cell: IWorkflowRunDetailResponse["cells"][number],
-): TranscriptSegment[] {
-    const segments = cell.outputJson?.segments;
-    return Array.isArray(segments)
-        ? segments.filter(
-              (segment): segment is TranscriptSegment =>
-                  typeof segment === "object" &&
-                  segment !== null &&
-                  typeof segment.text === "string" &&
-                  segment.text.trim().length > 0,
-          )
-        : [];
-}
-
-function speakerLabel(speaker: string | undefined): string {
-    return speaker ? `Speaker ${speaker}` : `Speaker ${MISSING_VALUE}`;
-}
-
-function formatTimeRange(segment: TranscriptSegment): string {
-    const start = formatMilliseconds(segment.startMs);
-    const end = formatMilliseconds(segment.endMs);
-    return start || end
-        ? `${start ?? MISSING_VALUE}–${end ?? MISSING_VALUE}`
-        : MISSING_VALUE;
-}
-
-function formatMilliseconds(value: number | undefined): string | undefined {
-    return typeof value === "number" && Number.isFinite(value)
-        ? `${(value / 1000).toFixed(2)}s`
-        : undefined;
 }
 
 function SpeakerTurns({
@@ -831,20 +431,6 @@ function SpeakerTurns({
                 ))}
             </ol>
         </section>
-    );
-}
-
-function InlineRates({
-    details,
-}: {
-    details: ReturnType<typeof toTranscriptMetricDetails>;
-}) {
-    return (
-        <span className="text-label-12 text-muted-foreground">
-            WER {details ? formatTranscriptPercent(details.wer) : MISSING_VALUE}{" "}
-            / CER{" "}
-            {details ? formatTranscriptPercent(details.cer) : MISSING_VALUE}
-        </span>
     );
 }
 
