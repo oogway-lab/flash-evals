@@ -46,7 +46,6 @@ import {
 } from "../errors.js";
 import { resolveApiKeys } from "../secrets/resolveApiKeys.js";
 import { registryEntryFor } from "../modelRegistry.js";
-import { googleDefaultReasoningEffort } from "@mosaic/llm-core";
 import {
     sttConfigForSnapshot,
     validateSttConfigForRun,
@@ -1044,14 +1043,14 @@ function simpleWorkflowRoute(
     reasoningEffort: ReasoningEffort | undefined,
     isJudge: boolean,
 ): IWorkflowLlmRouteConfig {
-    reasoningEffort ??=
-        transport === "openrouter"
-            ? googleDefaultReasoningEffort(modelId)
-            : undefined;
     return {
         modelId,
         generation: {
-            maxOutputTokens: 4096,
+            // Google thinking and visible output share this limit. Leave
+            // thinking unchanged while allowing complete long translations.
+            maxOutputTokens: modelId.startsWith("google/gemini-3")
+                ? 16384
+                : 4096,
             ...(reasoningEffort ? { reasoningEffort } : {}),
         },
         transportConfig:
