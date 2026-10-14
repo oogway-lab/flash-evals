@@ -16,7 +16,8 @@ module.exports = {
         {
             name: "api-to-web-app",
             severity: "error",
-            comment: "Railway API code must not depend on the Cloudflare web app.",
+            comment:
+                "Railway API code must not depend on the Cloudflare web app.",
             from: {
                 path: "^apps/api/src/",
             },
@@ -33,6 +34,30 @@ module.exports = {
             },
             to: {
                 path: "^apps/",
+            },
+        },
+        {
+            name: "site-standalone",
+            severity: "error",
+            comment:
+                "The Astro marketing site builds on its own with no workspace dependencies, so it must not import the web app, the API, or shared packages.",
+            from: {
+                path: "^apps/site/",
+            },
+            to: {
+                path: "^apps/(web|api)/|^packages/",
+            },
+        },
+        {
+            name: "web-uses-built-marketing-output",
+            severity: "error",
+            comment:
+                "The web app consumes the marketing site through the built output copied into public/marketing, never through its source.",
+            from: {
+                path: "^apps/web/",
+            },
+            to: {
+                path: "^apps/site/",
             },
         },
     ],

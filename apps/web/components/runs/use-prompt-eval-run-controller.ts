@@ -383,9 +383,7 @@ function availableIds(availableModels: IRunSetupModelOption[]): string[] {
 
 function defaultSelection(availableModels: IRunSetupModelOption[]): string[] {
     const available = availableIds(availableModels);
-    const preferred = ["gpt-4o", "gpt-4o-mini"].filter((id) =>
-        available.includes(id),
-    );
+    const preferred = ["gpt-6-luna"].filter((id) => available.includes(id));
     if (preferred.length > 0) return preferred;
     return availableModels
         .filter(
@@ -402,7 +400,7 @@ function defaultJudgeModel(availableModels: IRunSetupModelOption[]): string {
     return (
         availableModels.find(
             (model) =>
-                model.id === "gpt-5.4-mini" &&
+                model.id === "gpt-6-luna" &&
                 model.available &&
                 model.judgeSuitable &&
                 model.structuredOutput,

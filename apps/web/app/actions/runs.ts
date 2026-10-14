@@ -199,7 +199,7 @@ function parseSharedRunInput(
         mode: audioRunMode ?? "prompt_eval",
         datasetId: String(formData.get("datasetId")),
         maxTokens: Number(formData.get("maxTokens") || 500),
-        judgeModelId: readString(formData, "judgeModelId") || "gpt-5.4-mini",
+        judgeModelId: readString(formData, "judgeModelId") || "gpt-6-luna",
     };
     assignDefined(value, "audioRunMode", audioRunMode);
     assignDefined(value, "sourceRunId", readString(formData, "sourceRunId"));

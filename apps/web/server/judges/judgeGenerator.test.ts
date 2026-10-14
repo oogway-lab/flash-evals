@@ -49,7 +49,7 @@ describe("generateJudgeFromContext", () => {
 
         expect(result.rubricPrompt).toBe(RUBRIC);
         const req = complete.mock.calls[0][0];
-        expect(req.model).toBe("gpt-5.4-mini");
+        expect(req.model).toBe("gpt-6-luna");
         expect(req.prompt).toContain("Extract the dish name");
         expect(req.prompt).toContain("dish_name");
         // rubric must define named criteria so the judge emits a breakdown
