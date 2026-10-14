@@ -922,6 +922,7 @@ export async function handleRequest(
                 teamId,
                 projectId,
                 decodeURIComponent(imageMatch[1]!),
+                request.headers.get("range"),
             );
             new Headers(headers).forEach((value, key) => {
                 imageResponse.headers.set(key, value);

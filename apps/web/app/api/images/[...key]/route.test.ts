@@ -57,6 +57,33 @@ describe("GET /api/images/[...key]", () => {
         );
     });
 
+    it("preserves audio byte ranges and length through the authenticated proxy", async () => {
+        fetchMock.mockResolvedValue(
+            new Response("cdef", {
+                status: 206,
+                headers: {
+                    "content-type": "audio/wav",
+                    "content-length": "4",
+                    "content-range": "bytes 2-5/10",
+                    "accept-ranges": "bytes",
+                },
+            }),
+        );
+        const response = await GET(
+            new Request("http://localhost/api/images", {
+                headers: { Range: "bytes=2-5" },
+            }),
+            { params: Promise.resolve({ key: [LEGACY_KEY] }) },
+        );
+        expect(response.status).toBe(206);
+        expect(response.headers.get("content-length")).toBe("4");
+        expect(response.headers.get("content-range")).toBe("bytes 2-5/10");
+        expect(response.headers.get("accept-ranges")).toBe("bytes");
+        expect(
+            new Headers(fetchMock.mock.calls[0]?.[1].headers).get("range"),
+        ).toBe("bytes=2-5");
+    });
+
     it("still serves a legacy bare-uuid key", async () => {
         const response = await call([LEGACY_KEY]);
 
