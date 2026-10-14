@@ -1,4 +1,4 @@
-import PgBoss from "pg-boss";
+import { PgBoss } from "pg-boss";
 import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { db } from "../db/client";
 import { runs, runCells } from "../db/schema";
@@ -56,7 +56,7 @@ export function startRunWorker(): Promise<void> {
         if (stopping) return;
         const b = await getBoss();
         if (stopping) return;
-        await b.work<RunJob>(
+        await b.work<RunJob, void, { includeMetadata: true }>(
             RUN_QUEUE,
             { includeMetadata: true },
             async (jobs) => {

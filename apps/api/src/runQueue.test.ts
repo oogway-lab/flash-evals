@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
     on: vi.fn(),
 }));
 vi.mock("pg-boss", () => ({
-    default: class {
+    PgBoss: class {
         start = mocks.start;
         stop = mocks.stop;
         send = mocks.send;

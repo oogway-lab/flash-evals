@@ -1,4 +1,4 @@
-import PgBoss from "pg-boss";
+import { PgBoss } from "pg-boss";
 import type { IApiConfig } from "./config.js";
 import type { IDb } from "./db.js";
 
