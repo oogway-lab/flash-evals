@@ -358,6 +358,48 @@ function detail(): IWorkflowRunDetailResponse {
 }
 
 describe("SttRunResults", () => {
+    it("summarizes scores and costs for a text pipeline without STT nodes", () => {
+        const result = detail();
+        const input = {
+            ...result.nodes[0]!,
+            nodeType: "input" as const,
+            label: "News article",
+            nodeConfig: { type: "input" as const, modality: "text" as const },
+        };
+        result.nodes = [input, result.nodes[1]!];
+        result.workflowRun.workflowSnapshot = {
+            ...result.workflowRun.workflowSnapshot,
+            kind: "multi",
+            nodes: result.nodes,
+        };
+        result.cells = result.cells
+            .filter(
+                (cell) =>
+                    cell.datasetItemId === "item-1" && cell.nodeKey !== "stt-b",
+            )
+            .map((cell) => ({
+                ...cell,
+                costUsd: cell.nodeKey === "text-a" ? 0.01 : 0,
+            }));
+        result.scoresByCell = {
+            "cell-text-a": [
+                {
+                    scorerType: "transcript_judge",
+                    score: 0.9,
+                    rationale: "Faithful",
+                    detailsJson: {},
+                },
+            ],
+        };
+        render(<SttRunResults detail={result} />);
+        const summary = screen
+            .getByRole("heading", { name: "News article" })
+            .closest('[data-slot="card"]');
+        expect(summary).toHaveTextContent("Completed branch");
+        expect(summary).toHaveTextContent("0.90");
+        expect(summary).toHaveTextContent("$0.01");
+    });
+
     it("labels each branch from its cell statuses", () => {
         const completed = detail();
         render(<SttRunResults detail={completed} />);

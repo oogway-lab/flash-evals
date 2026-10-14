@@ -64,7 +64,7 @@ describe("dashboardPayload", () => {
                 },
             ],
         });
-        expect(db.query).toHaveBeenCalledTimes(6);
+        expect(db.query).toHaveBeenCalledTimes(7);
         expect(vi.mocked(db.query).mock.calls[0]?.[1]).toEqual([
             "team-1",
             "project-1",

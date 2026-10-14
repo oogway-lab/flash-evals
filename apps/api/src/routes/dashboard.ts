@@ -1,6 +1,6 @@
-import type { IDashboardResponse, IDashboardRun } from "@mosaic/api-contract";
+import type { IDashboardResponse } from "@mosaic/api-contract";
 import type { IDb } from "../db.js";
-import { RUN_NOTE_TITLE_SQL } from "./runNoteTitle.js";
+import { listRecentRunsPayload } from "./runs.js";
 
 interface ICountRow {
     count: number | string;
@@ -9,20 +9,6 @@ interface ICountRow {
 interface IRunCountRow {
     total: number | string;
     active: number | string;
-}
-
-interface IRecentRunRow {
-    id: string;
-    status: IDashboardRun["status"];
-    created_at: Date | string;
-    dataset_id: string;
-    dataset_name: string;
-    models: string[] | null;
-    total: number | string;
-    done: number | string;
-    failed: number | string;
-    pending: number | string;
-    note_title?: string | null;
 }
 
 export async function dashboardPayload(
@@ -38,13 +24,15 @@ export async function dashboardPayload(
         schemaCount,
         itemCount,
         recentRuns,
+        goldenCount,
     ] = await Promise.all([
         countActiveDatasets(db, teamId, projectId),
         countPrompts(db, teamId, projectId),
         countRuns(db, teamId, projectId),
         countDatasetsWithSchemas(db, teamId, projectId),
         countDatasetsWithItems(db, teamId, projectId),
-        listRecentRuns(db, teamId, projectId, limit),
+        listRecentRunsPayload(db, teamId, projectId, limit),
+        countGoldenLabels(db, teamId, projectId),
     ]);
 
     return {
@@ -54,6 +42,7 @@ export async function dashboardPayload(
             runCount: runCounts.total,
             runningCount: runCounts.active,
             hasDatasetWithSchema: schemaCount > 0,
+            ...(goldenCount > 0 ? { hasGoldenLabels: true } : {}),
             hasDatasetWithItems: itemCount > 0,
             hasPrompt: promptCount > 0,
         },
@@ -94,8 +83,11 @@ async function countRuns(
         `select
             count(*)::int as total,
             count(*) filter (where status in ('pending', 'running'))::int as active
-        from runs
-        where team_id = $1 and project_id = $2`,
+        from (
+            select status from runs where team_id=$1 and project_id=$2
+            union all
+            select status from workflow_runs where team_id=$1 and project_id=$2
+        ) project_runs`,
         [teamId, projectId],
     );
     const row = result.rows[0];
@@ -135,57 +127,19 @@ async function countDatasetsWithItems(
     return rowCount(result.rows[0]);
 }
 
-async function listRecentRuns(
+async function countGoldenLabels(
     db: IDb,
     teamId: string,
     projectId: string,
-    limit: number,
-): Promise<IDashboardRun[]> {
-    const result = await db.query<IRecentRunRow>(
-        `select
-            r.id,
-            r.status,
-            r.created_at,
-            r.dataset_id,
-            d.name as dataset_name,
-            coalesce(
-                array_remove(array_agg(distinct rm.model_id order by rm.model_id), null),
-                array[]::text[]
-            ) as models,
-            count(distinct rc.id)::int as total,
-            count(distinct rc.id) filter (where rc.status in ('succeeded', 'cached'))::int as done,
-            count(distinct rc.id) filter (where rc.status = 'failed')::int as failed,
-            count(distinct rc.id) filter (where rc.status in ('pending', 'running'))::int as pending,
-            ${RUN_NOTE_TITLE_SQL} as note_title
-        from runs r
-        inner join datasets d on d.id = r.dataset_id
-        left join run_models rm on rm.run_id = r.id
-        left join run_cells rc on rc.run_id = r.id
-        where r.team_id = $1 and r.project_id = $2
-        group by r.id, r.status, r.created_at, r.dataset_id, d.name
-        order by r.created_at desc
-        limit $3`,
-        [teamId, projectId, limit],
+): Promise<number> {
+    const result = await db.query<ICountRow>(
+        `select count(distinct di.dataset_id)::int as count
+         from labels l inner join dataset_items di on di.id=l.dataset_item_id
+         inner join datasets d on d.id=di.dataset_id
+         where d.team_id=$1 and d.project_id=$2 and d.archived_at is null and d.purpose='golden'`,
+        [teamId, projectId],
     );
-
-    return result.rows.map((row) => ({
-        id: row.id,
-        status: row.status,
-        createdAt:
-            row.created_at instanceof Date
-                ? row.created_at.toISOString()
-                : new Date(row.created_at).toISOString(),
-        datasetId: row.dataset_id,
-        datasetName: row.dataset_name,
-        models: row.models ?? [],
-        progress: {
-            total: rowCount(row, "total"),
-            done: rowCount(row, "done"),
-            failed: rowCount(row, "failed"),
-            pending: rowCount(row, "pending"),
-        },
-        ...(row.note_title ? { noteTitle: row.note_title } : {}),
-    }));
+    return rowCount(result.rows[0]);
 }
 
 function rowCount(row: unknown, key = "count"): number {

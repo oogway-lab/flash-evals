@@ -84,6 +84,30 @@ describe("DashboardContent", () => {
         ).toBeInTheDocument();
     });
 
+    it("links pipeline runs to their results and accepts golden labels without a schema", async () => {
+        await renderDashboard(
+            {
+                datasetCount: 1,
+                runCount: 1,
+                hasDatasetWithItems: true,
+                hasGoldenLabels: true,
+            },
+            [
+                {
+                    ...run,
+                    noteTitle: "News summary judge",
+                    workflow: { id: "workflow-1", kind: "multi" },
+                },
+            ],
+        );
+        expect(
+            screen.getByRole("link", { name: "News summary judge" }),
+        ).toHaveAttribute("href", `/multiworkflow/workflow-1/runs/${run.id}`);
+        expect(
+            screen.queryByText("None have a labeling schema"),
+        ).not.toBeInTheDocument();
+    });
+
     describe("getting started", () => {
         it("lists every step as to do for an empty project", async () => {
             await renderDashboard({});

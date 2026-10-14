@@ -50,6 +50,30 @@ function rowFor(text: string) {
 }
 
 describe("RunsList", () => {
+    it.each([
+        ["multi", "/multiworkflow"],
+        ["stt", "/stt-evals"],
+        ["prompt", "/workflows"],
+    ] as const)(
+        "opens %s pipeline runs at their own results page",
+        (kind, base) => {
+            render(
+                <RunsList
+                    runs={[
+                        {
+                            ...run,
+                            noteTitle: "Pipeline run",
+                            workflow: { id: "workflow-1", kind },
+                        },
+                    ]}
+                />,
+            );
+            expect(
+                screen.getByRole("link", { name: "Pipeline run" }),
+            ).toHaveAttribute("href", `${base}/workflow-1/runs/${run.id}`);
+        },
+    );
+
     it("offers Clear filter, not New run, when a filter matches nothing", () => {
         render(<RunsList runs={[run]} />);
         fireEvent.click(screen.getByRole("tab", { name: "Failed" }));
