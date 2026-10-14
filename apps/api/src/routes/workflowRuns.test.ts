@@ -609,6 +609,24 @@ describe("workflow run LLM route resolution", () => {
         });
     });
 
+    it("leaves Google text thinking unset while budgeting for long output", async () => {
+        const fixture = createRunDb({
+            selection: "simple",
+            pinnedModelId: "google/gemini-2.5-flash",
+        });
+        await createWorkflowRunPayload(fixture.db, createRunInput);
+        const snapshot = fixture.capturedSnapshot as {
+            nodes: Array<{
+                resolvedLlmExecution: {
+                    route: { generation: Record<string, unknown> };
+                };
+            }>;
+        };
+        expect(
+            snapshot.nodes[0]?.resolvedLlmExecution.route.generation,
+        ).toEqual({ maxOutputTokens: 16384 });
+    });
+
     it("runs Simple mode directly with the current provider key", async () => {
         const fixture = createRunDb({ selection: "simple" });
 

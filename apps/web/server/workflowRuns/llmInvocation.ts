@@ -36,7 +36,7 @@ import {
 import type { ModelPricing } from "../llm/pricing";
 import { retryAfterMs } from "../lib/retryAfter";
 
-const ADAPTER_BEHAVIOR_VERSION = 2;
+const ADAPTER_BEHAVIOR_VERSION = 3;
 
 interface IResolvedWorkflowCredential {
     apiKey: string;

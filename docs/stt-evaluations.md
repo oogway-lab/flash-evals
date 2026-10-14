@@ -9,14 +9,21 @@ The route uses OpenRouter chat completions with audio input, an optional
 language hint, and vocabulary guidance. It returns plain transcripts. Speaker
 diarization and word timestamps are not supported by this adapter.
 
-OpenRouter requests explicitly use `reasoning.effort: low` for Gemini 3.8
-Flash audio. Simple Google text routes also capture a low-thinking default
-(minimal for Gemini 3.5 Flash Lite); explicit route effort settings take
-precedence. These routes require thinking in OpenRouter's current catalog,
-so this minimizes it rather than claiming to disable it. A zero native Google
-thinking budget is not interchangeable with OpenRouter's Gemini 3 thinking
-levels. Thinking shares the output-token budget with the actual transcript or
-translation; exhaustion is reported as `output_limit`.
+Gemini 3.8 Flash audio uses `reasoning.effort: low`, temperature zero, and
+Latin-only transcription with four code-mixed examples (Hindi, Tamil, Telugu,
+Bengali). Speech stays in its original language, written phonetically in Latin
+script; English words, names, numbers, and `[inaudible]` markers are preserved.
+Selected language hints use `hi-Latn`, `ta-Latn`, `te-Latn`, `bn-Latn`, or `en-IN`;
+an empty hint still means automatic language detection. Native-script output
+fails validation, and the adapter version prevents reuse of old native-script
+transcripts. Other STT providers retain their own output contracts.
+
+Thinking settings for translation and separate transliteration are unchanged:
+only explicitly selected effort is forwarded. New Simple Google text routes
+allow 16,384 total output tokens because thinking and visible text share the
+budget; this is not a thinking-budget override. Exhaustion is reported as
+`output_limit`. OpenRouter currently requires thinking for Gemini 3.8 Flash,
+so audio uses its minimum supported level rather than claiming a zero budget.
 
 Each request carries at most 14 MB of WAV or MP3 audio and 10 minutes of
 speech (`STT_OPENROUTER_AUDIO_MAX_BYTES`, `STT_AUDIO_MAX_CHUNK_MS`). Recordings
