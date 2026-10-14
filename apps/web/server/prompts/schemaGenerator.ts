@@ -49,7 +49,7 @@ export async function generateSchemaFromPrompt(input: {
     const generatorModelId =
         input.generatorModelId ??
         process.env.PROMPT_OPTIMIZER_MODEL ??
-        "gpt-5.4-mini";
+        "gpt-6-luna";
     const provider = getEvalProvider(input.apiKeys);
     const reasoning = registryEntryFor(generatorModelId)?.reasoning ?? false;
 
@@ -92,8 +92,7 @@ function normalizeSchemaNode(schema: unknown): unknown {
 
     const type = normalized.type;
     const isObject =
-        type === "object" ||
-        (Array.isArray(type) && type.includes("object"));
+        type === "object" || (Array.isArray(type) && type.includes("object"));
 
     if (isObject) {
         normalized.additionalProperties = false;

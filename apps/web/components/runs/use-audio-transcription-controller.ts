@@ -26,7 +26,7 @@ function transliterationInitialState(config?: ISttRunConfig) {
     const value = config?.transliteration;
     return {
         enabled: value?.enabled ?? false,
-        modelId: value?.modelId ?? "gpt-4o-mini",
+        modelId: value?.modelId ?? "gpt-6-luna",
         targetLanguage: value?.targetLanguage ?? "",
         prompt: value?.prompt ?? "",
         temperature: value?.temperature?.toString() ?? "",
@@ -37,7 +37,7 @@ function evaluatorInitialState(config?: ISttRunConfig) {
     const value = config?.evaluator;
     return {
         enabled: value?.enabled ?? false,
-        modelId: value?.modelId ?? "gpt-4o-mini",
+        modelId: value?.modelId ?? "gpt-6-luna",
         rubric: value?.rubricPrompt ?? "",
         reasoningEffort: value?.reasoningEffort ?? "default",
     } as const;

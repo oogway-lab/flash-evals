@@ -2,7 +2,7 @@
 
 Thanks for helping improve Flash Evals. This early-stage alpha is changing quickly; focused pull requests and clear reports are especially useful.
 
-Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Do not put credentials, customer data, or personal information in public issues, pull requests, fixtures, or screenshots. For security concerns, read [SECURITY.md](SECURITY.md) before reporting. No private vulnerability-reporting channel is active yet; the planned security@oogwaylabs.com alias is inactive. Do not send reports there or post vulnerability details publicly.
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Do not put credentials, customer data, or personal information in public issues, pull requests, fixtures, or screenshots. For suspected vulnerabilities, use the private reporting address in [SECURITY.md](SECURITY.md); do not post vulnerability details publicly.
 
 ## Project layout
 
@@ -32,6 +32,18 @@ storage bypasses off public networks.
 3. Add or update tests when changing behavior.
 4. Prefer existing UI primitives in `apps/web/components/ui/` and semantic design tokens in `apps/web/app/globals.css`.
 5. Describe behavior changes, verification, and user impact in the pull request.
+
+### Naming and file size
+
+Values are `camelCase`; React components, error classes, and the schema values
+that stand in for types are `PascalCase`; constants are `UPPER_CASE`. Types,
+interfaces, classes, and type parameters are `PascalCase`; enum members may be
+`PascalCase` or `UPPER_CASE`. Prefix an intentionally unused binding with `_`.
+ESLint rejects `snake_case` and `kebab-case` names.
+
+ESLint also warns when a TypeScript file exceeds 1,200 nonblank, noncomment
+lines. Treat the warning as a prompt to split new code into focused modules;
+existing large modules should not grow further.
 
 ## Verification
 

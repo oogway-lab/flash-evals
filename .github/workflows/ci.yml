@@ -54,6 +54,15 @@ jobs:
       - name: Web unit tests
         run: pnpm --filter @mosaic/web test
 
+      - name: Upload web unit test timing report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-test-results
+          path: test-results/apps-web.json
+          if-no-files-found: ignore
+          retention-days: 14
+
   cloudflare-build:
     name: Cloudflare Worker build
     runs-on: ubuntu-latest
@@ -101,17 +110,20 @@ jobs:
         uses: ./.github/actions/setup-workspace
 
       # Runs the `test` script of every package under apps/ and packages/
-      # except web (its own job) and the API, whose tests run once in the
-      # next step with coverage.
+      # except web (its own job), API, and site, whose tests run with coverage
+      # in the two steps below.
       - name: Unit tests
         run: >-
           pnpm -r --workspace-concurrency=1
           --filter './apps/**' --filter './packages/**'
-          --filter '!@mosaic/api' --filter '!@mosaic/web'
+          --filter '!@mosaic/api' --filter '!@mosaic/web' --filter '!@mosaic/site'
           run test
 
       - name: API unit tests and coverage thresholds
         run: pnpm --filter @mosaic/api test:coverage
+
+      - name: Marketing site unit tests and coverage thresholds
+        run: pnpm --filter @mosaic/site test:coverage
 
       - name: Upload coverage and reports
         if: always()
@@ -119,6 +131,7 @@ jobs:
         with:
           name: ci-reports
           path: |
+            test-results/
             coverage/
           if-no-files-found: ignore
           retention-days: 14

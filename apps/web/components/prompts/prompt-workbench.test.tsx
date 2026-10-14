@@ -471,7 +471,7 @@ describe("PromptWorkbench test panel", () => {
         fireEvent.click(getByRole("button", { name: /Run test/ }));
         await waitFor(() =>
             expect(
-                getByText_count(container, "gpt-5.5"),
+                countTextOccurrences(container, "gpt-5.5"),
             ).toBeGreaterThanOrEqual(2),
         );
         expect(container.textContent).toContain("effort:medium");
@@ -874,7 +874,9 @@ describe("PromptWorkbench test panel", () => {
         );
 
         expect(
-            await findByText("Flash Evals generic prompt optimization guidance"),
+            await findByText(
+                "Flash Evals generic prompt optimization guidance",
+            ),
         ).toBeInTheDocument();
         expect(
             queryByRole("link", {
@@ -920,6 +922,6 @@ describe("PromptWorkbench test panel", () => {
     });
 });
 
-function getByText_count(container: HTMLElement, text: string): number {
+function countTextOccurrences(container: HTMLElement, text: string): number {
     return (container.textContent?.split(text).length ?? 1) - 1;
 }
