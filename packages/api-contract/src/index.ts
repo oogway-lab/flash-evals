@@ -17,6 +17,8 @@ import type {
     ICreateWorkflowRequest,
     ICreateWorkflowRunRequest,
     ICreateWorkflowRunResponse,
+    IRetryWorkflowRunRequest,
+    IRetryWorkflowRunResponse,
     IWorkflowRunSummary,
     IDeleteWorkflowRequest,
     IPromptWorkflow,
@@ -158,6 +160,8 @@ export type {
     ICreateWorkflowRunResponse,
     IDeleteWorkflowRequest,
     IMultiWorkflowSeed,
+    IRetryWorkflowRunRequest,
+    IRetryWorkflowRunResponse,
     IPromptWorkflow,
     IUpdateWorkflowRequest,
     IWorkflowEdge,
@@ -2876,6 +2880,15 @@ export class MosaicApiClient {
     ): Promise<ICreateWorkflowRunResponse> {
         return this.postJson<ICreateWorkflowRunResponse>(
             `/api/workflows/${input.workflowId}/runs`,
+            input,
+        );
+    }
+
+    async retryWorkflowRun(
+        input: IRetryWorkflowRunRequest,
+    ): Promise<IRetryWorkflowRunResponse> {
+        return this.postJson<IRetryWorkflowRunResponse>(
+            `/api/workflows/${input.workflowId}/runs/${input.workflowRunId}/retry`,
             input,
         );
     }

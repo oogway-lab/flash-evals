@@ -10,6 +10,7 @@ import type {
     ICreateRunFromSelectionRequest,
     ICreateRunRequest,
     ICreateWorkflowRunRequest,
+    IRetryWorkflowRunRequest,
     IUpdateWorkflowRequest,
     WorkflowLlmTransport,
 } from "@mosaic/api-contract";
@@ -42,6 +43,7 @@ import {
     startWorkflowRunEnqueueReplay,
 } from "./workflowRunEnqueue.js";
 import { resolvePrincipalPayload } from "./routes/auth.js";
+import { retryWorkflowRunPayload } from "./routes/workflowRunRetry.js";
 import { dashboardPayload } from "./routes/dashboard.js";
 import {
     createDatasetItemPayload,
@@ -1172,6 +1174,36 @@ export async function handleRequest(
                     decodeURIComponent(workflowRunProgressMatch[1]!),
                     decodeURIComponent(workflowRunProgressMatch[2]!),
                 ),
+                { headers },
+            );
+        }
+        const workflowRunRetryMatch =
+            /^\/api\/workflows\/([^/]+)\/runs\/([^/]+)\/retry$/.exec(
+                url.pathname,
+            );
+        if (workflowRunRetryMatch && request.method === "POST") {
+            assertInternalToken(request, config);
+            const body = (await request.json()) as IRetryWorkflowRunRequest;
+            if (
+                body.workflowId !==
+                    decodeURIComponent(workflowRunRetryMatch[1]!) ||
+                body.workflowRunId !==
+                    decodeURIComponent(workflowRunRetryMatch[2]!)
+            )
+                throw new ApiBadRequestError(
+                    "Workflow and run IDs in the request body must match the route.",
+                );
+            const { retriedCellCount } = await retryWorkflowRunPayload(
+                db,
+                body,
+            );
+            const published = await publishWorkflowRunEnqueue(
+                db,
+                config,
+                body.workflowRunId,
+            );
+            return Response.json(
+                { ...published, retriedCellCount },
                 { headers },
             );
         }

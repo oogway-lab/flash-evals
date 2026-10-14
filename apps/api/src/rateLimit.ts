@@ -44,7 +44,7 @@ const RUN_PATHS = new Set([
     "/api/runs/retry",
 ]);
 
-const WORKFLOW_RUNS_PATH = /^\/api\/workflows\/[^/]+\/runs$/;
+const WORKFLOW_RUNS_PATH = /^\/api\/workflows\/[^/]+\/runs(?:\/[^/]+\/retry)?$/;
 
 const MCP_TOOL_CATEGORY: Record<string, RateLimitCategory> = {
     generate_schema_from_prompt: "llm",

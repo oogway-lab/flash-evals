@@ -224,7 +224,41 @@ export interface IAudioTranscriptMetadata {
     };
     diarizationMode?: "native" | "prompt-derived";
     promptSupported?: boolean;
+    /** Provider spend for producing this artifact now; excludes reused chunks. */
+    incurredCostUsd?: number;
+    /** A timed-out request may have been billed; costs exclude it. */
+    costUncertain?: boolean;
+    attempts?: ITranscriptionAttemptRecord[];
+    audioPreparation?: IAudioPreparationMetadata;
     raw?: unknown;
+}
+
+export interface ITranscriptionAttemptRecord {
+    attempt: number;
+    outcome: "succeeded" | "failed";
+    errorClass?: string;
+    latencyMs: number;
+    billingUnknown?: boolean;
+}
+
+export interface IAudioPreparationMetadata {
+    version: string;
+    sourceBytes: number;
+    sourceMimeType: string;
+    sourceDurationMs: number;
+    sourceCodec?: string;
+    sourceChannels?: number;
+    sourceSampleRate?: number;
+    chunks: Array<{
+        index: number;
+        startMs: number;
+        endMs: number;
+        bytes: number;
+        cacheHit: boolean;
+        hardCut: boolean;
+        attempts: number;
+        costUsd?: number;
+    }>;
 }
 
 /** Provider metadata safe to expose with a workflow STT result. */

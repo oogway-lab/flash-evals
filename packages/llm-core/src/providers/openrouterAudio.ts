@@ -7,6 +7,10 @@ const AUDIO_FORMATS = new Map<string, "wav" | "mp3">([
     ["audio/mp3", "mp3"],
 ]);
 
+/** Default inline audio budget; callers prepare larger recordings first. */
+export const OPENROUTER_AUDIO_DEFAULT_MAX_BYTES = 14 * 1024 * 1024;
+const DEFAULT_TIMEOUT_MS = 60_000;
+
 /** Transcribe Gemini audio through OpenRouter's chat-completions audio input. */
 export async function transcribeOpenRouterAudio(input: {
     apiKey: string;
@@ -15,20 +19,25 @@ export async function transcribeOpenRouterAudio(input: {
     mimeType: string;
     language?: string;
     prompt?: string;
+    /** Per-request timeout. Retries are owned by the caller. */
+    timeoutMs?: number;
+    maxAudioBytes?: number;
 }) {
     const format = AUDIO_FORMATS.get(input.mimeType);
     if (!format)
         throw new Error(
             "Gemini on OpenRouter accepts WAV or MP3 audio in Flash Evals.",
         );
-    if (input.base64Data.length > 4 * Math.ceil((14 * 1024 * 1024) / 3))
+    const maxAudioBytes =
+        input.maxAudioBytes ?? OPENROUTER_AUDIO_DEFAULT_MAX_BYTES;
+    if (input.base64Data.length > 4 * Math.ceil(maxAudioBytes / 3))
         throw new Error(
-            "Gemini on OpenRouter accepts audio up to 14 MB in Flash Evals.",
+            `Gemini on OpenRouter accepts audio up to ${Math.round(maxAudioBytes / (1024 * 1024))} MB in Flash Evals.`,
         );
     const client = new OpenAI({
         apiKey: input.apiKey,
         baseURL: "https://openrouter.ai/api/v1",
-        timeout: 60_000,
+        timeout: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxRetries: 0,
     });
     const response = await client.chat.completions.create({

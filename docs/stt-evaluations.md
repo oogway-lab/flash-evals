@@ -5,10 +5,31 @@
 For local testing, set `OPENROUTER_API_KEY` in `apps/api/.env`, restart the dev
 stack, and run the **Gemini 3.8 Flash** audio capability probe in Settings. A
 successful probe enables the model in audio run setup and STT canvas nodes.
-The route uses OpenRouter chat completions with audio input; it supports WAV
-and MP3 files up to 14 MB, an optional language hint, and vocabulary guidance.
-It returns plain transcripts. Speaker diarization and word timestamps are not
-supported by this adapter.
+The route uses OpenRouter chat completions with audio input, an optional
+language hint, and vocabulary guidance. It returns plain transcripts. Speaker
+diarization and word timestamps are not supported by this adapter.
+
+Each request carries at most 14 MB of WAV or MP3 audio and 10 minutes of
+speech (`STT_OPENROUTER_AUDIO_MAX_BYTES`, `STT_AUDIO_MAX_CHUNK_MS`). Recordings
+within both limits are sent unchanged. Larger or longer recordings, and other
+formats, are converted on the worker to mono 16 kHz MP3 and, when still over a
+limit, split into ordered chunks near silences. The stored upload is never
+changed. Chunk transcripts are joined in order into one transcript, so
+translation and summary nodes still receive one transcript per recording.
+Preparation does not denoise or label speakers. A cut with no nearby silence
+adds a warning to the transcript; check that boundary by ear.
+
+Timeouts, rate limits, and provider 5xx errors are retried with backoff
+(`STT_MAX_ATTEMPTS`, `STT_REQUEST_TIMEOUT_MS`); invalid audio and credential
+errors fail at once. Completed chunks are saved, so a retry only transcribes the
+chunks that are missing. A timed-out request may still be billed: the
+transcript's metadata then has `costUncertain`, and the reported cost leaves
+that request out rather than counting it as zero.
+
+To recover a partial or failed pipeline run, choose **Retry failed cells** on
+the run page. Failed cells and the cells they blocked run again. Successful
+cells, reused transcripts, and the run's workflow snapshot are kept, and cell
+cost shows only new spend.
 
 Use `google/gemini-3.8-flash` for the optional transliteration and transcript
 judge models too. Latin transcript scoring requires an

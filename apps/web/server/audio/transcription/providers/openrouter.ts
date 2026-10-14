@@ -14,6 +14,11 @@ import {
     stringProperty,
 } from "./shared";
 
+/** Gemini on OpenRouter takes audio through chat completions, not the STT route. */
+export function isOpenRouterChatAudioModel(canonicalModelId: string): boolean {
+    return canonicalModelId === "google/gemini-3.8-flash";
+}
+
 export async function transcribeWithOpenRouter(
     input: ITranscriptionProviderInput,
 ): Promise<ITranscriptArtifact> {
@@ -22,7 +27,7 @@ export async function transcribeWithOpenRouter(
             "Add an OpenRouter API key to run audio transcription.",
         );
     }
-    if (input.canonicalModelId === "google/gemini-3.8-flash") {
+    if (isOpenRouterChatAudioModel(input.canonicalModelId)) {
         const result = await transcribeOpenRouterAudio({
             apiKey: input.openrouterApiKey,
             modelId: input.canonicalModelId,
@@ -30,6 +35,8 @@ export async function transcribeWithOpenRouter(
             mimeType: input.mimeType,
             language: input.language,
             prompt: stringConfig(input.config, "prompt"),
+            timeoutMs: input.timeoutMs,
+            maxAudioBytes: input.maxAudioBytes,
         });
         return {
             text: result.text,
@@ -66,6 +73,7 @@ export async function transcribeWithOpenRouter(
             headers: { Authorization: `Bearer ${input.openrouterApiKey}` },
             body: form,
         },
+        input.timeoutMs,
     );
     const parsed = (await response.json().catch(() => undefined)) as unknown;
     if (!response.ok) {

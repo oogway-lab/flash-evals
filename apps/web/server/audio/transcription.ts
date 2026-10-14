@@ -5,7 +5,11 @@ import {
     unsupportedSttConfigKeysForFields,
 } from "@mosaic/api-contract";
 import { loadAudioBytes } from "./source";
-import { dispatchTranscription } from "./transcription/dispatcher";
+import {
+    cachedPreparationIsCurrent,
+    executeTranscription,
+} from "./transcription/execute";
+import { sttExecutionPolicy } from "./transcription/policy";
 import {
     readCachedTranscript,
     transcriptIdentity,
@@ -41,6 +45,11 @@ export interface ITranscriptArtifactProvenance {
     artifact: ITranscriptArtifact;
     cacheHit: boolean;
     lookupLatencyMs: number;
+    /**
+     * New provider spend for this call: zero on a cache hit, and excluding
+     * chunks reused from an earlier attempt. Undefined when not reported.
+     */
+    incurredCostUsd: number | undefined;
 }
 
 export async function getOrCreateAudioTranscriptArtifactWithProvenance(
@@ -51,6 +60,7 @@ export async function getOrCreateAudioTranscriptArtifactWithProvenance(
         artifact: result.artifact,
         cacheHit: result.cacheHit,
         lookupLatencyMs: result.lookupLatencyMs,
+        incurredCostUsd: result.incurredCostUsd,
     };
 }
 
@@ -72,58 +82,81 @@ async function resolveAudioTranscriptArtifact(
         language,
     });
     const lookupLatencyMs = Date.now() - lookupStartedAt;
-    if (cached)
+    if (cached && cachedPreparationIsCurrent(cached))
         return {
             artifact: cached,
             legacyArtifact: cached,
             cacheHit: true,
             lookupLatencyMs,
+            incurredCostUsd: 0,
         };
 
     validateCredentialsForExecution(input, identity);
     const startedAt = Date.now();
     const bytes = await loadAudioBytes(input.storageKey);
+    const persisted = {
+        datasetItemId: input.datasetItemId,
+        modelId: input.modelId,
+        language,
+        identity,
+    };
     let artifact: ITranscriptArtifact;
     try {
-        artifact = await dispatchTranscription({
+        artifact = await executeTranscription({
+            request: {
+                modelId: input.modelId,
+                canonicalModelId: identity.canonicalModelId,
+                providerId: identity.providerId,
+                language,
+                config: input.config,
+                openaiApiKey: input.openaiApiKey,
+                aiGatewayApiKey: input.aiGatewayApiKey,
+                sonioxApiKey: input.sonioxApiKey,
+                geminiApiKey: input.geminiApiKey,
+                openrouterApiKey: input.openrouterApiKey,
+            },
+            storageKey: input.storageKey,
             bytes,
             mimeType: input.mimeType,
-            modelId: input.modelId,
-            canonicalModelId: identity.canonicalModelId,
-            providerId: identity.providerId,
-            language,
-            config: input.config,
-            openaiApiKey: input.openaiApiKey,
-            aiGatewayApiKey: input.aiGatewayApiKey,
-            sonioxApiKey: input.sonioxApiKey,
-            geminiApiKey: input.geminiApiKey,
-            openrouterApiKey: input.openrouterApiKey,
+            policy: sttExecutionPolicy(identity),
+            chunkStore: {
+                read: (storageKey) =>
+                    readCachedTranscript({
+                        datasetItemId: input.datasetItemId,
+                        storageKey,
+                        identity,
+                        language,
+                    }),
+                write: (storageKey, chunkArtifact, latencyMsTotal) =>
+                    writeCompletedTranscriptArtifact({
+                        ...persisted,
+                        storageKey,
+                        artifact: chunkArtifact,
+                        latencyMsTotal,
+                    }),
+            },
         });
     } catch (error) {
         await writeFailedTranscriptArtifact({
-            datasetItemId: input.datasetItemId,
+            ...persisted,
             storageKey: input.storageKey,
-            modelId: input.modelId,
-            language,
-            identity,
             error,
         });
         throw error;
     }
     const persistedArtifact = await writeCompletedTranscriptArtifact({
-        datasetItemId: input.datasetItemId,
+        ...persisted,
         storageKey: input.storageKey,
-        modelId: input.modelId,
-        language,
-        identity,
         artifact,
         latencyMsTotal: Date.now() - startedAt,
     });
+    const metadata = persistedArtifact.providerMetadata;
     return {
         artifact: persistedArtifact,
         legacyArtifact: artifact,
         cacheHit: false,
         lookupLatencyMs,
+        incurredCostUsd: metadata?.incurredCostUsd ?? metadata?.costUsd,
     };
 }
 

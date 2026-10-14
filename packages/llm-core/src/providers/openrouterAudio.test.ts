@@ -89,3 +89,19 @@ it("does not store a truncated transcript as a successful result", async () => {
         }),
     ).rejects.toThrow("output token limit");
 });
+
+it("lets the caller raise the inline audio budget", async () => {
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    const oversized = "A".repeat(4 * Math.ceil((2 * 1024 * 1024) / 3) + 4);
+    await expect(
+        transcribeOpenRouterAudio({
+            apiKey: "test",
+            modelId: "google/gemini-3.8-flash",
+            base64Data: oversized,
+            mimeType: "audio/mpeg",
+            maxAudioBytes: 2 * 1024 * 1024,
+        }),
+    ).rejects.toThrow("up to 2 MB");
+    expect(fetcher).not.toHaveBeenCalled();
+});

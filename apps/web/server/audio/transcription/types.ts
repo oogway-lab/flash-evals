@@ -43,6 +43,10 @@ export interface ITranscriptionProviderInput {
     providerId: ISttModelIdentity["providerId"];
     language: string | undefined;
     config?: Record<string, unknown>;
+    /** Per-request timeout; providers without a policy keep their default. */
+    timeoutMs?: number;
+    /** Largest raw audio payload the adapter may send. */
+    maxAudioBytes?: number;
     openaiApiKey?: string;
     aiGatewayApiKey?: string;
     sonioxApiKey?: string;
