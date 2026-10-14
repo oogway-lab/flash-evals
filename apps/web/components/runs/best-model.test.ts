@@ -81,3 +81,14 @@ describe("summarizeBestModel", () => {
         ).toBeUndefined();
     });
 });
+
+it("uses golden-label quality when no judge or transcript score exists", () => {
+    const result = summarizeBestModel([
+        row({ modelId: "golden", avgFieldScore: 0.975 }),
+    ]);
+    expect(result).toMatchObject({
+        metric: "field",
+        score: 0.975,
+        modelIds: ["golden"],
+    });
+});

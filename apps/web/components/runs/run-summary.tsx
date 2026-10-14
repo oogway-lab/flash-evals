@@ -39,6 +39,7 @@ const connectionLabels: Record<
 
 const METRIC_LABELS = {
     judge: "judge score",
+    field: "golden score",
     transcript: "transcript score",
 } as const;
 

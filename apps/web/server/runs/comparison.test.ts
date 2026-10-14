@@ -91,26 +91,37 @@ describe("buildComparison", () => {
 
     it("uses the judge score as the quality axis and ignores the field score", () => {
         const result = buildComparison(
-            [side({ modelId: "gpt-4o", avgFieldScore: 0.5, avgJudgeScore: 0.8 })],
-            [side({ modelId: "gpt-4o", avgFieldScore: 0.6, avgJudgeScore: 0.9 })],
+            [
+                side({
+                    modelId: "gpt-4o",
+                    avgFieldScore: 0.5,
+                    avgJudgeScore: 0.8,
+                }),
+            ],
+            [
+                side({
+                    modelId: "gpt-4o",
+                    avgFieldScore: 0.6,
+                    avgJudgeScore: 0.9,
+                }),
+            ],
         );
         expect(result[0].baseline?.qualitySource).toBe("judge");
         expect(result[0].baseline?.quality).toBe(0.8);
         expect(result[0].delta?.quality).toBeCloseTo(0.1);
     });
 
-    it("leaves quality undefined for a side scored only by field diff", () => {
+    it("compares golden field scores when no judge was selected", () => {
         const result = buildComparison(
             [side({ modelId: "gpt-4o", avgFieldScore: 0.7 })],
             [side({ modelId: "gpt-4o", avgFieldScore: 0.8 })],
         );
-        expect(result[0].baseline?.quality).toBeUndefined();
-        expect(result[0].baseline?.qualitySource).toBeUndefined();
-        expect(result[0].current?.quality).toBeUndefined();
-        expect(result[0].current?.qualitySource).toBeUndefined();
-        // both sides lack a judge score, so the quality axis is not comparable
-        expect(result[0].delta?.qualityComparable).toBe(false);
-        expect(result[0].delta?.quality).toBeUndefined();
+        expect(result[0].baseline?.quality).toBe(0.7);
+        expect(result[0].baseline?.qualitySource).toBe("field");
+        expect(result[0].current?.quality).toBe(0.8);
+        expect(result[0].current?.qualitySource).toBe("field");
+        expect(result[0].delta?.qualityComparable).toBe(true);
+        expect(result[0].delta?.quality).toBeCloseTo(0.1);
     });
 
     it("surfaces models present on only one side without a delta", () => {
@@ -128,8 +139,26 @@ describe("buildComparison", () => {
 
     it("carries reasoning effort per side and the reference flag", () => {
         const result = buildComparison(
-            [side({ modelId: "gpt-5.4", avgFieldScore: 0.7, isReference: true }, "low")],
-            [side({ modelId: "gpt-5.4", avgFieldScore: 0.7, isReference: true }, "high")],
+            [
+                side(
+                    {
+                        modelId: "gpt-5.4",
+                        avgFieldScore: 0.7,
+                        isReference: true,
+                    },
+                    "low",
+                ),
+            ],
+            [
+                side(
+                    {
+                        modelId: "gpt-5.4",
+                        avgFieldScore: 0.7,
+                        isReference: true,
+                    },
+                    "high",
+                ),
+            ],
         );
         expect(result[0].isReference).toBe(true);
         expect(result[0].baseline?.effort).toBe("low");
@@ -183,14 +212,27 @@ describe("buildComparison", () => {
 
     it("fails the STT methodology gate when WER or hard failures regress", () => {
         const result = buildComparison(
-            [side({ modelId: "soniox", avgWer: 0.1, transcriptFailureCount: 0 })],
-            [side({ modelId: "soniox", avgWer: 0.2, transcriptFailureCount: 1 })],
+            [
+                side({
+                    modelId: "soniox",
+                    avgWer: 0.1,
+                    transcriptFailureCount: 0,
+                }),
+            ],
+            [
+                side({
+                    modelId: "soniox",
+                    avgWer: 0.2,
+                    transcriptFailureCount: 1,
+                }),
+            ],
         );
 
         expect(result[0].sttShipGate?.status).toBe("fail");
         expect(
             result[0].sttShipGate?.checks.some(
-                (check) => check.key === "hard_failures" && check.passed === false,
+                (check) =>
+                    check.key === "hard_failures" && check.passed === false,
             ),
         ).toBe(true);
     });
@@ -244,4 +286,12 @@ describe("relatedRunIdsForComparison", () => {
 
         expect([...result]).toEqual(["rerun-1"]);
     });
+});
+
+it("does not create an STT gate for text-only comparisons", () => {
+    const result = buildComparison(
+        [side({ avgJudgeScore: 0.8 })],
+        [side({ avgJudgeScore: 0.9 })],
+    );
+    expect(result[0].sttShipGate).toBeUndefined();
 });

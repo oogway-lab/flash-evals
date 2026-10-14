@@ -190,7 +190,7 @@ it("runs newly discovered Gateway models with their live transport ids", async (
     };
     vi.mocked(listAvailableModelMetadata).mockResolvedValueOnce([
         {
-            id: "openai/gpt-5.6-luna",
+            id: "openai/new-gateway-fixture",
             pricing: {
                 promptPricePerToken: 1 / 1_000_000,
                 completionPricePerToken: 2 / 1_000_000,
@@ -219,7 +219,7 @@ it("runs newly discovered Gateway models with their live transport ids", async (
                 required: ["answer"],
                 properties: { answer: { type: "string" } },
             },
-            targetModelId: "gpt-5.6-luna",
+            targetModelId: "new-gateway-fixture",
             transport: "gateway",
             samples: [{ name: "one", inputText: "hello" }],
         },
@@ -229,7 +229,7 @@ it("runs newly discovered Gateway models with their live transport ids", async (
         expect.objectContaining({ gateway: "db-gateway-key" }),
         expect.objectContaining({
             transport: "gateway",
-            exactTransportModelId: "openai/gpt-5.6-luna",
+            exactTransportModelId: "openai/new-gateway-fixture",
         }),
     );
     expect(lunaResult.results[0]).toMatchObject({

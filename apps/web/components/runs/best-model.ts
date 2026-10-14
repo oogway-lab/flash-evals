@@ -1,8 +1,8 @@
 import { pickBestModel, type ILeaderboardRow } from "@mosaic/api-contract";
 
 export interface IBestModelSummary {
-    /** What the score is: judge score, or transcript score for STT runs. */
-    metric: "judge" | "transcript";
+    /** What the score is: judge score, transcript score, or golden field score. */
+    metric: "judge" | "transcript" | "field";
     score: number;
     /** The top model, or every model sharing the top score as displayed. */
     modelIds: string[];
@@ -15,7 +15,7 @@ export interface IBestModelSummary {
 /**
  * The top model for the run summary. It uses the same rule as the
  * leaderboard's "Best" marker (`pickBestModel`: judge score, else transcript
- * score; scores compared as displayed to two decimals), so the two never
+ * score, else golden field score; scores compared as displayed to two decimals), so the two never
  * disagree. Returns `undefined` when no model has a score yet.
  */
 export function summarizeBestModel(
@@ -24,7 +24,11 @@ export function summarizeBestModel(
     const best = pickBestModel(rows);
     if (!best) return undefined;
     const scoreOf = (row: ILeaderboardRow) =>
-        best.metric === "judge" ? row.avgJudgeScore : row.avgTranscriptScore;
+        best.metric === "judge"
+            ? row.avgJudgeScore
+            : best.metric === "transcript"
+              ? row.avgTranscriptScore
+              : row.avgFieldScore;
     const shown = best.score.toFixed(2);
     const modelIds = rows
         .filter((row) => scoreOf(row)?.toFixed(2) === shown)

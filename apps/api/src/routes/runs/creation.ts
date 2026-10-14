@@ -1791,7 +1791,7 @@ async function listRunSetupDatasets(
     const result = await db.query<IDatasetOptionRow>(
         `select d.id, d.name, d.modality, d.purpose,
             count(di.id)::int as item_count,
-            count(l.id)::int as labeled_item_count
+            count(l.id) filter (where l.label_json <> '{}'::jsonb)::int as labeled_item_count
         from datasets d
         left join dataset_items di on di.dataset_id = d.id
         left join labels l on l.dataset_item_id = di.id

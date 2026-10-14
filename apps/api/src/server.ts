@@ -1,3 +1,4 @@
+import { ensureModelCatalog } from "./modelCatalog.js";
 import {
     createServer,
     type IncomingMessage,
@@ -178,6 +179,12 @@ async function handleNodeRequest(
     runtime: IApiRuntime,
 ): Promise<void> {
     const request = nodeRequest(req);
+    if (
+        request.method !== "OPTIONS" &&
+        !isHealthPath(new URL(request.url).pathname)
+    ) {
+        await ensureModelCatalog(runtime.db);
+    }
     const response = await handleRequest(request, runtime);
     await writeNodeResponse(res, response);
 }

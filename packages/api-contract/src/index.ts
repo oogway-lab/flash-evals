@@ -1763,7 +1763,7 @@ export interface IComparableRun {
     models: string[];
 }
 
-export type QualitySource = "judge";
+export type QualitySource = "judge" | "field";
 
 export type SttShipGateStatus = "pass" | "fail" | "insufficient_data";
 
@@ -1826,6 +1826,16 @@ export function buildSttShipGate(input: {
     current: ISideMetrics | undefined;
 }): ISttShipGate | undefined {
     if (!input.baseline || !input.current) return undefined;
+    const hasSttMetrics = [input.baseline, input.current].some(
+        (side) =>
+            side.wer !== undefined ||
+            side.cpWer !== undefined ||
+            side.transcriptJudgeScore !== undefined ||
+            side.sttCost !== undefined ||
+            side.sttP95Latency !== undefined ||
+            side.hardFailureCount > 0,
+    );
+    if (!hasSttMetrics) return undefined;
 
     const checks: ISttShipGateCheck[] = [
         hardFailureCheck(input.baseline, input.current),
@@ -3021,4 +3031,11 @@ export class MosaicApiClient {
                 : {}),
         };
     }
+}
+
+/** A saved placeholder object is not a golden answer. Zero, false and null field values are valid answers. */
+export function hasGoldenLabel(
+    label: LabelJson | null | undefined,
+): label is LabelJson {
+    return label != null && Object.keys(label).length > 0;
 }

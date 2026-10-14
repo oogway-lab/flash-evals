@@ -1,3 +1,4 @@
+import type { CompletionResult } from "@mosaic/llm-core";
 import { createHash } from "node:crypto";
 import Ajv2020Module from "ajv/dist/2020.js";
 import type { ErrorObject, ValidateFunction } from "ajv";
@@ -32,7 +33,7 @@ import type {
     ReasoningEffort,
 } from "@mosaic/api-contract";
 import {
-    computeCostFromUsageWithPricing,
+    completionCostFields,
     getBareModelName,
     getEvalProvider,
     guidanceForModel,
@@ -40,7 +41,6 @@ import {
     registryEntryForLiveGatewayModel,
     type IEvalCompletionProvider,
     type IModelPricing,
-    type UsageData,
 } from "@mosaic/llm-core";
 import type { IApiConfig } from "../config.js";
 import type { IDb } from "../db.js";
@@ -1631,7 +1631,7 @@ async function runPromptTest(
                     latencyMs,
                     ...promptTestCost(
                         input.targetModelId,
-                        completion.usage,
+                        completion,
                         transportModel.pricing,
                     ),
                 });
@@ -1656,7 +1656,7 @@ async function runPromptTest(
                 latencyMs,
                 ...promptTestCost(
                     input.targetModelId,
-                    completion.usage,
+                    completion,
                     transportModel.pricing,
                 ),
             });
@@ -1794,19 +1794,14 @@ async function runPromptValidationSample(
 
 function promptTestCost(
     modelId: string,
-    usage: UsageData,
+    completion: CompletionResult,
     livePricing?: IModelPricing,
 ): {
     costUsd?: number;
     costSource: "computed" | "unavailable";
 } {
     const pricing = livePricing ?? registryEntryFor(modelId)?.pricing;
-    const costUsd = pricing
-        ? computeCostFromUsageWithPricing(usage, pricing)
-        : undefined;
-    return costUsd === undefined
-        ? { costSource: "unavailable" }
-        : { costUsd, costSource: "computed" };
+    return completionCostFields(completion, pricing);
 }
 
 function promptForSample(prompt: string, sample: IPromptSampleInput): string {
@@ -2223,9 +2218,11 @@ async function resolveTransportModel(
     const registered = registryEntryFor(modelId);
     const registeredModelId = registered?.transports[transport];
     if (registeredModelId) {
+        const pricing =
+            registered?.pricingByTransport?.[transport] ?? registered?.pricing;
         return {
             id: registeredModelId,
-            ...(registered?.pricing ? { pricing: registered.pricing } : {}),
+            ...(pricing ? { pricing } : {}),
         };
     }
 

@@ -5,6 +5,7 @@ function provider(
     transport: "openai" | "openrouter" = "openai",
     cacheStatus = "MISS",
     finishReason = "stop",
+    cost?: number,
 ) {
     const response = {
         id: "gen-1",
@@ -15,6 +16,7 @@ function provider(
             prompt_tokens: 1,
             completion_tokens: 1,
             total_tokens: 2,
+            ...(cost === undefined ? {} : { cost }),
         },
     };
     const create = vi.fn((..._args: unknown[]) => {
@@ -238,4 +240,14 @@ describe("OpenAI-compatible route forwarding", () => {
             });
         }
     });
+});
+
+it("preserves OpenRouter reported charges", async () => {
+    const harness = provider("openrouter", "MISS", "stop", 0.000042);
+    const result = await harness.provider.complete({
+        model: "google/gemini-2.5-flash",
+        prompt: "hi",
+        maxTokens: 10,
+    });
+    expect(result.cost).toEqual({ usd: 0.000042, source: "provider_reported" });
 });

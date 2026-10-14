@@ -2071,3 +2071,59 @@ describe("deleteDatasetItemPayload", () => {
         ).rejects.toThrow("Delete the runs");
     });
 });
+
+it("does not count a stored empty answer as a labeled golden item", async () => {
+    const db = dbWithRows([
+        [
+            {
+                id: "dataset-1",
+                team_id: "team-1",
+                name: "Sentiment",
+                purpose: "golden",
+                modality: "text",
+                pipeline_id: null,
+                description: null,
+                archived_at: null,
+            },
+        ],
+        [
+            {
+                id: "item-1",
+                type: "text",
+                input_text: "a review",
+                source_name: null,
+                storage_key: null,
+                mime_type: null,
+            },
+        ],
+        [],
+        [{ dataset_item_id: "item-1", label_json: {} }],
+    ]);
+    const result = await datasetDetailPayload(
+        db,
+        "team-1",
+        "project-1",
+        "dataset-1",
+    );
+    expect(result.labeledItemCount).toBe(0);
+    expect(result.isRunnable).toBe(false);
+});
+
+it("does not persist an empty label on a newly imported text item", async () => {
+    const db = dbWithRows([
+        [{ id: "dataset-1", team_id: "team-1", archived_at: null }],
+        [{ id: "item-1" }],
+    ]);
+    await createDatasetItemPayload(db, {
+        teamId: "team-1",
+        projectId: "project-1",
+        datasetId: "dataset-1",
+        inputText: "a review",
+        label: {},
+    });
+    expect(
+        vi
+            .mocked(db.query)
+            .mock.calls.some(([sql]) => sql.includes("insert into labels")),
+    ).toBe(false);
+});

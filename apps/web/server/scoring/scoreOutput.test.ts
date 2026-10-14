@@ -15,6 +15,7 @@ vi.mock("../db/client", () => ({ db: {} }));
 const apiKeys: ApiKeys = { openai: "test" };
 
 const base = {
+    defaultFieldMatcher: "exact" as const,
     inputText: undefined,
     hasImage: false,
     reference: undefined,
@@ -38,14 +39,27 @@ const stubJudge =
     };
 
 const configs: IPipelineFieldConfig[] = [
-    { field: "calories", kind: "factual", spec: { matcher: "numeric_tolerance", tolerance: 0.25, relative: true } },
-    { field: "keepGoingTip", kind: "generative", rubric: "is it encouraging?", modelId: "gpt-4o" },
+    {
+        field: "calories",
+        kind: "factual",
+        spec: { matcher: "numeric_tolerance", tolerance: 0.25, relative: true },
+    },
+    {
+        field: "keepGoingTip",
+        kind: "generative",
+        rubric: "is it encouraging?",
+        modelId: "gpt-4o",
+    },
 ];
 
 describe("scoreOutput", () => {
     it("AE3: field-diff scores only bundle factual fields present in filtered configs", async () => {
         const overlapConfigs: IPipelineFieldConfig[] = [
-            { field: "realFoodScore", kind: "factual", spec: { matcher: "exact" } },
+            {
+                field: "realFoodScore",
+                kind: "factual",
+                spec: { matcher: "exact" },
+            },
         ];
         const result = await scoreOutput({
             ...base,
@@ -76,7 +90,11 @@ describe("scoreOutput", () => {
         ]);
         expect(result.judge?.score).toBe(0.9);
         expect(result.judge?.details?.fields).toEqual([
-            { field: "keepGoingTip", score: 0.9, rationale: "judged keepGoingTip" },
+            {
+                field: "keepGoingTip",
+                score: 0.9,
+                rationale: "judged keepGoingTip",
+            },
         ]);
     });
 
@@ -86,8 +104,18 @@ describe("scoreOutput", () => {
                 ...base,
                 output: { tipA: "x", tipB: "y" },
                 fieldConfigs: [
-                    { field: "tipA", kind: "generative", rubric: "?", modelId: "gpt-4o" },
-                    { field: "tipB", kind: "generative", rubric: "?", modelId: "gpt-4o" },
+                    {
+                        field: "tipA",
+                        kind: "generative",
+                        rubric: "?",
+                        modelId: "gpt-4o",
+                    },
+                    {
+                        field: "tipB",
+                        kind: "generative",
+                        rubric: "?",
+                        modelId: "gpt-4o",
+                    },
                 ],
             },
             stubJudge({ tipA: 1, tipB: 0 }),
@@ -104,14 +132,25 @@ describe("scoreOutput", () => {
                 output: { calories: "not a number", dish: "oatmeal" },
                 label: { calories: 100, dish: "oatmeal" },
                 fieldConfigs: [
-                    { field: "calories", kind: "factual", spec: { matcher: "numeric_tolerance", tolerance: 0.1 } },
-                    { field: "dish", kind: "factual", spec: { matcher: "exact" } },
+                    {
+                        field: "calories",
+                        kind: "factual",
+                        spec: { matcher: "numeric_tolerance", tolerance: 0.1 },
+                    },
+                    {
+                        field: "dish",
+                        kind: "factual",
+                        spec: { matcher: "exact" },
+                    },
                 ],
             },
             stubJudge({}),
         );
         const byField = Object.fromEntries(
-            (result.fieldDiff?.details.fields ?? []).map((f) => [f.field, f.score]),
+            (result.fieldDiff?.details.fields ?? []).map((f) => [
+                f.field,
+                f.score,
+            ]),
         );
         expect(byField.calories).toBe(0);
         expect(byField.dish).toBe(1);
@@ -124,7 +163,11 @@ describe("scoreOutput", () => {
                 output: { dish: "oatmeal", notes: "anything" },
                 label: { dish: "oatmeal", notes: "whatever" },
                 fieldConfigs: [
-                    { field: "dish", kind: "factual", spec: { matcher: "exact" } },
+                    {
+                        field: "dish",
+                        kind: "factual",
+                        spec: { matcher: "exact" },
+                    },
                     { field: "notes", kind: "factual" },
                 ],
             },
@@ -141,14 +184,27 @@ describe("scoreOutput", () => {
                 ...base,
                 output: { tipA: "x", tipB: "y" },
                 fieldConfigs: [
-                    { field: "tipA", kind: "generative", rubric: "?", modelId: "gpt-4o" },
-                    { field: "tipB", kind: "generative", rubric: "?", modelId: "gpt-4o" },
+                    {
+                        field: "tipA",
+                        kind: "generative",
+                        rubric: "?",
+                        modelId: "gpt-4o",
+                    },
+                    {
+                        field: "tipB",
+                        kind: "generative",
+                        rubric: "?",
+                        modelId: "gpt-4o",
+                    },
                 ],
             },
             stubJudge({ tipA: 0.8 }),
         );
         const byField = Object.fromEntries(
-            (result.judge?.details?.fields ?? []).map((f) => [f.field, f.score]),
+            (result.judge?.details?.fields ?? []).map((f) => [
+                f.field,
+                f.score,
+            ]),
         );
         expect(byField.tipA).toBe(0.8);
         expect(byField.tipB).toBeNull();
@@ -163,7 +219,11 @@ describe("scoreOutput", () => {
                 output: { dish: "oatmeal" },
                 label: { dish: "oatmeal" },
                 fieldConfigs: [
-                    { field: "dish", kind: "factual", spec: { matcher: "exact" } },
+                    {
+                        field: "dish",
+                        kind: "factual",
+                        spec: { matcher: "exact" },
+                    },
                 ],
             },
             stubJudge({}),
@@ -227,7 +287,12 @@ describe("scoreOutput", () => {
         const rules: FieldRule[] = [
             { field: "dish", matcher: "exact" },
             { field: "items", matcher: "set_overlap" },
-            { field: "calories", matcher: "numeric_tolerance", tolerance: 0.25, relative: true },
+            {
+                field: "calories",
+                matcher: "numeric_tolerance",
+                tolerance: 0.25,
+                relative: true,
+            },
         ];
         const output = {
             dish: "Oatmeal",
@@ -279,4 +344,60 @@ describe("scoreOutput", () => {
             expected: 350,
         });
     });
+});
+
+describe("schema-free golden labels", () => {
+    it.each([
+        [{ sentiment: "positive" }, 1],
+        [{ sentiment: "negative" }, 0],
+        [{}, 0],
+    ])(
+        "scores %j against the imported answer without a judge",
+        async (output, expected) => {
+            const judge = vi.fn();
+            const result = await scoreOutput(
+                {
+                    ...base,
+                    output,
+                    label: { sentiment: "positive" },
+                    fieldConfigs: [],
+                },
+                judge,
+            );
+            expect(result.fieldDiff?.score).toBe(expected);
+            expect(judge).not.toHaveBeenCalled();
+        },
+    );
+});
+
+it("compares nested golden values independently of object key order and ignores output-only fields", async () => {
+    const result = await scoreOutput({
+        ...base,
+        output: { facts: { count: 0, enabled: false }, extra: "ignored" },
+        label: { facts: { enabled: false, count: 0 } },
+        fieldConfigs: [],
+    });
+    expect(result.fieldDiff?.score).toBe(1);
+    expect(result.fieldDiff?.details.fields).toHaveLength(1);
+});
+
+it("does not invent a score for empty golden placeholders", async () => {
+    const result = await scoreOutput({
+        ...base,
+        output: { sentiment: "positive" },
+        label: {},
+        fieldConfigs: [],
+    });
+    expect(result.fieldDiff).toBeUndefined();
+});
+
+it("leaves transcript matching to transcript metrics", async () => {
+    const result = await scoreOutput({
+        ...base,
+        defaultFieldMatcher: undefined,
+        output: { transcript: "hello" },
+        label: { expectedTranscript: "hello" },
+        fieldConfigs: [],
+    });
+    expect(result.fieldDiff).toBeUndefined();
 });

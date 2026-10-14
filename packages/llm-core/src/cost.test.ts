@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { computeCostFromUsageWithPricing } from "./cost.js";
+import {
+    completionCostFields,
+    computeCostFromUsageWithPricing,
+} from "./cost.js";
 
 describe("computeCostFromUsageWithPricing", () => {
     it("includes reasoning and cache charges without double-charging cached input", () => {
@@ -33,4 +36,54 @@ describe("computeCostFromUsageWithPricing", () => {
             ),
         ).toBeCloseTo(0.00010875, 10);
     });
+});
+
+describe("completionCostFields", () => {
+    const pricing = {
+        promptPricePerToken: 0.01,
+        completionPricePerToken: 0.03,
+    };
+    it.each([0, 0.000042])(
+        "prefers the actual provider charge %s over catalog estimates",
+        (usd) => {
+            expect(
+                completionCostFields(
+                    {
+                        usage: { promptTokens: 10, completionTokens: 5 },
+                        cost: { usd, source: "provider_reported" },
+                    },
+                    pricing,
+                ),
+            ).toEqual({ costUsd: usd, costSource: "computed" });
+        },
+    );
+    it("estimates from pricing when the provider has no charge", () => {
+        expect(
+            completionCostFields(
+                { usage: { promptTokens: 10, completionTokens: 5 } },
+                pricing,
+            ).costUsd,
+        ).toBeCloseTo(0.25);
+    });
+    it.each([undefined, -1, NaN, Infinity])(
+        "keeps missing or invalid charge %s unavailable without pricing",
+        (usd) => {
+            expect(
+                completionCostFields(
+                    {
+                        usage: {},
+                        ...(usd === undefined
+                            ? {}
+                            : {
+                                  cost: {
+                                      usd,
+                                      source: "provider_reported" as const,
+                                  },
+                              }),
+                    },
+                    undefined,
+                ),
+            ).toEqual({ costSource: "unavailable" });
+        },
+    );
 });

@@ -1,7 +1,7 @@
 import {
     getEvalProvider,
     getBareModelName,
-    computeCostFromUsageWithPricing,
+    completionCostFields,
     type ApiKeys,
     type CompletionRequest,
     type CostSource,
@@ -47,7 +47,7 @@ export async function executeCell(
     };
     const result = await provider.complete(completionRequest);
 
-    const { costUsd, costSource } = resolveCost(result.usage, pricing);
+    const { costUsd, costSource } = completionCostFields(result, pricing);
 
     return {
         outputText: result.text,
@@ -59,17 +59,4 @@ export async function executeCell(
         costSource,
         providerMetadata: result.providerMetadata,
     };
-}
-
-function resolveCost(
-    usage: UsageData,
-    pricing: ModelPricing | undefined,
-): { costUsd?: number; costSource: CostSource } {
-    if (pricing) {
-        const computed = computeCostFromUsageWithPricing(usage, pricing);
-        if (computed !== undefined) {
-            return { costUsd: computed, costSource: "computed" };
-        }
-    }
-    return { costSource: "unavailable" };
 }

@@ -119,3 +119,38 @@ describe("CellDrawer", () => {
         expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 });
+
+it("shows deterministic golden scores and the expected versus actual answer", () => {
+    render(
+        <CellDrawer
+            open
+            onClose={noop}
+            saveCellAnnotationAction={noop}
+            data={{
+                ...PAYLOAD,
+                scores: [
+                    {
+                        scorerType: "field_diff",
+                        score: 0,
+                        detailsJson: {
+                            fields: [
+                                {
+                                    field: "sentiment",
+                                    matcher: "exact",
+                                    actual: "negative",
+                                    expected: "positive",
+                                    score: 0,
+                                },
+                            ],
+                        },
+                        rationale: null,
+                    },
+                ],
+            }}
+        />,
+    );
+    expect(
+        screen.getByRole("heading", { name: "Golden answer comparison" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("golden")).toBeInTheDocument();
+});

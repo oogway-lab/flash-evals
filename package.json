@@ -39,6 +39,7 @@
         "docs:check": "node scripts/check-doc-commands.mjs",
         "docs:env": "node scripts/check-env-docs.mjs",
         "docs:api": "typedoc --options typedoc.json",
+        "models:refresh-snapshot": "pnpm --filter @mosaic/llm-core build && node scripts/update-model-catalog.mjs",
         "labels:sync": "node scripts/sync-github-labels.mjs",
         "api:dev": "pnpm --filter @mosaic/api dev",
         "api:build": "pnpm --filter @mosaic/api build",

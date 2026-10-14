@@ -26,19 +26,24 @@ import { availableModelOptions } from "./modelRegistry.js";
 describe("availableModelOptions", () => {
     beforeEach(() => vi.mocked(listAvailableModelMetadata).mockClear());
 
-    it("includes OpenRouter-only models without requiring Gateway support", async () => {
-        vi.mocked(listAvailableModelMetadata).mockResolvedValueOnce([
-            { id: "google/gemini-3.8-flash" },
-        ]);
-        const result = await availableModelOptions({ openrouter: "test-key" });
-        expect(result.models).toContainEqual(
-            expect.objectContaining({
-                id: "google/gemini-3.8-flash",
-                available: true,
-                transports: ["openrouter"],
-            }),
-        );
-    });
+    it.each(["google/gemini-3.8-flash", "google/gemini-3.5-flash-lite"])(
+        "includes catalog model %s through authenticated provider discovery",
+        async (id) => {
+            vi.mocked(listAvailableModelMetadata).mockResolvedValueOnce([
+                { id },
+            ]);
+            const result = await availableModelOptions({
+                openrouter: "test-key",
+            });
+            expect(result.models).toContainEqual(
+                expect.objectContaining({
+                    id,
+                    available: true,
+                    transports: ["openrouter"],
+                }),
+            );
+        },
+    );
 
     it("unions models and transports enabled by effective provider keys", async () => {
         const result = await availableModelOptions({

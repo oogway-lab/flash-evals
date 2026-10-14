@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import type { ProviderMetadata } from "@mosaic/llm-core";
+import type { ProviderMetadata, IModelCatalogSnapshot } from "@mosaic/llm-core";
 import type {
     ISttRunConfig,
     IWorkflowLlmActualRoute,
@@ -1509,3 +1509,10 @@ export const mcpIdempotencyRecords = pgTable(
         index("mcp_idempotency_created_at_idx").on(t.createdAt),
     ],
 );
+
+/** Public provider metadata only. Credentials and account-specific listings never belong here. */
+export const modelCatalogSnapshots = pgTable("model_catalog_snapshots", {
+    source: text("source").primaryKey(),
+    snapshot: jsonb("snapshot").$type<IModelCatalogSnapshot>().notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+});

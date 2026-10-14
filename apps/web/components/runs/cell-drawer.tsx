@@ -40,6 +40,7 @@ import {
     type TranscriptJudgeMetricDetails,
     type TranscriptMetricDetails,
     formatTranscriptReferenceKind,
+    toFieldDiffDetails,
     toJudgeCriteria,
     toJudgeDetails,
     toTranscriptJudgeMetricDetails,
@@ -89,6 +90,8 @@ export function CellDrawer({
         : retained.modelDisplayName;
     if (!data) return null;
 
+    const golden = data.scores.find((s) => s.scorerType === "field_diff");
+    const goldenDetails = toFieldDiffDetails(golden?.detailsJson);
     const judge = data.scores.find((s) => s.scorerType === "judge");
     const transcriptMetric = data.scores.find(
         (s) =>
@@ -305,7 +308,15 @@ export function CellDrawer({
                     <section className="flex flex-col gap-3">
                         <SectionTitle as="h3">Scores</SectionTitle>
                         <div className="flex flex-wrap gap-2">
-                            <ScorePill score={judge?.score} label="judge" />
+                            {golden && (
+                                <ScorePill
+                                    score={golden.score}
+                                    label="golden"
+                                />
+                            )}
+                            {(judge || !golden) && (
+                                <ScorePill score={judge?.score} label="judge" />
+                            )}
                             {transcriptMetric && (
                                 <ScorePill
                                     score={transcriptMetric.score}
@@ -347,6 +358,15 @@ export function CellDrawer({
                                 data={data.cell.outputJson}
                                 collapsible
                             />
+                        </section>
+                    )}
+
+                    {goldenDetails && (
+                        <section className="flex flex-col gap-3">
+                            <SectionTitle as="h3">
+                                Golden answer comparison
+                            </SectionTitle>
+                            <JsonBlock data={goldenDetails} collapsible />
                         </section>
                     )}
 

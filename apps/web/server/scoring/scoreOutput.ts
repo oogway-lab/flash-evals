@@ -1,4 +1,9 @@
-import { getBareModelName, type ApiKeys, type EvalProviderTransport, type ReasoningEffort } from "@mosaic/llm-core";
+import {
+    getBareModelName,
+    type ApiKeys,
+    type EvalProviderTransport,
+    type ReasoningEffort,
+} from "@mosaic/llm-core";
 import { scoreFieldDiff } from "./fieldDiff";
 import { judgeFields, type JudgeFn } from "./judgeFields";
 import { runJudge } from "./judge";
@@ -23,6 +28,8 @@ export interface IScoreOutputArgs {
     output: OutputJson | null;
     label?: LabelJson;
     fieldConfigs: IPipelineFieldConfig[];
+    /** Opt in to schema-free answer matching; transcript runs use their own metrics. */
+    defaultFieldMatcher?: "exact";
     inputText?: string;
     hasImage: boolean;
     reference?: unknown;
@@ -65,18 +72,34 @@ export async function scoreOutput(
               inferNestedFieldSet(args.label),
           )
         : factual;
-    const rules = factualForLabel
+    const rules: FieldRule[] = factualForLabel
         .map(ruleFromConfig)
         .filter((rule): rule is FieldRule => rule !== undefined);
 
+    // Schema-free golden datasets need no judge or hand-authored matchers.
+    // Explicit field configurations keep their existing scoring semantics.
+    if (
+        args.defaultFieldMatcher &&
+        args.fieldConfigs.length === 0 &&
+        args.label
+    ) {
+        rules.push(
+            ...Object.keys(args.label).map((field): FieldRule => ({
+                field,
+                matcher: "exact",
+            })),
+        );
+    }
+
     if (args.label && structured) {
         if (rules.length > 0) {
-            const { score, details } = scoreFieldDiff(structured, args.label, rules);
+            const { score, details } = scoreFieldDiff(
+                structured,
+                args.label,
+                rules,
+            );
             result.fieldDiff = { score: score ?? null, details };
-        } else if (
-            Object.keys(args.label).length > 0 &&
-            hadScorableFactual
-        ) {
+        } else if (Object.keys(args.label).length > 0 && hadScorableFactual) {
             result.fieldDiff = {
                 score: null,
                 details: { fields: [] },

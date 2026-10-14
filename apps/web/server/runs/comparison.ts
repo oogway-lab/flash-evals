@@ -7,7 +7,7 @@ import { getLeaderboard, type LeaderboardRow } from "./reads";
 import { enrichRunRows } from "./listReads";
 import { listRuns } from "./service";
 
-export type QualitySource = "judge";
+export type QualitySource = "judge" | "field";
 
 export interface ComparableRun {
     id: string;
@@ -42,7 +42,7 @@ export interface ModelComparison {
               quality: number | undefined;
               cost: number | undefined;
               latency: number | undefined;
-              // false when a side is missing a judge score, so quality can't be diffed
+              // False when a side lacks quality scores or uses a different scorer.
               qualityComparable: boolean;
           }
         | undefined;
@@ -56,9 +56,13 @@ export interface RunComparisonRow {
 
 function side(input: RunComparisonRow): SideMetrics {
     const { row } = input;
-    const quality = row.avgJudgeScore;
+    const quality = row.avgJudgeScore ?? row.avgFieldScore;
     const qualitySource: QualitySource | undefined =
-        row.avgJudgeScore !== undefined ? "judge" : undefined;
+        row.avgJudgeScore !== undefined
+            ? "judge"
+            : row.avgFieldScore !== undefined
+              ? "field"
+              : undefined;
     return {
         quality,
         qualitySource,

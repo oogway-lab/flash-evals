@@ -163,6 +163,8 @@ vi.mock("../judges/service", () => ({
 }));
 
 import { executeRun } from "./executor";
+import { scoreOutput } from "../scoring/scoreOutput";
+import { getLabelsForItems } from "../datasets/service";
 
 describe("executeRun provider metadata persistence", () => {
     beforeEach(() => {
@@ -271,3 +273,39 @@ function metadataUpdate(): UpdatePayload | undefined {
         (payload) => "providerMetadata" in payload,
     );
 }
+
+it("enables golden matching when the worker scores cached text outputs", async () => {
+    const outputJson = { answer: "yes" };
+    mocks.findCachedCell.mockResolvedValue({
+        outputJson,
+        latencyMs: 10,
+        costUsd: 0.001,
+        costSource: "computed",
+        promptTokens: 10,
+        completionTokens: 5,
+    });
+    mocks.getRunCells.mockResolvedValue([
+        {
+            id: "cell-1",
+            runModelId: "run-model-1",
+            datasetItemId: "item-1",
+            status: "cached",
+            outputJson,
+        },
+    ]);
+    vi.mocked(getLabelsForItems).mockResolvedValue(
+        new Map([["item-1", { answer: "yes" }]]),
+    );
+    vi.mocked(scoreOutput).mockResolvedValue({
+        fieldDiff: { score: 1, details: { fields: [] } },
+    });
+    await executeRun("run-1");
+    expect(scoreOutput).toHaveBeenCalledWith(
+        expect.objectContaining({
+            defaultFieldMatcher: "exact",
+            fieldConfigs: [],
+            label: { answer: "yes" },
+            output: outputJson,
+        }),
+    );
+});

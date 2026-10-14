@@ -1,3 +1,4 @@
+import { hasGoldenLabel } from "@mosaic/api-contract";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import {
@@ -12,10 +13,7 @@ import type { FieldRule, JsonSchemaObject, LabelJson } from "../db/jsonTypes";
 import { storeImage, deleteImage } from "../images/source";
 import { storeAudio, deleteAudio } from "../audio/source";
 import { parseSchema } from "./schemaForm";
-import {
-    DeleteItemBlockedError,
-    DuplicateItemSourceNameError,
-} from "./errors";
+import { DeleteItemBlockedError, DuplicateItemSourceNameError } from "./errors";
 
 export {
     DELETE_ITEM_BLOCKED_MESSAGE,
@@ -86,10 +84,7 @@ export async function setDatasetArchived(datasetId: string, archived: boolean) {
 }
 
 export async function updateDatasetName(datasetId: string, name: string) {
-    await db
-        .update(datasets)
-        .set({ name })
-        .where(eq(datasets.id, datasetId));
+    await db.update(datasets).set({ name }).where(eq(datasets.id, datasetId));
 }
 
 export async function updateDatasetDescription(
@@ -147,7 +142,12 @@ export async function duplicateDataset(datasetId: string, createdBy: string) {
         const sourceLabels = await tx
             .select()
             .from(labels)
-            .where(inArray(labels.datasetItemId, sourceItems.map((item) => item.id)));
+            .where(
+                inArray(
+                    labels.datasetItemId,
+                    sourceItems.map((item) => item.id),
+                ),
+            );
         const labelByItemId = new Map(
             sourceLabels.map((label) => [label.datasetItemId, label.labelJson]),
         );
@@ -166,7 +166,7 @@ export async function duplicateDataset(datasetId: string, createdBy: string) {
                 .returning();
 
             const label = labelByItemId.get(item.id);
-            if (label) {
+            if (hasGoldenLabel(label)) {
                 await tx.insert(labels).values({
                     datasetItemId: copiedItem.id,
                     labelJson: label,
@@ -196,13 +196,20 @@ export function validateDatasetSchemaInput(
     fieldRules: FieldRule[],
 ): DatasetSchemaValidationResult {
     const parsed = parseSchema(jsonSchema);
-    if (!parsed.ok) return { ok: false, field: "jsonSchema", error: parsed.error };
+    if (!parsed.ok)
+        return { ok: false, field: "jsonSchema", error: parsed.error };
 
     if (!Array.isArray(fieldRules)) {
-        return { ok: false, field: "fieldRules", error: "Field rules must be an array." };
+        return {
+            ok: false,
+            field: "fieldRules",
+            error: "Field rules must be an array.",
+        };
     }
 
-    const schemaFields = new Set(parsed.schema.fields.map((field) => field.name));
+    const schemaFields = new Set(
+        parsed.schema.fields.map((field) => field.name),
+    );
     for (const rule of fieldRules) {
         if (!rule || typeof rule.field !== "string") {
             return {
@@ -268,7 +275,7 @@ export async function addTextItem(
         .insert(datasetItems)
         .values({ datasetId, type: "text", inputText })
         .returning();
-    if (label) await addLabel(item.id, label);
+    if (hasGoldenLabel(label)) await addLabel(item.id, label);
     return item;
 }
 
@@ -294,7 +301,7 @@ export async function addImageItem(
                     mimeType,
                 })
                 .returning();
-            if (label) {
+            if (hasGoldenLabel(label)) {
                 await tx
                     .insert(labels)
                     .values({ datasetItemId: item.id, labelJson: label })
@@ -335,7 +342,7 @@ export async function addAudioItem(
                     mimeType: stored.mimeType,
                 })
                 .returning();
-            if (label) {
+            if (hasGoldenLabel(label)) {
                 await tx
                     .insert(labels)
                     .values({ datasetItemId: item.id, labelJson: label })
@@ -357,7 +364,10 @@ export async function addLabel(datasetItemId: string, labelJson: LabelJson) {
     const [row] = await db
         .insert(labels)
         .values({ datasetItemId, labelJson })
-        .onConflictDoUpdate({ target: labels.datasetItemId, set: { labelJson } })
+        .onConflictDoUpdate({
+            target: labels.datasetItemId,
+            set: { labelJson },
+        })
         .returning();
     return row.id;
 }
@@ -370,7 +380,9 @@ export async function updateItem(
     if (!existing) throw new Error("Dataset item not found");
 
     const nextInputText =
-        payload.inputText !== undefined ? payload.inputText : existing.inputText;
+        payload.inputText !== undefined
+            ? payload.inputText
+            : existing.inputText;
     let nextStorageKey = existing.storageKey;
     let nextMimeType = existing.mimeType;
     let nextSourceName = existing.sourceName;
@@ -382,14 +394,20 @@ export async function updateItem(
     }
 
     if (payload.audio) {
-        const stored = await storeAudio(payload.audio.bytes, payload.audio.mimeType);
+        const stored = await storeAudio(
+            payload.audio.bytes,
+            payload.audio.mimeType,
+        );
         nextStorageKey = stored.storageKey;
         nextMimeType = stored.mimeType;
         nextSourceName = normalizeSourceName(payload.audio.sourceName) ?? null;
         replacementStorageKey = nextStorageKey;
         replacementKind = "audio";
     } else if (payload.image) {
-        nextStorageKey = await storeImage(payload.image.bytes, payload.image.mimeType);
+        nextStorageKey = await storeImage(
+            payload.image.bytes,
+            payload.image.mimeType,
+        );
         nextMimeType = payload.image.mimeType;
         nextSourceName = normalizeSourceName(payload.image.sourceName) ?? null;
         replacementStorageKey = nextStorageKey;
@@ -398,7 +416,11 @@ export async function updateItem(
 
     const mediaKind =
         replacementKind ??
-        (nextMimeType?.startsWith("audio/") ? "audio" : nextStorageKey ? "image" : undefined);
+        (nextMimeType?.startsWith("audio/")
+            ? "audio"
+            : nextStorageKey
+              ? "image"
+              : undefined);
     const hasMedia = Boolean(nextStorageKey);
     const hasText = Boolean(nextInputText);
     const nextType = hasMedia ? (hasText ? "mixed" : mediaKind) : "text";
@@ -437,12 +459,17 @@ export async function updateItem(
             existing.storageKey &&
             existing.storageKey !== replacementStorageKey
         ) {
-            await deleteStoredMedia(existing.storageKey, existing.mimeType).catch(() => {});
+            await deleteStoredMedia(
+                existing.storageKey,
+                existing.mimeType,
+            ).catch(() => {});
         }
         return row;
     } catch (err) {
         if (replacementStorageKey) {
-            await deleteStoredMedia(replacementStorageKey, nextMimeType).catch(() => {});
+            await deleteStoredMedia(replacementStorageKey, nextMimeType).catch(
+                () => {},
+            );
         }
         if (isUniqueViolation(err)) throw new DuplicateItemSourceNameError();
         throw err;
@@ -482,7 +509,9 @@ export async function deleteItem(datasetItemId: string) {
         throw err;
     }
     if (existing.storageKey) {
-        await deleteStoredMedia(existing.storageKey, existing.mimeType).catch(() => {});
+        await deleteStoredMedia(existing.storageKey, existing.mimeType).catch(
+            () => {},
+        );
     }
 }
 
@@ -542,7 +571,9 @@ export async function deleteDataset(datasetId: string) {
                 } => Boolean(item.storageKey),
             )
             .map((item) =>
-                deleteStoredMedia(item.storageKey, item.mimeType).catch(() => {}),
+                deleteStoredMedia(item.storageKey, item.mimeType).catch(
+                    () => {},
+                ),
             ),
     );
 }
@@ -567,7 +598,9 @@ export function isUniqueViolation(err: unknown): boolean {
     );
 }
 
-function normalizeSourceName(sourceName: string | undefined): string | undefined {
+function normalizeSourceName(
+    sourceName: string | undefined,
+): string | undefined {
     const trimmed = sourceName?.trim();
     return trimmed ? trimmed : undefined;
 }

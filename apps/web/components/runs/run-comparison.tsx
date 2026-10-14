@@ -197,9 +197,11 @@ function EffortCell({
 function ComparisonRow({
     model,
     fmtCostValue,
+    showSttGate,
 }: {
     model: IModelComparison;
     fmtCostValue: ReturnType<typeof formatCostColumn>;
+    showSttGate: boolean;
 }) {
     const onlyOneSide = !model.baseline || !model.current;
     const effortDiffers = model.baseline?.effort !== model.current?.effort;
@@ -209,9 +211,11 @@ function ComparisonRow({
             <QualityCell model={model} />
             <CostCell model={model} fmtCostValue={fmtCostValue} />
             <LatencyCell model={model} />
-            <TableCell>
-                <SttGateBadge gate={model.sttShipGate} />
-            </TableCell>
+            {showSttGate && (
+                <TableCell>
+                    <SttGateBadge gate={model.sttShipGate} />
+                </TableCell>
+            )}
             <EffortCell model={model} effortDiffers={effortDiffers} />
         </TableRow>
     );
@@ -257,6 +261,8 @@ export function RunComparison({
         );
     }
 
+    const showSttGate =
+        comparison?.some((model) => model.sttShipGate !== undefined) ?? false;
     const improved =
         comparison?.filter((m) => (m.delta?.quality ?? 0) > 0).length ?? 0;
     const regressed =
@@ -333,7 +339,9 @@ export function RunComparison({
                                     <TableHead align="numeric">
                                         Latency (base → this)
                                     </TableHead>
-                                    <TableHead>STT gate</TableHead>
+                                    {showSttGate && (
+                                        <TableHead>STT gate</TableHead>
+                                    )}
                                     <TableHead>Effort (base → this)</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -342,6 +350,7 @@ export function RunComparison({
                                     <ComparisonRow
                                         key={model.modelId}
                                         model={model}
+                                        showSttGate={showSttGate}
                                         fmtCostValue={fmtCostValue}
                                     />
                                 ))}

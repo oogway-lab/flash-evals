@@ -49,7 +49,11 @@ function valueAtPath(source: Record<string, unknown>, field: string): unknown {
         }, source);
 }
 
-function scoreField(rule: FieldRule, actual: unknown, expected: unknown): number {
+function scoreField(
+    rule: FieldRule,
+    actual: unknown,
+    expected: unknown,
+): number {
     switch (rule.matcher) {
         case "exact":
             return scalarEqual(actual, expected) ? 1 : 0;
@@ -68,7 +72,16 @@ function scoreField(rule: FieldRule, actual: unknown, expected: unknown): number
 }
 
 function normalizeScalar(v: unknown): unknown {
-    return typeof v === "string" ? v.trim().toLowerCase() : v;
+    if (typeof v === "string") return v.trim().toLowerCase();
+    if (Array.isArray(v)) return v.map(normalizeScalar);
+    if (v && typeof v === "object") {
+        return Object.fromEntries(
+            Object.entries(v)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([key, value]) => [key, normalizeScalar(value)]),
+        );
+    }
+    return v;
 }
 
 function scalarEqual(a: unknown, b: unknown): boolean {

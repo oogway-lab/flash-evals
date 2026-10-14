@@ -6,6 +6,10 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const fixtures = {
+    "../server/jobs/modelCatalogQueue": `
+        exports.startModelCatalogWorker = async () => {};
+        exports.stopModelCatalogWorker = async () => ({ remainingInFlight: 0 });
+    `,
     "../server/db/client": `
         exports.closeDatabasePool = async () => {
             clearInterval(globalThis.workerFixtureTimer);

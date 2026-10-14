@@ -1,3 +1,4 @@
+import { hasGoldenLabel } from "@mosaic/api-contract";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { datasets, datasetItems, labels } from "../db/schema";
@@ -71,7 +72,7 @@ export async function listDatasetsEnriched(
     const labeledCounts = await db
         .select({
             datasetId: datasetItems.datasetId,
-            count: sql<number>`count(${labels.id})::int`,
+            count: sql<number>`count(${labels.id}) filter (where ${labels.labelJson} <> '{}'::jsonb)::int`,
         })
         .from(datasetItems)
         .leftJoin(labels, eq(labels.datasetItemId, datasetItems.id))
@@ -136,7 +137,7 @@ export async function getDatasetDetail(
     const labelsById = await getLabelsForItems(items.map((item) => item.id));
     const labels = items.map((item) => labelsById.get(item.id));
     const itemCount = items.length;
-    const labeledItemCount = labels.filter(Boolean).length;
+    const labeledItemCount = labels.filter(hasGoldenLabel).length;
 
     return {
         dataset,

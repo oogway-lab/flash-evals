@@ -1,5 +1,6 @@
+import type { CompletionResult } from "@mosaic/llm-core";
 import {
-    computeCostFromUsageWithPricing,
+    completionCostFields,
     getBareModelName,
     getEvalProvider,
     type ApiKeys,
@@ -69,14 +70,16 @@ const DEFAULT_MAX_TOKENS = 1200;
 export async function runPromptTest(
     input: IRunPromptTestInput,
 ): Promise<IPromptTestRunResponse> {
-    const samples = input.samples.length > 0
-        ? input.samples
-        : [{ name: "Single input", inputText: "" }];
+    const samples =
+        input.samples.length > 0
+            ? input.samples
+            : [{ name: "Single input", inputText: "" }];
     const resolvedEffort = resolveReasoningEffort(
         input.targetModelId,
         input.reasoningEffort,
     );
-    const apiKeys = input.apiKeys ?? (await resolveApiKeys(input.teamId)).apiKeys;
+    const apiKeys =
+        input.apiKeys ?? (await resolveApiKeys(input.teamId)).apiKeys;
     const provider = getEvalProvider(apiKeys);
     const results: IPromptTestRunResult[] = [];
 
@@ -90,22 +93,24 @@ export async function runPromptTest(
         const startedAt = performance.now();
         try {
             const completion = await withTimeout(
-                (signal) => provider.complete({
-                    model: getBareModelName(input.targetModelId),
-                    prompt,
-                    images: input.image ? [input.image] : undefined,
-                    responseSchema: {
-                        name: "prompt_output",
-                        schema: input.schema,
-                    },
-                    maxTokens: DEFAULT_MAX_TOKENS,
-                    reasoningEffort: resolvedEffort,
-                    signal,
-                }),
+                (signal) =>
+                    provider.complete({
+                        model: getBareModelName(input.targetModelId),
+                        prompt,
+                        images: input.image ? [input.image] : undefined,
+                        responseSchema: {
+                            name: "prompt_output",
+                            schema: input.schema,
+                        },
+                        maxTokens: DEFAULT_MAX_TOKENS,
+                        reasoningEffort: resolvedEffort,
+                        signal,
+                    }),
                 input.timeoutMs,
                 input.signal,
             );
-            const latencyMs = completion.latencyMs ?? performance.now() - startedAt;
+            const latencyMs =
+                completion.latencyMs ?? performance.now() - startedAt;
             const parsed = parseStrictJsonOnly(completion.text);
             if (!parsed.ok) {
                 results.push({
@@ -118,7 +123,7 @@ export async function runPromptTest(
                     latencyMs,
                     ...(await costFields(
                         input.targetModelId,
-                        completion.usage,
+                        completion,
                         apiKeys,
                     )),
                 });
@@ -141,14 +146,12 @@ export async function runPromptTest(
                 },
                 usage: completion.usage,
                 latencyMs,
-                ...(await costFields(
-                    input.targetModelId,
-                    completion.usage,
-                    apiKeys,
-                )),
+                ...(await costFields(input.targetModelId, completion, apiKeys)),
             });
         } catch (err) {
-            results.push(errorResult(sample, err, performance.now() - startedAt));
+            results.push(
+                errorResult(sample, err, performance.now() - startedAt),
+            );
         }
     }
 
@@ -168,24 +171,24 @@ function promptForSample(prompt: string, sample: IPromptSampleInput): string {
 
 async function costFields(
     modelId: string,
-    usage: UsageData | undefined,
+    completion: CompletionResult,
     apiKeys: ApiKeys,
 ): Promise<{
     costUsd?: number;
     costSource: "computed" | "unavailable";
 }> {
-    const pricing = await resolvePricingFor(modelId, apiKeys);
-    if (!pricing || !usage) return { costSource: "unavailable" };
-    const costUsd = computeCostFromUsageWithPricing(usage, pricing);
-    return costUsd === undefined
-        ? { costSource: "unavailable" }
-        : { costUsd, costSource: "computed" };
+    const pricing =
+        completion.cost?.usd !== undefined
+            ? undefined
+            : await resolvePricingFor(modelId, apiKeys);
+    return completionCostFields(completion, pricing);
 }
 
 function aggregateStatus(
     results: IPromptTestRunResult[],
 ): IPromptTestRunResponse["status"] {
-    if (results.every((result) => result.status === "success")) return "success";
+    if (results.every((result) => result.status === "success"))
+        return "success";
     if (results.some((result) => result.status === "success")) return "partial";
     return "failed";
 }
