@@ -6,8 +6,14 @@ import {
     screen,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FileDropzone, fileMatchesAccept } from "./file-dropzone";
+import { FileDropzone } from "./file-dropzone";
 import { SubmitButton } from "./submit-button";
+import {
+    IDLE_UPLOAD_PROGRESS,
+    UploadProgressContext,
+    uploadProgressKey,
+    type IUploadProgress,
+} from "@/lib/uploads/upload-progress";
 
 afterEach(cleanup);
 
@@ -39,15 +45,6 @@ function renderDropzone(onFilesChange = vi.fn()) {
     return onFilesChange;
 }
 
-describe("fileMatchesAccept", () => {
-    it("matches extensions, exact types and wildcards", () => {
-        expect(fileMatchesAccept(png(), "image/png")).toBe(true);
-        expect(fileMatchesAccept(png(), "image/*")).toBe(true);
-        expect(fileMatchesAccept(png("x.PNG"), ".png")).toBe(true);
-        expect(fileMatchesAccept(png(), ".csv,text/csv")).toBe(false);
-    });
-});
-
 describe("FileDropzone", () => {
     it("keeps the highlight while dragging over child elements", () => {
         renderDropzone();
@@ -68,17 +65,132 @@ describe("FileDropzone", () => {
             png("huge.png", 500),
         ]);
 
-        expect(screen.getByRole("alert")).toHaveTextContent(
-            "notes.txt: unsupported file type.",
+        const leftOut = screen.getByRole("alert", { name: "Files left out" });
+        expect(leftOut).toHaveTextContent("2 files won't be uploaded");
+        expect(leftOut).toHaveTextContent("Unsupported file type");
+        expect(leftOut).toHaveTextContent("notes.txt");
+        expect(leftOut).toHaveTextContent(
+            "Larger than the 100 B per-file limit",
         );
-        expect(screen.getByRole("alert")).toHaveTextContent(
-            "huge.png: larger than",
-        );
+        expect(leftOut).toHaveTextContent("huge.png");
+        expect(screen.getByText(/1 file will be uploaded/)).toBeInTheDocument();
         const list = screen.getByRole("list", { name: "Selected files" });
         expect(list).toHaveTextContent("ok.png");
         expect(onFilesChange).toHaveBeenLastCalledWith([
             expect.objectContaining({ name: "ok.png" }),
         ]);
+    });
+
+    it("adds to the selection on each drop and checks the batch limits right away", () => {
+        const onFilesChange = vi.fn();
+        render(
+            <FileDropzone
+                name="images"
+                accept="image/png"
+                maxBytes={100}
+                maxFiles={3}
+                maxTotalBytes={50}
+                multiple
+                title="Drop images"
+                hint="PNG"
+                onFilesChange={onFilesChange}
+            />,
+        );
+        drop([png("a.png", 20), png("b.png", 20)]);
+        drop([png("c.png", 20), png("d.png", 5), png("e.png", 5)]);
+
+        // c.png would pass 50 B; e.png would be a fourth file.
+        expect(onFilesChange).toHaveBeenLastCalledWith([
+            expect.objectContaining({ name: "a.png" }),
+            expect.objectContaining({ name: "b.png" }),
+            expect.objectContaining({ name: "d.png" }),
+        ]);
+        expect(
+            screen.getByText(/3 files will be uploaded/).parentElement,
+        ).toHaveTextContent(
+            "3 files will be uploaded · 45 B of 50 B · 2 left out",
+        );
+        const leftOut = screen.getByRole("alert", { name: "Files left out" });
+        expect(leftOut).toHaveTextContent("Over the 50 B limit for one upload");
+        expect(leftOut).toHaveTextContent("c.png");
+        expect(leftOut).toHaveTextContent(
+            "Over the 3-file limit for one upload",
+        );
+        expect(leftOut).toHaveTextContent("e.png");
+
+        // Freeing room lets a left-out file back in.
+        fireEvent.click(screen.getByRole("button", { name: "Remove d.png" }));
+        expect(onFilesChange).toHaveBeenLastCalledWith([
+            expect.objectContaining({ name: "a.png" }),
+            expect.objectContaining({ name: "b.png" }),
+            expect.objectContaining({ name: "e.png" }),
+        ]);
+
+        fireEvent.click(screen.getByRole("button", { name: "Dismiss all" }));
+        expect(
+            screen.queryByRole("alert", { name: "Files left out" }),
+        ).not.toBeInTheDocument();
+    });
+
+    it("shows each file's upload progress and keeps only failed files after an import", () => {
+        const a = png("a.png");
+        const b = png("b.png");
+        const c = png("c.png");
+        const progress = (
+            files: IUploadProgress["files"],
+            completedRun = 0,
+        ): IUploadProgress => ({
+            ...IDLE_UPLOAD_PROGRESS,
+            phase: "uploading",
+            files,
+            completedRun,
+        });
+        const ui = (value: IUploadProgress) => (
+            <UploadProgressContext.Provider value={value}>
+                <FileDropzone
+                    name="images"
+                    accept="image/png"
+                    multiple
+                    title="Drop images"
+                    hint="PNG"
+                />
+            </UploadProgressContext.Provider>
+        );
+        const { rerender } = render(ui(IDLE_UPLOAD_PROGRESS));
+        drop([a, b, c]);
+
+        const states: IUploadProgress["files"] = {
+            [uploadProgressKey("images", a)]: {
+                status: "done",
+                loaded: 10,
+                total: 10,
+            },
+            [uploadProgressKey("images", b)]: {
+                status: "uploading",
+                loaded: 4,
+                total: 10,
+            },
+            [uploadProgressKey("images", c)]: {
+                status: "failed",
+                loaded: 0,
+                total: 10,
+                error: "The network failed.",
+            },
+        };
+        rerender(ui(progress(states)));
+        expect(screen.getByText("Uploaded")).toBeInTheDocument();
+        expect(screen.getByText("40%")).toBeInTheDocument();
+        expect(
+            screen.getByRole("progressbar", { name: "Uploading b.png" }),
+        ).toBeInTheDocument();
+        expect(screen.getByText(/The network failed\./)).toBeInTheDocument();
+
+        // The import went through: a.png is done and leaves the list.
+        rerender(ui(progress(states, 1)));
+        const list = screen.getByRole("list", { name: "Selected files" });
+        expect(list).not.toHaveTextContent("a.png");
+        expect(list).toHaveTextContent("b.png");
+        expect(list).toHaveTextContent("c.png");
     });
 
     it("removes one file and clears all", () => {

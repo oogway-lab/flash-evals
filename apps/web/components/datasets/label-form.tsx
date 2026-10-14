@@ -92,7 +92,7 @@ export function LabelForm({
         formData: FormData,
     ): Promise<IActionState> {
         if (uploadFields && uploadFields.length > 0) {
-            const uploadError = await uploadFormMedia(
+            const { error: uploadError } = await uploadFormMedia(
                 formData,
                 datasetId,
                 uploadFields,

@@ -28,16 +28,19 @@ export type UploadErrorKind =
 export class UploadError extends Error {
     readonly kind: UploadErrorKind;
     readonly fileName?: string;
+    /** Storage's HTTP status, when storage rejected the PUT. */
+    readonly status?: number;
 
     constructor(
         kind: UploadErrorKind,
         message: string,
-        options?: { fileName?: string; cause?: unknown },
+        options?: { fileName?: string; cause?: unknown; status?: number },
     ) {
         super(message);
         this.name = "UploadError";
         this.kind = kind;
         this.fileName = options?.fileName;
+        this.status = options?.status;
         if (options?.cause !== undefined) {
             (this as { cause?: unknown }).cause = options.cause;
         }
@@ -62,12 +65,30 @@ export interface IUploadFilesResult {
     failures: IUploadFailure[];
 }
 
+/** One file's progress; `index` is its position in `files`. */
+export interface IFileProgressEvent {
+    index: number;
+    status: "uploading" | "done" | "failed";
+    loaded: number;
+    total: number;
+    error?: UploadError;
+}
+
 export interface IUploadFilesParams {
     datasetId: string;
     modality: UploadModality;
     files: File[];
     onProgress?: (done: number, total: number) => void;
+    /** Called once the batch is signed, before any bytes are sent. */
+    onSigned?: () => void;
+    /**
+     * Per-file progress. When set, files are sent with XMLHttpRequest so bytes
+     * sent can be reported; otherwise they are sent with `fetch`.
+     */
+    onFileProgress?: (event: IFileProgressEvent) => void;
     concurrency?: number;
+    /** Base wait before retrying a failed PUT; doubles per attempt. */
+    retryDelayMs?: number;
 }
 
 interface IModalityCaps {
@@ -81,6 +102,27 @@ const MODALITY_CAPS: Record<UploadModality, IModalityCaps> = {
 };
 
 const DEFAULT_CONCURRENCY = 3;
+/** PUT attempts per file against the same signed URL. */
+const MAX_PUT_ATTEMPTS = 3;
+const DEFAULT_RETRY_DELAY_MS = 500;
+
+/**
+ * Failures a retry can fix: the network dropped, or storage was busy or
+ * erroring (408, 429, 5xx). Other rejections, such as 412 on a key that
+ * already holds bytes, are final so a retry can never overwrite an upload.
+ */
+function isTransient(error: UploadError): boolean {
+    if (error.kind === "network") return true;
+    const status = error.status;
+    return (
+        error.kind === "storage" &&
+        status !== undefined &&
+        (status >= 500 || status === 408 || status === 429)
+    );
+}
+
+const wait = (ms: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms));
 const SIGN_ENDPOINT = "/api/datasets/upload/sign";
 
 function formatBytes(bytes: number): string {
@@ -199,8 +241,56 @@ function putErrorFromStatus(status: number, fileName: string): UploadError {
     return new UploadError(
         "storage",
         `Storage rejected "${fileName}" (${status}). Please retry.`,
-        { fileName },
+        { fileName, status },
     );
+}
+
+function uploadedObject(
+    file: File,
+    target: ISignedUploadTarget,
+): IUploadedObject {
+    return {
+        storageKey: target.storageKey,
+        fileName: file.name,
+        contentType: file.type || "application/octet-stream",
+        byteSize: file.size,
+    };
+}
+
+/** PUT with XMLHttpRequest, the only browser API that reports bytes sent. */
+function putFileWithProgress(
+    file: File,
+    target: ISignedUploadTarget,
+    onBytes: (loaded: number) => void,
+): Promise<IUploadedObject> {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", target.signedUrl);
+        xhr.setRequestHeader(
+            "Content-Type",
+            file.type || "application/octet-stream",
+        );
+        for (const [header, value] of Object.entries(target.headers ?? {})) {
+            xhr.setRequestHeader(header, value);
+        }
+        xhr.upload.onprogress = (event) => onBytes(event.loaded);
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(uploadedObject(file, target));
+            } else {
+                reject(putErrorFromStatus(xhr.status, file.name));
+            }
+        };
+        xhr.onerror = () =>
+            reject(
+                new UploadError(
+                    "network",
+                    `The network failed while uploading "${file.name}". Please retry.`,
+                    { fileName: file.name },
+                ),
+            );
+        xhr.send(file);
+    });
 }
 
 async function putFile(
@@ -229,12 +319,7 @@ async function putFile(
         throw putErrorFromStatus(res.status, file.name);
     }
 
-    return {
-        storageKey: target.storageKey,
-        fileName: file.name,
-        contentType: file.type || "application/octet-stream",
-        byteSize: file.size,
-    };
+    return uploadedObject(file, target);
 }
 
 /**
@@ -242,14 +327,16 @@ async function putFile(
  * from the web broker route and PUTting bytes directly to Supabase Storage.
  *
  * File bytes never traverse a Next.js Server Action (R1). Uploads run through a
- * bounded concurrency pool; a single PUT failure does not abort the batch — the
- * result reports `uploaded` and `failures` separately so the caller can retry
- * only what failed (R6).
+ * bounded concurrency pool and each file heals on its own: transient PUT
+ * failures retry with backoff, and files that still fail (or whose URL expired)
+ * are re-signed and tried once more. A file that cannot be uploaded never
+ * aborts the batch — the result reports `uploaded` and `failures` separately so
+ * the caller can import what made it and retry only what failed (R6).
  */
 export async function uploadFiles(
     params: IUploadFilesParams,
 ): Promise<IUploadFilesResult> {
-    const { files, modality, onProgress } = params;
+    const { files, modality, onProgress, onFileProgress } = params;
 
     // 1. Fail fast, before any network call.
     preValidate(files, modality);
@@ -260,44 +347,164 @@ export async function uploadFiles(
 
     // 2. Sign the whole batch in one request.
     const targets = await requestSignedTargets(params);
+    params.onSigned?.();
+    const withProgress =
+        onFileProgress !== undefined && typeof XMLHttpRequest !== "undefined";
 
-    // 3. PUT each file with bounded concurrency; collect per-file outcomes.
-    const uploaded: IUploadedObject[] = [];
-    const failures: IUploadFailure[] = [];
+    // 3. PUT each file with bounded concurrency. Each file heals on its own:
+    // transient failures retry against the same URL, and one failed file
+    // never stops the others.
     const total = files.length;
+    const retryDelayMs = params.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+    const outcomes: Array<IUploadedObject | UploadError> = new Array(total);
     let done = 0;
-    let next = 0;
 
-    const limit = Math.max(
-        1,
-        Math.min(params.concurrency ?? DEFAULT_CONCURRENCY, total),
-    );
+    const report = (
+        index: number,
+        status: IFileProgressEvent["status"],
+        loaded: number,
+        error?: UploadError,
+    ) =>
+        onFileProgress?.({
+            index,
+            status,
+            loaded,
+            total: files[index].size,
+            error,
+        });
 
-    async function worker(): Promise<void> {
-        while (next < total) {
-            const index = next;
-            next += 1;
-            const file = files[index];
-            try {
-                uploaded.push(await putFile(file, targets[index]));
-            } catch (err) {
-                const error =
-                    err instanceof UploadError
-                        ? err
-                        : new UploadError(
-                              "storage",
-                              `Failed to upload "${file.name}".`,
-                              { fileName: file.name, cause: err },
-                          );
-                failures.push({ fileName: file.name, error });
-            } finally {
-                done += 1;
-                onProgress?.(done, total);
-            }
+    async function putOnce(
+        index: number,
+        target: ISignedUploadTarget,
+    ): Promise<IUploadedObject> {
+        const file = files[index];
+        report(index, "uploading", 0);
+        try {
+            return withProgress
+                ? await putFileWithProgress(file, target, (loaded) =>
+                      report(index, "uploading", loaded),
+                  )
+                : await putFile(file, target);
+        } catch (err) {
+            throw err instanceof UploadError
+                ? err
+                : new UploadError(
+                      "storage",
+                      `Failed to upload "${file.name}".`,
+                      { fileName: file.name, cause: err },
+                  );
         }
     }
 
-    await Promise.all(Array.from({ length: limit }, () => worker()));
+    async function putWithRetries(
+        index: number,
+        target: ISignedUploadTarget,
+    ): Promise<IUploadedObject | UploadError> {
+        let lastError: UploadError | undefined;
+        for (let attempt = 1; attempt <= MAX_PUT_ATTEMPTS; attempt += 1) {
+            try {
+                return await putOnce(index, target);
+            } catch (err) {
+                lastError = err as UploadError;
+                if (!isTransient(lastError) || attempt === MAX_PUT_ATTEMPTS) {
+                    break;
+                }
+                await wait(retryDelayMs * 2 ** (attempt - 1));
+            }
+        }
+        return lastError as UploadError;
+    }
+
+    async function runPool(
+        indexes: number[],
+        targetFor: (index: number) => ISignedUploadTarget,
+        settle: (index: number, outcome: IUploadedObject | UploadError) => void,
+    ): Promise<void> {
+        let next = 0;
+        const limit = Math.max(
+            1,
+            Math.min(params.concurrency ?? DEFAULT_CONCURRENCY, indexes.length),
+        );
+        async function worker(): Promise<void> {
+            while (next < indexes.length) {
+                const index = indexes[next];
+                next += 1;
+                settle(index, await putWithRetries(index, targetFor(index)));
+            }
+        }
+        await Promise.all(Array.from({ length: limit }, () => worker()));
+    }
+
+    function settleFinal(
+        index: number,
+        outcome: IUploadedObject | UploadError,
+    ): void {
+        outcomes[index] = outcome;
+        if (outcome instanceof UploadError) {
+            report(index, "failed", 0, outcome);
+        } else {
+            report(index, "done", files[index].size);
+        }
+        done += 1;
+        onProgress?.(done, total);
+    }
+
+    const allIndexes = files.map((_, index) => index);
+    const firstPass: Array<IUploadedObject | UploadError> = new Array(total);
+    await runPool(
+        allIndexes,
+        (index) => targets[index],
+        (index, outcome) => {
+            if (
+                outcome instanceof UploadError &&
+                (outcome.kind === "expired" || isTransient(outcome))
+            ) {
+                // Held back for the re-sign pass below.
+                firstPass[index] = outcome;
+                return;
+            }
+            settleFinal(index, outcome);
+        },
+    );
+
+    // 4. Heal: files whose URL expired or that kept failing get fresh URLs
+    // and one more round. If re-signing fails, the original errors stand.
+    const retryIndexes = allIndexes.filter((index) => firstPass[index]);
+    if (retryIndexes.length > 0) {
+        let fresh: ISignedUploadTarget[] | undefined;
+        try {
+            fresh = await requestSignedTargets({
+                ...params,
+                files: retryIndexes.map((index) => files[index]),
+            });
+        } catch {
+            fresh = undefined;
+        }
+        if (fresh) {
+            const retargeted = new Map(
+                retryIndexes.map((index, i) => [index, fresh[i]]),
+            );
+            await runPool(
+                retryIndexes,
+                (index) => retargeted.get(index) as ISignedUploadTarget,
+                settleFinal,
+            );
+        } else {
+            retryIndexes.forEach((index) =>
+                settleFinal(index, firstPass[index]),
+            );
+        }
+    }
+
+    const uploaded: IUploadedObject[] = [];
+    const failures: IUploadFailure[] = [];
+    outcomes.forEach((outcome, index) => {
+        if (outcome instanceof UploadError) {
+            failures.push({ fileName: files[index].name, error: outcome });
+        } else {
+            uploaded.push(outcome);
+        }
+    });
 
     return { uploaded, failures };
 }

@@ -1,5 +1,9 @@
 "use client";
 
+import {
+    MAX_IMAGE_IMPORT_BYTES,
+    MAX_IMPORT_FILE_COUNT,
+} from "@mosaic/api-contract";
 import { FileDropzone } from "@/components/ui/file-dropzone";
 import { IMAGE_ACCEPT, IMAGE_MAX_BYTES } from "./image-dropzone";
 import { Label } from "@/components/ui/label";
@@ -49,9 +53,11 @@ export function PairedImport({
                     multiple
                     accept={IMAGE_ACCEPT}
                     maxBytes={IMAGE_MAX_BYTES}
+                    maxFiles={MAX_IMPORT_FILE_COUNT}
+                    maxTotalBytes={MAX_IMAGE_IMPORT_BYTES}
                     size="sm"
                     title="Drop images or click to browse"
-                    hint="PNG, JPEG, GIF, WebP · max 20MB each"
+                    hint="PNG, JPEG, GIF, WebP · max 20MB each, 24MB and 100 files per upload"
                 />
             </div>
             <div className="flex flex-col gap-2">

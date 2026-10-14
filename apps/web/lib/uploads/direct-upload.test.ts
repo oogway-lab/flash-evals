@@ -255,4 +255,158 @@ describe("uploadFiles", () => {
         expect(result.uploaded).toHaveLength(4);
         expect(maxInFlight).toBe(2);
     });
+
+    it("retries a transient PUT failure on the same URL and succeeds", async () => {
+        let attempts = 0;
+        fetchMock.mockImplementation((input: RequestInfo | URL) => {
+            if (isSignCall(input))
+                return Promise.resolve(signResponse(["k/a"]));
+            attempts += 1;
+            return Promise.resolve(
+                new Response(null, { status: attempts < 3 ? 503 : 200 }),
+            );
+        });
+
+        const result = await uploadFiles({
+            datasetId: "ds-1",
+            modality: "image",
+            files: [makeFile("a.png")],
+            retryDelayMs: 0,
+        });
+
+        expect(attempts).toBe(3);
+        expect(result.uploaded).toHaveLength(1);
+        expect(result.failures).toHaveLength(0);
+        const signCalls = fetchMock.mock.calls.filter((c) => isSignCall(c[0]));
+        expect(signCalls).toHaveLength(1);
+    });
+
+    it("re-signs only the files that still failed and retries them once", async () => {
+        let signs = 0;
+        fetchMock.mockImplementation(
+            (input: RequestInfo | URL, init?: RequestInit) => {
+                if (isSignCall(input)) {
+                    signs += 1;
+                    const body = JSON.parse(String(init?.body)) as {
+                        files: Array<{ fileName: string }>;
+                    };
+                    return Promise.resolve(
+                        new Response(
+                            JSON.stringify({
+                                targets: body.files.map((file) => ({
+                                    storageKey: `k/${file.fileName}`,
+                                    signedUrl: `https://storage.example/put/${file.fileName}?sign=${signs}`,
+                                })),
+                            }),
+                            { status: 200 },
+                        ),
+                    );
+                }
+                const url = String(input);
+                // bad.png's first URL is rejected; its fresh URL works.
+                if (url.includes("bad.png?sign=1")) {
+                    return Promise.resolve(new Response(null, { status: 403 }));
+                }
+                return Promise.resolve(new Response(null, { status: 200 }));
+            },
+        );
+
+        const progress: Array<[number, number]> = [];
+        const result = await uploadFiles({
+            datasetId: "ds-1",
+            modality: "image",
+            files: [makeFile("ok.png"), makeFile("bad.png")],
+            onProgress: (done, total) => progress.push([done, total]),
+            retryDelayMs: 0,
+        });
+
+        expect(signs).toBe(2);
+        const resign = JSON.parse(
+            String(
+                fetchMock.mock.calls.filter((c) => isSignCall(c[0]))[1][1].body,
+            ),
+        ) as { files: Array<{ fileName: string }> };
+        expect(resign.files.map((file) => file.fileName)).toEqual(["bad.png"]);
+        expect(result.failures).toHaveLength(0);
+        expect(result.uploaded.map((u) => u.fileName).sort()).toEqual([
+            "bad.png",
+            "ok.png",
+        ]);
+        expect(progress.at(-1)).toEqual([2, 2]);
+    });
+
+    it("keeps uploading the rest when one file never succeeds", async () => {
+        fetchMock.mockImplementation((input: RequestInfo | URL) => {
+            if (isSignCall(input)) {
+                return Promise.resolve(signResponse(["k/a", "k/b", "k/c"]));
+            }
+            return Promise.resolve(
+                new Response(null, {
+                    status: String(input).includes("/put/1") ? 500 : 200,
+                }),
+            );
+        });
+
+        const result = await uploadFiles({
+            datasetId: "ds-1",
+            modality: "image",
+            files: [makeFile("a.png"), makeFile("b.png"), makeFile("c.png")],
+            retryDelayMs: 0,
+        });
+
+        expect(result.uploaded.map((u) => u.fileName).sort()).toEqual([
+            "a.png",
+            "c.png",
+        ]);
+        expect(result.failures).toEqual([
+            expect.objectContaining({
+                fileName: "b.png",
+                error: expect.objectContaining({ kind: "storage" }),
+            }),
+        ]);
+    });
+
+    it("reports bytes sent per file through XMLHttpRequest", async () => {
+        class FakeXhr {
+            static sent: string[] = [];
+            upload: { onprogress?: (event: { loaded: number }) => void } = {};
+            onload?: () => void;
+            onerror?: () => void;
+            status = 0;
+            private url = "";
+            open(_method: string, url: string) {
+                this.url = url;
+            }
+            setRequestHeader() {}
+            send(file: File) {
+                FakeXhr.sent.push(this.url);
+                queueMicrotask(() => {
+                    this.upload.onprogress?.({ loaded: file.size / 2 });
+                    this.status = 200;
+                    this.onload?.();
+                });
+            }
+        }
+        vi.stubGlobal("XMLHttpRequest", FakeXhr);
+        fetchMock.mockImplementation(() =>
+            Promise.resolve(signResponse(["k/a"])),
+        );
+
+        const events: Array<[string, number]> = [];
+        const result = await uploadFiles({
+            datasetId: "ds-1",
+            modality: "image",
+            files: [makeFile("a.png", { size: 100 })],
+            onFileProgress: (event) =>
+                events.push([event.status, event.loaded]),
+        });
+
+        expect(result.uploaded).toHaveLength(1);
+        expect(FakeXhr.sent).toHaveLength(1);
+        expect(events).toEqual([
+            ["uploading", 0],
+            ["uploading", 50],
+            ["done", 100],
+        ]);
+    });
 });
