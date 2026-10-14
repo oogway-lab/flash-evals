@@ -39,11 +39,14 @@ describe("uploadFormMedia", () => {
         const formData = new FormData();
         formData.set("images", imageFile());
 
-        const error = await uploadFormMedia(formData, "ds-1", [
-            bulkMediaField("images", "imageUploads", "image"),
-        ]);
+        const { error, fileFailures } = await uploadFormMedia(
+            formData,
+            "ds-1",
+            [bulkMediaField("images", "imageUploads", "image")],
+        );
 
         expect(error).toBeUndefined();
+        expect(fileFailures).toEqual([]);
         // The raw File is gone; only JSON metadata remains.
         expect(formData.get("images")).toBeNull();
         const meta = JSON.parse(String(formData.get("imageUploads")));
@@ -67,7 +70,7 @@ describe("uploadFormMedia", () => {
         const formData = new FormData();
         formData.set("audio", new File(["x"], "a.mp3", { type: "audio/mpeg" }));
 
-        const error = await uploadFormMedia(formData, "ds-1", [
+        const { error } = await uploadFormMedia(formData, "ds-1", [
             singleMediaField("audio"),
         ]);
 
@@ -77,7 +80,7 @@ describe("uploadFormMedia", () => {
         });
     });
 
-    it("reports per-file failures so the caller can retry", async () => {
+    it("fails the field when every file fails to upload", async () => {
         mocks.uploadFiles.mockResolvedValue({
             uploaded: [],
             failures: [
@@ -92,17 +95,63 @@ describe("uploadFormMedia", () => {
         const formData = new FormData();
         formData.set("images", imageFile("bad.png"));
 
-        const error = await uploadFormMedia(formData, "ds-1", [
-            bulkMediaField("images", "imageUploads", "image"),
-        ]);
+        const { error, fileFailures } = await uploadFormMedia(
+            formData,
+            "ds-1",
+            [bulkMediaField("images", "imageUploads", "image")],
+        );
 
         expect(error?.field).toBe("images");
         expect(error?.message).toContain("bad.png");
+        expect(fileFailures).toEqual([
+            { field: "images", fileName: "bad.png", reason: "boom" },
+        ]);
+        expect(formData.get("imageUploads")).toBeNull();
+    });
+
+    it("imports what uploaded and reports only the file that failed", async () => {
+        mocks.uploadFiles.mockResolvedValue({
+            uploaded: [
+                {
+                    storageKey: "k/ok.png",
+                    fileName: "ok.png",
+                    contentType: "image/png",
+                    byteSize: 1,
+                },
+            ],
+            failures: [
+                {
+                    fileName: "bad.png",
+                    error: new UploadError("network", "dropped", {
+                        fileName: "bad.png",
+                    }),
+                },
+            ],
+        });
+        const formData = new FormData();
+        formData.append("images", imageFile("ok.png"));
+        formData.append("images", imageFile("bad.png"));
+
+        const { error, fileFailures } = await uploadFormMedia(
+            formData,
+            "ds-1",
+            [bulkMediaField("images", "imageUploads", "image")],
+        );
+
+        expect(error).toBeUndefined();
+        expect(fileFailures).toEqual([
+            { field: "images", fileName: "bad.png", reason: "dropped" },
+        ]);
+        expect(
+            JSON.parse(String(formData.get("imageUploads"))).map(
+                (meta: { name: string }) => meta.name,
+            ),
+        ).toEqual(["ok.png"]);
     });
 
     it("skips fields with no selected file and never calls uploadFiles", async () => {
         const formData = new FormData();
-        const error = await uploadFormMedia(formData, "ds-1", [
+        const { error } = await uploadFormMedia(formData, "ds-1", [
             singleMediaField("image"),
         ]);
         expect(error).toBeUndefined();
