@@ -19,6 +19,11 @@ import {
     workflowPreparationWaitMs,
 } from "./itemLease";
 import { startLeaseHeartbeat } from "./leaseHeartbeat";
+import {
+    transcriptionSpend,
+    trackTranscriptionSpend,
+    type ITranscriptionSpend,
+} from "../audio/transcription/spend";
 
 export type WorkflowDatasetItem = typeof datasetItems.$inferSelect;
 type ResolvedKeys = Awaited<ReturnType<typeof resolveApiKeys>>;
@@ -101,8 +106,9 @@ async function prepareWorkflowAudioItem(
     const leaseOwner = randomUUID();
     const identity = transcriptIdentity(sttConfig.modelId, sttConfig.config);
     await ensurePreparationRow(input, identity);
-    const claimedId = await claimPreparation(input, leaseOwner);
-    if (!claimedId) return waitForPreparedWorkflowAudio(input, identity);
+    const claimed = await claimPreparation(input, leaseOwner);
+    if (!claimed) return waitForPreparedWorkflowAudio(input, identity);
+    const claimedId = claimed.id;
 
     const stopHeartbeat = startLeaseHeartbeat(
         () =>
@@ -123,6 +129,11 @@ async function prepareWorkflowAudioItem(
             input,
             claimedId,
             identity,
+            leaseOwner,
+            transcriptionSpend({
+                costUsd: claimed.incurredCostUsd,
+                costSource: claimed.incurredCostSource,
+            }),
         );
         stopHeartbeat();
         const completed = await completePreparation(
@@ -182,19 +193,39 @@ async function claimPreparation(input: PreparedAudioInput, leaseOwner: string) {
                 sql`(${workflowRunItems.preparationStatus} in ('pending', 'error') or (${workflowRunItems.preparationStatus} = 'running' and ${workflowRunItems.claimedAt} < ${leaseCutoff}))`,
             ),
         )
-        .returning({ id: workflowRunItems.id });
-    return claimed?.id;
+        .returning({
+            id: workflowRunItems.id,
+            incurredCostUsd: workflowRunItems.incurredCostUsd,
+            incurredCostSource: workflowRunItems.incurredCostSource,
+        });
+    return claimed;
 }
 
 async function transcribePreparedItem(
     input: PreparedAudioInput,
     workflowRunItemId: string,
     identity: ReturnType<typeof transcriptIdentity>,
+    leaseOwner: string,
+    initialSpend: ITranscriptionSpend,
 ): Promise<PreparedWithPersistence> {
     const { item, sttConfig } = input;
     if (!item.storageKey || !item.mimeType)
         throw new Error("Audio item is missing stored audio bytes.");
     const transcriptionStartedAt = Date.now();
+    const spend = trackTranscriptionSpend(initialSpend, async (checkpoint) => {
+        await db
+            .update(workflowRunItems)
+            .set({
+                incurredCostUsd: checkpoint.costUsd ?? null,
+                incurredCostSource: checkpoint.costSource,
+            })
+            .where(
+                and(
+                    eq(workflowRunItems.id, workflowRunItemId),
+                    eq(workflowRunItems.leaseOwner, leaseOwner),
+                ),
+            );
+    });
     const { artifact, cacheHit, lookupLatencyMs, incurredCostUsd } =
         await getOrCreateAudioTranscriptArtifactWithProvenance({
             datasetItemId: item.id,
@@ -203,12 +234,14 @@ async function transcribePreparedItem(
             modelId: sttConfig.modelId,
             language: sttConfig.language,
             config: sttConfig.config,
+            onCostIncurred: (costUsd) => spend.record(costUsd),
             openaiApiKey: input.sttProviderKeys.openai,
             aiGatewayApiKey: input.sttProviderKeys.vercelGateway,
             sonioxApiKey: input.sttProviderKeys.soniox,
             geminiApiKey: input.sttProviderKeys.gemini,
             openrouterApiKey: input.sttProviderKeys.openrouter,
         });
+    if (!spend.recorded) await spend.record(incurredCostUsd);
     const variant = selectedVariant(sttConfig);
     const transliterationStartedAt = Date.now();
     const selectedTranscript =
@@ -233,7 +266,7 @@ async function transcribePreparedItem(
         artifactCostSource: metadata?.costSource,
         persistence: {
             cacheHit,
-            incurredCostUsd,
+            incurredCostUsd: spend.current.costUsd,
             lookupLatencyMs,
             transcriptionLatencyMs: cacheHit
                 ? 0

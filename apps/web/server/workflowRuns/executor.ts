@@ -216,7 +216,7 @@ async function executeClaimedCell(
                 inputText,
                 outputJson: execution.artifact,
                 latencyMs: execution.latencyMs,
-                costUsd: execution.costUsd,
+                costUsd: execution.costUsd ?? null,
                 error: null,
             })
             .where(eq(workflowRunCells.id, cell.id));

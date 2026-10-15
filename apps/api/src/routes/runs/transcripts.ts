@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { audioTranscriptConfigHash } from "@mosaic/llm-core";
 import {
     canonicalJsonString,
     sttModelIdentityForId,
@@ -19,6 +20,7 @@ interface IAudioTranscriptDbRow {
     canonical_model_id: string;
     language: string;
     config_json: unknown;
+    config_hash: string;
     transcript: string;
     raw_text: string | null;
     normalized_text: string | null;
@@ -63,7 +65,7 @@ export async function audioTranscriptPayload(
         ? db.query<IAudioTranscriptDbRow>(
               `select
                 id, dataset_item_id, storage_key, provider_id, route_id,
-                stt_model_id, canonical_model_id, language, config_json,
+                stt_model_id, canonical_model_id, language, config_json, config_hash,
                 transcript, raw_text, normalized_text, detected_language,
                 segments_json, speakers_json, provider_metadata, warnings,
                 status, error, created_at
@@ -88,7 +90,7 @@ export async function audioTranscriptPayload(
         : db.query<IAudioTranscriptDbRow>(
               `select
                 id, dataset_item_id, storage_key, provider_id, route_id,
-                stt_model_id, canonical_model_id, language, config_json,
+                stt_model_id, canonical_model_id, language, config_json, config_hash,
                 transcript, raw_text, normalized_text, detected_language,
                 segments_json, speakers_json, provider_metadata, warnings,
                 status, error, created_at
@@ -221,10 +223,16 @@ function isAudioRunItem(item: IRunDetailItem): boolean {
 }
 
 function sttIdentityFromConfig(sttConfig: ISttRunConfig) {
+    const identity = sttModelIdentityForId(sttConfig.modelId);
     return {
-        ...sttModelIdentityForId(sttConfig.modelId),
+        ...identity,
         language: normalizeLanguage(sttConfig.language),
-        configHash: stableConfigHash(sttConfig.config),
+        configHash: audioTranscriptConfigHash(
+            identity,
+            canonicalJsonString(
+                isRecord(sttConfig.config) ? sttConfig.config : {},
+            ),
+        ),
     };
 }
 
@@ -237,16 +245,8 @@ function transcriptMatchesIdentity(
         row.route_id === identity.routeId &&
         row.canonical_model_id === identity.canonicalModelId &&
         row.language === identity.language &&
-        hashStableConfig(row.config_json) === identity.configHash
+        row.config_hash === identity.configHash
     );
-}
-
-function stableConfigHash(config: unknown): string {
-    return hash(canonicalJsonString(isRecord(config) ? config : {}));
-}
-
-function hashStableConfig(config: unknown): string {
-    return stableConfigHash(isRecord(config) ? config : {});
 }
 
 function normalizeLanguage(language: string | undefined): string {
