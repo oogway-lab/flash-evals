@@ -59,7 +59,10 @@ that request out rather than counting it as zero.
 To recover a partial or failed pipeline run, choose **Retry failed cells** on
 the run page. Failed cells and the cells they blocked run again. Successful
 cells, reused transcripts, and the run's workflow snapshot are kept, and cell
-cost shows only new spend.
+cost shows spend incurred by that run, including completed chunks paid for before
+a failed attempt. Charges are checkpointed on the cell or shared preparation item
+as each new part finishes and survive retries. Reusing a transcript in a different
+run still costs zero; an unknown charge keeps the run's total unavailable.
 
 Use `google/gemini-3.8-flash` for the optional transliteration and transcript
 judge models too. Latin transcript scoring requires an

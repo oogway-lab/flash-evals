@@ -127,13 +127,18 @@ async function resolveAudioTranscriptArtifact(
                         identity,
                         language,
                     }),
-                write: (storageKey, chunkArtifact, latencyMsTotal) =>
-                    writeCompletedTranscriptArtifact({
+                write: async (storageKey, chunkArtifact, latencyMsTotal) => {
+                    const stored = await writeCompletedTranscriptArtifact({
                         ...persisted,
                         storageKey,
                         artifact: chunkArtifact,
                         latencyMsTotal,
-                    }),
+                    });
+                    await input.onCostIncurred?.(
+                        stored.providerMetadata?.costUsd,
+                    );
+                    return stored;
+                },
             },
         });
     } catch (error) {
@@ -151,6 +156,12 @@ async function resolveAudioTranscriptArtifact(
         latencyMsTotal: Date.now() - startedAt,
     });
     const metadata = persistedArtifact.providerMetadata;
+    // Prepared chunks report their charges individually above. Unchanged audio
+    // has one charge, including duration-based pricing added by persistence.
+    if (!metadata?.audioPreparation)
+        await input.onCostIncurred?.(
+            metadata?.incurredCostUsd ?? metadata?.costUsd,
+        );
     return {
         artifact: persistedArtifact,
         legacyArtifact: artifact,

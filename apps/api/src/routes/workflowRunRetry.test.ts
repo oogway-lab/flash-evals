@@ -52,6 +52,8 @@ describe("retryWorkflowRunPayload", () => {
         );
         expect(reset).toContain("status = 'pending'");
         expect(reset).toContain("and status = 'failed'");
+        expect(reset).not.toContain("cost_usd = null");
+        expect(reset).toContain("'{providerMetadata,transcriptionSpend}'");
         expect(
             statements.some((sql) =>
                 sql.includes("preparation_status = 'error'"),

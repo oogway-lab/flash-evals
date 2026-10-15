@@ -21,6 +21,10 @@ speech, embeddings, reranking, and image generation are excluded. Provider
 discovery still checks availability using the team's configured credentials.
 Bifrost remains specific to its configured endpoint and is not stored globally.
 
+Normalized prices retain published cache-read, cache-write, reasoning, and
+token-tier rates. These fields are also validated when persisted snapshots load,
+so cost estimates keep cache discounts and context-dependent prices.
+
 ## Refresh and recovery
 
 The existing worker registers a pg-boss job at **02:17 UTC daily** (07:47 IST),
