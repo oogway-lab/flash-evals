@@ -12,6 +12,8 @@ export interface ITranscribeAudioInput {
     modelId: string;
     language?: string;
     config?: Record<string, unknown>;
+    /** New provider spend, checkpointed after each completed part; never called for cache hits. */
+    onCostIncurred?: (costUsd: number | undefined) => Promise<void>;
     openaiApiKey?: string;
     aiGatewayApiKey?: string;
     sonioxApiKey?: string;

@@ -1,7 +1,12 @@
 import type { ApiKeys, EvalImage } from "@flash-evals/llm-core";
 import type { IWorkflowNodeArtifact } from "@flash-evals/api-contract";
+import { eq } from "drizzle-orm";
 import { db } from "../../db/client";
-import { workflowCellScores } from "../../db/schema";
+import { workflowCellScores, workflowRunCells } from "../../db/schema";
+import {
+    transcriptionSpend,
+    trackTranscriptionSpend,
+} from "../../audio/transcription/spend";
 import type { IWorkflowSnapshotNode, LabelJson } from "../../db/jsonTypes";
 import { scoreTranscriptMetrics } from "../../audio/metrics";
 import type { ISttProviderKeys } from "../../audio/providerKeys";
@@ -28,7 +33,11 @@ interface ISttNodeItem {
 }
 
 interface IExecuteSttWorkflowNodeInput {
-    cell: { id: string };
+    cell: {
+        id: string;
+        costUsd?: number | null;
+        outputJson?: IWorkflowNodeArtifact | Record<string, unknown> | null;
+    };
     item: ISttNodeItem;
     node: IWorkflowSnapshotNode;
     inputText: string;
@@ -105,6 +114,27 @@ async function executeSttNode(
     if (!item.storageKey || !item.mimeType)
         throw new Error(`STT node ${node.nodeKey} requires stored audio.`);
     const config = node.nodeConfig.sttConfig;
+    const previousMetadata = input.cell.outputJson?.providerMetadata;
+    const spend = trackTranscriptionSpend(
+        transcriptionSpend(
+            isRecord(previousMetadata)
+                ? previousMetadata.transcriptionSpend
+                : undefined,
+            input.cell.costUsd,
+        ),
+        async (checkpoint) => {
+            await db
+                .update(workflowRunCells)
+                .set({
+                    costUsd: checkpoint.costUsd ?? null,
+                    outputJson: {
+                        text: "",
+                        providerMetadata: { transcriptionSpend: checkpoint },
+                    },
+                })
+                .where(eq(workflowRunCells.id, input.cell.id));
+        },
+    );
     const startedAt = Date.now();
     const result = await getOrCreateAudioTranscriptArtifactWithProvenance({
         datasetItemId: item.id,
@@ -113,20 +143,24 @@ async function executeSttNode(
         modelId: config.modelId,
         language: config.language,
         config: config.config,
+        onCostIncurred: (costUsd) => spend.record(costUsd),
         openaiApiKey: input.apiKeys.openai,
         aiGatewayApiKey: input.apiKeys.gateway,
         sonioxApiKey: input.sttProviderKeys.soniox,
         geminiApiKey: input.sttProviderKeys.gemini,
         openrouterApiKey: input.sttProviderKeys.openrouter,
     });
+    // A complete cache hit (or only cached/silent chunks) incurs no new spend.
+    if (!spend.recorded) await spend.record(result.incurredCostUsd);
     return {
         artifact: {
             text: result.artifact.text,
             segments: result.artifact.segments,
             language: result.artifact.detectedLanguage,
-            providerMetadata: result.artifact.providerMetadata
-                ? { ...result.artifact.providerMetadata }
-                : undefined,
+            providerMetadata: {
+                ...result.artifact.providerMetadata,
+                transcriptionSpend: spend.current,
+            },
             usage: result.artifact.providerMetadata?.usage
                 ? {
                       promptTokens:
@@ -143,8 +177,8 @@ async function executeSttNode(
         latencyMs: Date.now() - startedAt,
         // Cell cost is new spend; a reused transcript keeps its original cost
         // in providerMetadata but costs nothing in this run.
-        ...(result.incurredCostUsd !== undefined
-            ? { costUsd: result.incurredCostUsd }
+        ...(spend.current.costUsd !== undefined
+            ? { costUsd: spend.current.costUsd }
             : {}),
     };
 }

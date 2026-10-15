@@ -12,7 +12,8 @@ const RETRYABLE_RUN_STATUSES = new Set<RunStatus>(["failed", "partial"]);
  * Admit a retry of a finished workflow run's failed cells. Failed cells,
  * including descendants that were marked failed because an upstream node
  * failed, return to pending with their stale output and scores removed.
- * Successful cells, the workflow snapshot, and LLM attempt history are kept.
+ * Successful cells, the workflow snapshot, LLM attempt history, and already
+ * incurred spend are kept. Only the spend checkpoint survives in failed output.
  *
  * The run row lock makes admission single-flight: a second retry sees the run
  * as pending and is rejected instead of queueing duplicate work. The publish
@@ -70,8 +71,13 @@ export async function retryWorkflowRunPayload(
         );
         await tx.query(
             `update workflow_run_cells
-            set status = 'pending', output_json = null, latency_ms = null,
-                cost_usd = null, error = null, claimed_at = null
+            set status = 'pending', latency_ms = null,
+                output_json = case
+                    when output_json #> '{providerMetadata,transcriptionSpend}' is null then null
+                    else jsonb_build_object('text', '', 'providerMetadata', jsonb_build_object(
+                        'transcriptionSpend', output_json #> '{providerMetadata,transcriptionSpend}'))
+                end,
+                error = null, claimed_at = null
             where id = any($1::uuid[]) and status = 'failed'`,
             [cellIds],
         );

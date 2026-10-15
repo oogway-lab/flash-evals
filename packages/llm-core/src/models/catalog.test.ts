@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { computeCostFromUsageWithPricing } from "../cost.js";
 import {
     parseModelCatalog,
     readCatalogSnapshot,
@@ -50,6 +51,104 @@ function officialModel(id = model.id) {
 }
 
 describe("model catalogs", () => {
+    it("preserves Gateway cache discounts and tier prices through persistence and registry merging", () => {
+        const snapshot = parseModelCatalog(
+            "gateway",
+            {
+                data: [
+                    {
+                        id: "anthropic/fixture-cache-model",
+                        name: "Fixture",
+                        type: "language",
+                        modalities: { input: ["text"], output: ["text"] },
+                        pricing: {
+                            input: "0.000003",
+                            output: "0.000015",
+                            input_cache_read: "0.0000003",
+                            input_cache_write: "0.00000375",
+                            reasoning: "0.00002",
+                            input_tiers: [
+                                { min: 0, max: 200000, cost: "0.000003" },
+                                { min: 200000, cost: "0.000006" },
+                            ],
+                            output_tiers: [{ min: 0, cost: "0.000015" }],
+                        },
+                    },
+                ],
+            },
+            now,
+        );
+        const stored = readCatalogSnapshot(
+            JSON.parse(JSON.stringify(snapshot)),
+        );
+        const pricing = mergeModelCatalogs([], [stored!])[0]!
+            .pricingByTransport!.gateway!;
+        expect(pricing).toMatchObject({
+            cacheReadPricePerToken: 0.0000003,
+            cacheWritePricePerToken: 0.00000375,
+            reasoningPricePerToken: 0.00002,
+            promptTiers: [
+                { minTokens: 0, maxTokens: 200000, pricePerToken: 0.000003 },
+                { minTokens: 200000, pricePerToken: 0.000006 },
+            ],
+        });
+        expect(
+            computeCostFromUsageWithPricing(
+                {
+                    promptTokens: 100000,
+                    completionTokens: 0,
+                    cacheReadTokens: 100000,
+                },
+                pricing,
+            ),
+        ).toBeCloseTo(0.03);
+        expect(
+            computeCostFromUsageWithPricing(
+                { promptTokens: 300000, completionTokens: 0 },
+                pricing,
+            ),
+        ).toBeCloseTo(1.8);
+    });
+    it("normalizes models.dev cache rates per million and preserves zero-priced cache reads", () => {
+        const raw = {
+            id: "fixture-cache-model",
+            modalities: { input: ["text"], output: ["text"] },
+            cost: { input: 3, output: 15, cache_read: 0, cache_write: 3.75 },
+        };
+        const provider = { models: { fixture: raw } };
+        const result = parseModelCatalog(
+            "models.dev",
+            { openai: provider, openrouter: provider, vercel: provider },
+            now,
+        );
+        expect(result.models[0]?.pricing).toMatchObject({
+            cacheReadPricePerToken: 0,
+            cacheWritePricePerToken: 0.00000375,
+        });
+    });
+    it.each([
+        { cacheReadPricePerToken: -1 },
+        { cacheWritePricePerToken: "0.1" },
+        { reasoningPricePerToken: Infinity },
+        { promptTiers: [{ minTokens: 10, maxTokens: 5, pricePerToken: 0.1 }] },
+        { completionTiers: [{ minTokens: 0, pricePerToken: -1 }] },
+    ])("rejects malformed persisted optional pricing %j", (extra) => {
+        expect(
+            readCatalogSnapshot({
+                ...catalog,
+                models: [
+                    {
+                        ...model,
+                        pricing: {
+                            promptPricePerToken: 0.1,
+                            completionPricePerToken: 0.2,
+                            ...extra,
+                        },
+                    },
+                ],
+            }),
+        ).toBeUndefined();
+    });
     it("normalizes provider IDs and per-token OpenRouter pricing", () => {
         expect(
             parseModelCatalog("openrouter", { data: [officialModel()] }, now)

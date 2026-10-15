@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type * as LlmCore from "@flash-evals/llm-core";
+import { audioTranscriptConfigHash } from "@flash-evals/llm-core";
 
 vi.mock("@flash-evals/llm-core", async (importOriginal) => {
     const actual = await importOriginal<typeof LlmCore>();
@@ -321,6 +322,13 @@ function dbForRunDetail(): IDb {
                             canonical_model_id: "soniox-v5",
                             language: "hi",
                             config_json: { diarization: true },
+                            config_hash: audioTranscriptConfigHash(
+                                {
+                                    providerId: "soniox",
+                                    canonicalModelId: "soniox-v5",
+                                },
+                                '{"diarization":true}',
+                            ),
                             transcript: "namaste",
                             raw_text: "namaste",
                             normalized_text: "namaste",
@@ -565,6 +573,13 @@ function dbForSttMetricsRunDetail(): IDb {
                             canonical_model_id: "gpt-4o-transcribe",
                             language: "",
                             config_json: {},
+                            config_hash: audioTranscriptConfigHash(
+                                {
+                                    providerId: "openai",
+                                    canonicalModelId: "gpt-4o-transcribe",
+                                },
+                                "{}",
+                            ),
                             transcript: "hello",
                             raw_text: "hello",
                             normalized_text: "hello",
