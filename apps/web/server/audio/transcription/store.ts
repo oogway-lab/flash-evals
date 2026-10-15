@@ -1,5 +1,4 @@
-import { createHash } from "crypto";
-import { OPENROUTER_AUDIO_ADAPTER_VERSION } from "@flash-evals/llm-core";
+import { audioTranscriptConfigHash } from "@flash-evals/llm-core";
 import {
     canonicalJsonObject,
     canonicalJsonString,
@@ -19,15 +18,12 @@ export function transcriptIdentity(
 ): ITranscriptIdentity {
     const configJson = canonicalJsonObject(config ?? {});
     const identity = sttModelIdentityForId(modelId);
-    const hash = createHash("sha256").update(canonicalJsonString(configJson));
-    if (
-        identity.providerId === "openrouter" &&
-        identity.canonicalModelId === "google/gemini-3.8-flash"
-    )
-        hash.update(OPENROUTER_AUDIO_ADAPTER_VERSION);
     return {
         ...identity,
-        configHash: hash.digest("hex"),
+        configHash: audioTranscriptConfigHash(
+            identity,
+            canonicalJsonString(configJson),
+        ),
         configJson,
     };
 }

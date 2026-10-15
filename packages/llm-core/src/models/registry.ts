@@ -6,6 +6,7 @@ import {
     type IModelCatalogSnapshot,
 } from "./catalog.js";
 import type { ReasoningEffort } from "../types.js";
+import type { ICostPricing, ICostPricingTier } from "../cost.js";
 
 export type KnownModelProvider =
     "openai" | "anthropic" | "google" | "xai" | "meta" | "mistral" | "alibaba";
@@ -41,18 +42,8 @@ export interface IReasoningEffortCapability {
     defaultLevel: ReasoningEffort;
 }
 
-export interface IModelPricing {
-    promptPricePerToken: number;
-    completionPricePerToken: number;
-    promptTiers?: readonly IModelPricingTier[];
-    completionTiers?: readonly IModelPricingTier[];
-}
-
-export interface IModelPricingTier {
-    minTokens: number;
-    maxTokens?: number;
-    pricePerToken: number;
-}
+export type IModelPricing = ICostPricing;
+export type IModelPricingTier = ICostPricingTier;
 
 export interface IModelRegistryEntry {
     id: string;

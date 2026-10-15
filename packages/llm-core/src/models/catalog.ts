@@ -1,5 +1,6 @@
 import type {
     IModelPricing,
+    IModelPricingTier,
     IModelRegistryEntry,
     EvalProviderTransport,
     IReasoningEffortCapability,
@@ -168,10 +169,54 @@ function normalizePricing(
     );
     if (input === undefined || output === undefined) return undefined;
     const divisor = modelsDev ? 1_000_000 : 1;
+    const optionalRates: Partial<IModelPricing> = {};
+    for (const [source, target] of [
+        [
+            modelsDev ? "cache_read" : "input_cache_read",
+            "cacheReadPricePerToken",
+        ],
+        [
+            modelsDev ? "cache_write" : "input_cache_write",
+            "cacheWritePricePerToken",
+        ],
+        ["reasoning", "reasoningPricePerToken"],
+    ] as const) {
+        const rate = finitePrice(pricing[source]);
+        if (rate !== undefined) optionalRates[target] = rate / divisor;
+    }
+    const promptTiers = pricingTiers(pricing.input_tiers, divisor);
+    const completionTiers = pricingTiers(pricing.output_tiers, divisor);
     return {
         promptPricePerToken: input / divisor,
         completionPricePerToken: output / divisor,
+        ...optionalRates,
+        ...(promptTiers.length ? { promptTiers } : {}),
+        ...(completionTiers.length ? { completionTiers } : {}),
     };
+}
+
+function pricingTiers(value: unknown, divisor: number): IModelPricingTier[] {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((tier) => {
+        if (!isRecord(tier)) return [];
+        const minTokens = finitePrice(tier.min);
+        const maxTokens = tier.max == null ? undefined : finitePrice(tier.max);
+        const cost = finitePrice(tier.cost);
+        if (
+            minTokens === undefined ||
+            cost === undefined ||
+            (tier.max != null &&
+                (maxTokens === undefined || maxTokens <= minTokens))
+        )
+            return [];
+        return [
+            {
+                minTokens,
+                ...(maxTokens === undefined ? {} : { maxTokens }),
+                pricePerToken: cost / divisor,
+            },
+        ];
+    });
 }
 function finitePrice(value: unknown): number | undefined {
     if (typeof value !== "string" && typeof value !== "number")
@@ -236,7 +281,34 @@ function validPricing(value: unknown): boolean {
         typeof value.promptPricePerToken === "number" &&
         typeof value.completionPricePerToken === "number" &&
         finitePrice(value.promptPricePerToken) !== undefined &&
-        finitePrice(value.completionPricePerToken) !== undefined
+        finitePrice(value.completionPricePerToken) !== undefined &&
+        [
+            "cacheReadPricePerToken",
+            "cacheWritePricePerToken",
+            "reasoningPricePerToken",
+        ].every(
+            (key) =>
+                value[key] === undefined ||
+                (typeof value[key] === "number" &&
+                    finitePrice(value[key]) !== undefined),
+        ) &&
+        ["promptTiers", "completionTiers"].every(
+            (key) =>
+                value[key] === undefined ||
+                (Array.isArray(value[key]) &&
+                    value[key].every(
+                        (tier) =>
+                            isRecord(tier) &&
+                            typeof tier.minTokens === "number" &&
+                            finitePrice(tier.minTokens) !== undefined &&
+                            typeof tier.pricePerToken === "number" &&
+                            finitePrice(tier.pricePerToken) !== undefined &&
+                            (tier.maxTokens === undefined ||
+                                (typeof tier.maxTokens === "number" &&
+                                    finitePrice(tier.maxTokens) !== undefined &&
+                                    tier.maxTokens > tier.minTokens)),
+                    )),
+        )
     );
 }
 
