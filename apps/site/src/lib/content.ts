@@ -39,7 +39,7 @@ export const item = {
 export const responses: ModelResponse[] = [
     {
         code: "B",
-        model: "google/gemini-2.5-flash-lite",
+        model: "Model B",
         latencyMs: 620,
         cost: "0.0003",
         fields: [
@@ -52,7 +52,7 @@ export const responses: ModelResponse[] = [
     },
     {
         code: "C",
-        model: "openai/gpt-4o-mini",
+        model: "Model C",
         latencyMs: 910,
         cost: "0.0005",
         fields: [
@@ -65,7 +65,7 @@ export const responses: ModelResponse[] = [
     },
     {
         code: "A",
-        model: "anthropic/claude-sonnet-4.5",
+        model: "Model A",
         latencyMs: 1840,
         cost: "0.0041",
         fields: [
@@ -82,7 +82,7 @@ export type LeaderRow = {
     code: string;
     model: string;
     accuracy: string;
-    p50: string;
+    avgLatency: string;
     costPer1k: string;
     stamp?: string;
     failures?: string;
@@ -91,35 +91,35 @@ export type LeaderRow = {
 export const leaderboard: LeaderRow[] = [
     {
         code: "A",
-        model: "anthropic/claude-sonnet-4.5",
+        model: "Model A",
         accuracy: "96.8%",
-        p50: "1.79 s",
+        avgLatency: "1.79 s",
         costPer1k: "4.12",
-        stamp: "Most accurate",
+        stamp: "Best score",
     },
     {
         code: "B",
-        model: "google/gemini-2.5-flash-lite",
+        model: "Model B",
         accuracy: "93.1%",
-        p50: "0.58 s",
+        avgLatency: "0.58 s",
         costPer1k: "0.31",
         stamp: "Fastest",
     },
     {
         code: "C",
-        model: "openai/gpt-4o-mini",
+        model: "Model C",
         accuracy: "91.4%",
-        p50: "0.88 s",
+        avgLatency: "0.88 s",
         costPer1k: "0.49",
     },
     {
         code: "D",
-        model: "google/gemma-3-27b-it",
+        model: "Model D",
         accuracy: "86.2%",
-        p50: "2.31 s",
+        avgLatency: "2.31 s",
         costPer1k: "0.22",
-        stamp: "Cheapest",
-        failures: "3 hard failures · invalid JSON",
+        stamp: "Low cost",
+        failures: "3 failed results · invalid JSON",
     },
 ];
 
@@ -127,52 +127,52 @@ export const lineItems = [
     {
         qty: "1",
         item: "Datasets",
-        note: "Your own text, images, and audio, with reference labels.",
+        note: "Bring text, images, or audio. Add expected answers where available.",
     },
     {
         qty: "1",
         item: "Prompts",
-        note: "Task instructions with a structured output schema.",
+        note: "Define the task and output format. Test a sample before a run.",
     },
     {
         qty: "1",
-        item: "Field-level diffs",
-        note: "Every structured answer checked against its label.",
+        item: "Field checks",
+        note: "Compare scored fields with the answers you expect.",
     },
     {
         qty: "1",
-        item: "LLM judges",
-        note: "A model scores outputs against the rubric you write.",
+        item: "Model judges",
+        note: "Score outputs against your rubric using a judge model.",
     },
     {
         qty: "1",
-        item: "Latency + cost",
-        note: "Recorded per cell. Costs are estimates, labeled as such.",
+        item: "Time + cost",
+        note: "Review response times and estimated costs where available.",
     },
     {
         qty: "1",
         item: "Workflows",
-        note: "Chain prompt steps into a graph when one prompt is not enough.",
+        note: "Connect prompt and evaluation steps for tasks with several stages.",
     },
     {
-        qty: "6",
-        item: "STT variants",
-        note: "Compare up to six transcription configs per audio run.",
+        qty: "1",
+        item: "Audio variants",
+        note: "Compare up to six transcription settings in one audio run.",
     },
     {
-        qty: "88",
-        item: "MCP tools",
-        note: "Agents work with the same datasets, runs, and notes.",
+        qty: "1",
+        item: "Agent access",
+        note: "Let an MCP-compatible agent start runs and inspect results.",
     },
     {
         qty: "1",
         item: "Review notes",
-        note: "Annotate the cases that need a human look.",
+        note: "Add notes and annotations to results that need attention.",
     },
     {
         qty: "1",
         item: "Result reuse",
-        note: "An exact repeat is served from your stored result, not re-billed.",
+        note: "Reuse matching stored results when reuse is enabled.",
     },
 ];
 
@@ -187,7 +187,7 @@ export const audio = {
     variants: [
         {
             code: "A",
-            label: "soniox/stt-async-v5 · keyword boost",
+            label: "Config A · vocabulary hint",
             words: [
                 { w: "Mera" },
                 { w: "OTP" },
@@ -202,7 +202,7 @@ export const audio = {
         },
         {
             code: "B",
-            label: "soniox/stt-async-v5 · no boost",
+            label: "Config B · no hint",
             words: [
                 { w: "Mera" },
                 { w: "OTB", mark: "sub", ref: "OTP" },
@@ -217,7 +217,7 @@ export const audio = {
         },
         {
             code: "C",
-            label: "openai/gpt-4o-transcribe",
+            label: "Config C · different model",
             words: [
                 { w: "Mera" },
                 { w: "OTP" },
@@ -228,18 +228,18 @@ export const audio = {
                 { w: "karo.", mark: "miss" },
             ] as TranscriptWord[],
             accuracy: "71.4%",
-            speakers: "not supported",
+            speakers: "unavailable",
         },
     ],
 };
 
 export const agentCalls = [
     { tool: "list_datasets", result: "3 datasets" },
-    { tool: "create_eval_run", result: "run 0413 queued" },
-    { tool: "get_run_progress", result: "180 / 240 cells" },
-    { tool: "get_run_summary", result: "leader: claude-sonnet-4.5" },
-    { tool: "list_run_cells", result: "12 cells below 0.6" },
-    { tool: "save_run_note", result: "note saved" },
+    { tool: "create_eval_run", result: "run queued" },
+    { tool: "get_run_progress", result: "720 / 960 results" },
+    { tool: "get_run_summary", result: "status + progress" },
+    { tool: "list_run_cells", result: "outputs + scores" },
+    { tool: "save_run_note", result: "review note saved" },
 ];
 
 export const installSteps = [
