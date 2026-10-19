@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import type * as RunQueue from "./runQueue";
 import type * as WorkflowRunQueue from "./workflowRunQueue";
+import { PG_BOSS_SCHEMA } from "./queueNames";
 import {
     afterAll,
     afterEach,
@@ -104,7 +105,7 @@ integration("production worker wrappers recover real stale cells", () => {
 
         if (evalRunId) {
             await pool.query(
-                `delete from pgboss.job where name = 'eval-run' and data->>'runId' = $1`,
+                `delete from ${PG_BOSS_SCHEMA}.job where name = 'eval-run' and data->>'runId' = $1`,
                 [evalRunId],
             );
             await pool.query(
@@ -117,7 +118,7 @@ integration("production worker wrappers recover real stale cells", () => {
         }
         if (workflowRunId) {
             await pool.query(
-                `delete from pgboss.job where name = 'workflow-run' and data->>'workflowRunId' = $1`,
+                `delete from ${PG_BOSS_SCHEMA}.job where name = 'workflow-run' and data->>'workflowRunId' = $1`,
                 [workflowRunId],
             );
             await pool.query(
@@ -218,7 +219,7 @@ integration("production worker wrappers recover real stale cells", () => {
             Date.now() - 10_000,
         );
         const jobs = await pool.query<{ count: number }>(
-            `select count(*)::int as count from pgboss.job
+            `select count(*)::int as count from ${PG_BOSS_SCHEMA}.job
              where name = 'eval-run' and data->>'runId' = $1`,
             [evalRunId],
         );
@@ -236,7 +237,7 @@ integration("production worker wrappers recover real stale cells", () => {
 
         await runQueue.startRunWorker();
         const afterRestart = await pool.query<{ count: number }>(
-            `select count(*)::int as count from pgboss.job
+            `select count(*)::int as count from ${PG_BOSS_SCHEMA}.job
              where name = 'eval-run' and data->>'runId' = $1`,
             [evalRunId],
         );
@@ -300,7 +301,7 @@ integration("production worker wrappers recover real stale cells", () => {
             Date.now() - 10_000,
         );
         const jobs = await pool.query<{ count: number }>(
-            `select count(*)::int as count from pgboss.job
+            `select count(*)::int as count from ${PG_BOSS_SCHEMA}.job
              where name = 'workflow-run' and data->>'workflowRunId' = $1`,
             [workflowRunId],
         );
@@ -318,7 +319,7 @@ integration("production worker wrappers recover real stale cells", () => {
 
         await workflowRunQueue.startWorkflowRunWorker();
         const afterRestart = await pool.query<{ count: number }>(
-            `select count(*)::int as count from pgboss.job
+            `select count(*)::int as count from ${PG_BOSS_SCHEMA}.job
              where name = 'workflow-run' and data->>'workflowRunId' = $1`,
             [workflowRunId],
         );

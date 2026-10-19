@@ -1,5 +1,10 @@
 import { Pool } from "pg";
-import { RUN_QUEUE, WORKFLOW_RUN_QUEUE } from "../server/jobs/queueNames";
+import {
+    LEGACY_PG_BOSS_SCHEMA,
+    PG_BOSS_SCHEMA,
+    RUN_QUEUE,
+    WORKFLOW_RUN_QUEUE,
+} from "../server/jobs/queueNames";
 import { parseStaleClaimMs } from "../server/jobs/claimLease";
 import { safeWorkerError } from "../server/jobs/workerObservability";
 import { loadWorkerCostSummary } from "../server/jobs/workerStatusCostSummary";
@@ -29,7 +34,8 @@ async function main(): Promise<void> {
         const checkedAt = new Date();
         await pool.query("select 1");
         const schema = await pool.query<{ installed: boolean }>(
-            "select to_regclass('pgboss.job') is not null as installed",
+            "select to_regclass($1) is not null as installed",
+            [`${PG_BOSS_SCHEMA}.job`],
         );
         if (!schema.rows[0]?.installed)
             throw new Error("pg-boss storage is not installed");
@@ -40,11 +46,26 @@ async function main(): Promise<void> {
                     count(*) filter (where state = 'active')::int as active,
                     count(*) filter (where state = 'failed')::int as failed,
                     min(created_on) filter (where state in ('created', 'retry')) as "oldestPendingAt"
-             from pgboss.job
+             from ${PG_BOSS_SCHEMA}.job
              where name = any($1::text[])
              group by name`,
             [[RUN_QUEUE, WORKFLOW_RUN_QUEUE]],
         );
+        // Jobs left in the pre-v12 schema are invisible to workers until
+        // `worker:migrate-legacy-queue` copies them across.
+        const legacyInstalled = await pool.query<{ installed: boolean }>(
+            "select to_regclass($1) is not null as installed",
+            [`${LEGACY_PG_BOSS_SCHEMA}.job`],
+        );
+        const legacyPending = legacyInstalled.rows[0]?.installed
+            ? ((
+                  await pool.query<{ pending: number }>(
+                      `select count(*)::int as pending from ${LEGACY_PG_BOSS_SCHEMA}.job
+                       where name = any($1::text[]) and state in ('created', 'retry')`,
+                      [[RUN_QUEUE, WORKFLOW_RUN_QUEUE]],
+                  )
+              ).rows[0]?.pending ?? 0)
+            : null;
         const runSummary = await pool.query<IRunSummaryRow>(
             `select count(*) filter (where r.status = 'pending')::int as pending,
                     count(*) filter (where r.status = 'running')::int as running,
@@ -103,6 +124,7 @@ async function main(): Promise<void> {
                 database: "ok",
                 workerProcess: "check through its process supervisor",
                 queues: queueSnapshot,
+                legacyQueuePending: legacyPending,
                 runs: {
                     eval: summary(run, checkedAt),
                     workflow: summary(workflow, checkedAt),

@@ -1,17 +1,17 @@
-import PgBoss from "pg-boss";
+import { PgBoss } from "pg-boss";
 import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { db } from "../db/client";
 import { workflowRunCells, workflowRuns } from "../db/schema";
 import { executeWorkflowRun } from "../workflowRuns/executor";
 import { parseStaleClaimMs } from "./claimLease";
 import { logWorkerEvent, safeWorkerError } from "./workerObservability";
-import { WORKFLOW_RUN_QUEUE } from "./queueNames";
+import {
+    PG_BOSS_SCHEMA,
+    WORKFLOW_RUN_QUEUE,
+    WORKFLOW_RUN_QUEUE_OPTIONS,
+} from "./queueNames";
 
 export { WORKFLOW_RUN_QUEUE } from "./queueNames";
-const WORKFLOW_RUN_QUEUE_OPTIONS = {
-    name: WORKFLOW_RUN_QUEUE,
-    policy: "stately",
-} as const;
 interface IWorkflowRunJob {
     workflowRunId: string;
 }
@@ -29,7 +29,11 @@ async function getBoss() {
     if (!boss) {
         const url = process.env.DATABASE_URL;
         if (!url) throw new Error("DATABASE_URL is not set");
-        boss = new PgBoss({ connectionString: url, max: 2 });
+        boss = new PgBoss({
+            connectionString: url,
+            max: 2,
+            schema: PG_BOSS_SCHEMA,
+        });
         boss.on("error", (error) => {
             logWorkerEvent("error", "queue.error", {
                 queue: WORKFLOW_RUN_QUEUE,
@@ -37,11 +41,11 @@ async function getBoss() {
             });
         });
         await boss.start();
-        // pg-boss 10 enforces singletonKey only on non-standard queues;
+        // pg-boss enforces singletonKey only on non-standard queues;
         // "stately" keeps one created and one active job per run. Matches the
         // API publisher; every send to this queue carries a singletonKey.
+        // The policy is fixed at creation: pg-boss 11+ rejects policy updates.
         await boss.createQueue(WORKFLOW_RUN_QUEUE, WORKFLOW_RUN_QUEUE_OPTIONS);
-        await boss.updateQueue(WORKFLOW_RUN_QUEUE, WORKFLOW_RUN_QUEUE_OPTIONS);
     }
     return boss;
 }
@@ -118,7 +122,7 @@ export function startWorkflowRunWorker(): Promise<void> {
         if (stopping) return;
         const b = await getBoss();
         if (stopping) return;
-        await b.work<IWorkflowRunJob>(
+        await b.work<IWorkflowRunJob, void, { includeMetadata: true }>(
             WORKFLOW_RUN_QUEUE,
             { includeMetadata: true },
             async (jobs) => {

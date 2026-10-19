@@ -1,11 +1,11 @@
-import PgBoss from "pg-boss";
+import { PgBoss } from "pg-boss";
 import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { db } from "../db/client";
 import { runs, runCells } from "../db/schema";
 import { executeRun } from "../runs/executor";
 import { parseStaleClaimMs } from "./claimLease";
 import { logWorkerEvent, safeWorkerError } from "./workerObservability";
-import { RUN_QUEUE } from "./queueNames";
+import { PG_BOSS_SCHEMA, RUN_QUEUE } from "./queueNames";
 
 export { RUN_QUEUE } from "./queueNames";
 
@@ -27,7 +27,11 @@ async function getBoss(): Promise<PgBoss> {
     if (!boss) {
         const url = process.env.DATABASE_URL;
         if (!url) throw new Error("DATABASE_URL is not set");
-        const instance = new PgBoss({ connectionString: url, max: 2 });
+        const instance = new PgBoss({
+            connectionString: url,
+            max: 2,
+            schema: PG_BOSS_SCHEMA,
+        });
         instance.on("error", (error) => {
             logWorkerEvent("error", "queue.error", {
                 queue: RUN_QUEUE,
@@ -56,7 +60,7 @@ export function startRunWorker(): Promise<void> {
         if (stopping) return;
         const b = await getBoss();
         if (stopping) return;
-        await b.work<RunJob>(
+        await b.work<RunJob, void, { includeMetadata: true }>(
             RUN_QUEUE,
             { includeMetadata: true },
             async (jobs) => {

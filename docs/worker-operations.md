@@ -72,6 +72,38 @@ pg-boss or run/cell rows as a first response.
    any unresolved discrepancy in the private daily pilot log. Do not copy
    prompts, outputs, credentials, or raw error text into that log.
 
+## pg-boss 12 cutover
+
+pg-boss 11 and later cannot migrate the pg-boss 10 schema, so pg-boss 12 runs in
+a separate `pgboss_v12` schema. The release that introduces it leaves the legacy
+`pgboss` schema untouched. Waiting jobs in it are invisible to the new worker
+until they are copied, and `pnpm worker:status` reports them as
+`legacyQueuePending`.
+
+1. Take a database backup or confirm point-in-time recovery is available, then
+   run `pnpm worker:status` on the old release and note pending/active counts.
+   A quiet queue makes the cutover shorter but is not required.
+2. Deploy the API and worker services from the same release. Until the first
+   new worker starts, `pnpm worker:status` reports `not_ready` because
+   `pgboss_v12` does not exist yet.
+3. Once no pre-cutover API or worker instance remains, run
+   `pnpm worker:migrate-legacy-queue --dry-run` and then
+   `pnpm worker:migrate-legacy-queue`. It copies waiting eval and workflow jobs
+   with their original ids and remaining attempts and marks the legacy rows
+   cancelled in the same transaction. Re-running it is safe; jobs already queued
+   under the same id or workflow run are deduplicated.
+4. If it reports `blocked_by_active_legacy_jobs`, an old worker may still be
+   running them. Confirm it has stopped; its runs are recovered once their claims
+   pass the stale-claim lease. Then re-run with `--allow-active`.
+5. Confirm `pnpm worker:status` shows `legacyQueuePending: 0` and that new
+   runs complete. Copied jobs report their age from the copy, not the original
+   enqueue.
+
+To roll back, redeploy the previous release. It uses the untouched legacy
+schema; runs enqueued only into `pgboss_v12` stay pending until retried. Drop the
+legacy `pgboss` schema only after the new release is stable and a rollback is no
+longer planned.
+
 ## Errors, costs, and pilot review
 
 Worker stdout uses JSON events with service, event, timestamp, queue, job/run or

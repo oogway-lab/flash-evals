@@ -30,7 +30,7 @@ function deferred<T>() {
 }
 
 vi.mock("pg-boss", () => ({
-    default: class PgBossMock {
+    PgBoss: class PgBossMock {
         constructor() {
             mocks.bossConstructions += 1;
         }

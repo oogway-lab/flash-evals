@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("pg-boss", () => ({
-    default: class PgBossMock {
+    PgBoss: class PgBossMock {
         constructor() {
             mocks.bossConstructions += 1;
         }

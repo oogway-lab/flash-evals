@@ -10,6 +10,7 @@ import { resolveApiFeatureFlags } from "../featureFlags.js";
 import type { IApiRuntime } from "../server.js";
 import { createMcpTokenSecret, hashMcpToken } from "./auth.js";
 import { handleMcpRequest } from "./http.js";
+import { PG_BOSS_SCHEMA } from "../runQueue.js";
 
 /*
  * Real server + real routes + real PostgreSQL + local filesystem storage.
@@ -154,7 +155,8 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
                     [`%:${teamId}:%`],
                 );
                 const pgBoss = await pool.query<{ relation: string | null }>(
-                    "select to_regclass('pgboss.job')::text as relation",
+                    "select to_regclass($1)::text as relation",
+                    [`${PG_BOSS_SCHEMA}.job`],
                 );
                 const syntheticRunIds = [
                     fixtureRunId,
@@ -162,14 +164,14 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
                 ].filter(Boolean);
                 if (pgBoss.rows[0]?.relation && syntheticRunIds.length) {
                     await pool.query(
-                        `delete from pgboss.job
+                        `delete from ${PG_BOSS_SCHEMA}.job
                      where name='eval-run' and data->>'runId'=any($1::text[])`,
                         [syntheticRunIds],
                     );
                 }
                 if (pgBoss.rows[0]?.relation) {
                     await pool.query(
-                        `delete from pgboss.job
+                        `delete from ${PG_BOSS_SCHEMA}.job
                      where name='workflow-run' and data->>'workflowRunId' in (
                         select id::text from workflow_runs where team_id=$1
                      )`,

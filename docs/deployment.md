@@ -66,7 +66,7 @@ Have authorized access to the repository/GitHub Actions, a Cloudflare account an
 | Next.js                        | Exact **16.4.1** security baseline. Earlier 16.4 builds exposed an OpenNext `preview-props.json` manifest failure; require both build and Worker-runtime smoke checks before deployment.                           |
 | Astro                          | Marketing source pins **7.3.4**. It is packaged into the web release, not deployed as a second apex Worker.                                                                                                        |
 | OpenNext Cloudflare / Wrangler | Current source ranges `^1.20.13` / `^4.149.0`, installed from the reviewed lockfile; adapter 1.20.13 targets the patched Next baseline. Do not replace lockfile-resolved versions with unreviewed latest versions. |
-| PostgreSQL driver / queue      | Tracked `pg ^8.23.1`, `pg-boss ^10.1.5`; restore and deploy the reviewed lockfile.                                                                                                                                 |
+| PostgreSQL driver / queue      | Tracked `pg ^8.23.1`, `pg-boss ^12.38.0` (schema `pgboss_v12`; see the worker-operations cutover); restore and deploy the reviewed lockfile.                                                                                                                                 |
 | Codex CLI                      | Help/version inspected here: **0.162.1**. OAuth options below were verified in its help, not newly used to log in during documentation.                                                                            |
 
 Clean checkout template (**changes local files; new clone template**):

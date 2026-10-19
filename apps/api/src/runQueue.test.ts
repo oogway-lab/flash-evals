@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
     on: vi.fn(),
 }));
 vi.mock("pg-boss", () => ({
-    default: class {
+    PgBoss: class {
         start = mocks.start;
         stop = mocks.stop;
         send = mocks.send;
@@ -42,10 +42,8 @@ describe("ordinary queue publication", () => {
         await enqueueWorkflowRun(config, "wf-run");
         const options = { name: "workflow-run", policy: "stately" };
         expect(mocks.createQueue).toHaveBeenCalledWith("workflow-run", options);
-        expect(mocks.updateQueue).toHaveBeenCalledExactlyOnceWith(
-            "workflow-run",
-            options,
-        );
+        // pg-boss 11+ throws when updateQueue() is given a policy.
+        expect(mocks.updateQueue).not.toHaveBeenCalled();
         expect(mocks.send).toHaveBeenCalledWith(
             "workflow-run",
             { workflowRunId: "wf-run" },
