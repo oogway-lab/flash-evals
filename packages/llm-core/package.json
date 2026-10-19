@@ -21,10 +21,10 @@
         "test:coverage": "vitest run --coverage"
     },
     "dependencies": {
-        "@ai-sdk/gateway": "^4.0.110",
-        "@ai-sdk/openai": "^4.0.91",
-        "ai": "^7.0.137",
-        "openai": "^7.32.0",
+        "@ai-sdk/gateway": "^4.0.115",
+        "@ai-sdk/openai": "^4.0.95",
+        "ai": "^7.0.142",
+        "openai": "^7.34.0",
         "undici": "7.29.1"
     },
     "devDependencies": {
