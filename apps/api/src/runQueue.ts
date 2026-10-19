@@ -1,9 +1,11 @@
-import PgBoss from "pg-boss";
+import { PgBoss } from "pg-boss";
 import type { IApiConfig } from "./config.js";
 import type { IDb } from "./db.js";
 
 export const RUN_QUEUE = "eval-run";
 export const WORKFLOW_RUN_QUEUE = "workflow-run";
+/** pg-boss 11+ cannot migrate the v10 schema; must match the worker's PG_BOSS_SCHEMA. */
+export const PG_BOSS_SCHEMA = "pgboss_v12";
 const WORKFLOW_RUN_QUEUE_OPTIONS = {
     name: WORKFLOW_RUN_QUEUE,
     policy: "stately",
@@ -13,15 +15,15 @@ let boss: Promise<PgBoss> | undefined;
 let workflowQueueReady: Promise<void> | undefined;
 
 /**
- * pg-boss 10 enforces `singletonKey` only on non-standard queues. "stately"
+ * pg-boss enforces `singletonKey` only on non-standard queues. "stately"
  * allows one created and one active job per key, so a run cannot be queued
  * twice while still letting a retry queue behind a finishing job. Every send
  * to this queue must carry a singletonKey. The worker applies the same policy.
+ * The policy is fixed at creation: pg-boss 11+ rejects policy updates.
  */
 function ensureWorkflowRunQueue(b: PgBoss): Promise<void> {
     workflowQueueReady ??= (async () => {
         await b.createQueue(WORKFLOW_RUN_QUEUE, WORKFLOW_RUN_QUEUE_OPTIONS);
-        await b.updateQueue(WORKFLOW_RUN_QUEUE, WORKFLOW_RUN_QUEUE_OPTIONS);
     })().catch((error: unknown) => {
         workflowQueueReady = undefined;
         throw error;
@@ -35,6 +37,7 @@ async function getBoss(config: IApiConfig): Promise<PgBoss> {
             const instance = new PgBoss({
                 connectionString: config.databaseUrl,
                 max: 2,
+                schema: PG_BOSS_SCHEMA,
             });
             instance.on("error", () => console.error("pg-boss error"));
             try {

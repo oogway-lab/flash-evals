@@ -8,6 +8,7 @@ import type {
 } from "@flash-evals/api-contract";
 import { withTransaction, type IDb } from "../../db.js";
 import { ApiBadRequestError, ApiNotFoundError } from "../../errors.js";
+import { PG_BOSS_SCHEMA } from "../../runQueue.js";
 
 interface IRunRow {
     status: RunStatus;
@@ -170,7 +171,7 @@ export async function retryRunPayload(
             // A queued outbox record implies pg-boss already created its schema.
             const active = (
                 await tx.query(
-                    `select id from pgboss.job where id=$1 and name='eval-run'
+                    `select id from ${PG_BOSS_SCHEMA}.job where id=$1 and name='eval-run'
                  and state in ('created', 'retry', 'active') limit 1`,
                     [publication.jobId],
                 )

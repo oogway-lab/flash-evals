@@ -54,6 +54,7 @@
         "api:start:railway": "pnpm --filter @flash-evals/api start:railway",
         "worker": "pnpm --filter @flash-evals/web worker",
         "worker:status": "pnpm --filter @flash-evals/web worker:status",
+        "worker:migrate-legacy-queue": "pnpm --filter @flash-evals/web worker:migrate-legacy-queue",
         "db:bootstrap-pilot-team": "pnpm --filter @flash-evals/web db:bootstrap-pilot-team",
         "api:test": "pnpm --filter @flash-evals/api test",
         "api:typecheck": "pnpm --filter @flash-evals/api typecheck",

@@ -1,6 +1,7 @@
-import PgBoss from "pg-boss";
+import { PgBoss } from "pg-boss";
 import { refreshModelCatalog } from "@flash-evals/llm-core";
 import { modelCatalogStore } from "../llm/catalog";
+import { PG_BOSS_SCHEMA } from "./queueNames";
 import { logWorkerEvent, safeWorkerError } from "./workerObservability";
 
 export const MODEL_CATALOG_QUEUE = "model-catalog-refresh";
@@ -18,6 +19,7 @@ export function startModelCatalogWorker(): Promise<void> {
         const instance = new PgBoss({
             connectionString: process.env.DATABASE_URL,
             max: 1,
+            schema: PG_BOSS_SCHEMA,
         });
         boss = instance;
         instance.on("error", (error) =>

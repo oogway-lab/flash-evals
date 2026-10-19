@@ -29,7 +29,7 @@
         "ajv-formats": "^3.0.1",
         "papaparse": "^5.7.0",
         "pg": "^8.23.1",
-        "pg-boss": "^10.1.5",
+        "pg-boss": "^12.38.0",
         "zod": "^4.6.5"
     },
     "devDependencies": {

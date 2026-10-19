@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
     stop: vi.fn(async () => undefined),
 }));
 vi.mock("pg-boss", () => ({
-    default: class {
+    PgBoss: class {
         on = vi.fn();
         start = mocks.start;
         createQueue = mocks.createQueue;
