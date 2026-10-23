@@ -1,4 +1,4 @@
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -127,7 +127,7 @@ describe("STT eval actions", () => {
 
     it("returns an API failure as a form error instead of throwing", async () => {
         mocks.createWorkflow.mockRejectedValueOnce(
-            new MosaicApiError("Workflow limit reached.", 409),
+            new FlashEvalsApiError("Workflow limit reached.", 409),
         );
         const data = new FormData();
         data.set("name", "Text flow");
@@ -164,9 +164,9 @@ describe("STT eval actions", () => {
     );
 
     it("returns node-addressable routing errors with remediation", async () => {
-        const { MosaicApiError } = await import("@mosaic/api-contract");
+        const { FlashEvalsApiError } = await import("@flash-evals/api-contract");
         mocks.createWorkflowRun.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 'Workflow node "Prompt Root" has no LLM route selection.',
                 400,
                 "invalid_llm_routing",

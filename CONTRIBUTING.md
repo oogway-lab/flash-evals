@@ -12,18 +12,23 @@ Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Do not put credentials,
 - `packages/llm-core/` — model provider transports and cost helpers.
 - `packages/secrets/` — credential encryption helpers.
 
-Package names, environment-variable prefixes, and database identifiers currently use the internal `mosaic` name for compatibility.
+Use `@flash-evals/*`, `FLASH_EVALS_*`, and `flash-evals://` for active identifiers.
+Preserve applied migrations and historical encryption compatibility contexts;
+migrate forward instead of rewriting them.
 
 ## Prerequisites and setup
 
-Follow [Getting started](docs/getting-started.md) for the complete fresh-clone
-setup. Use Node.js 24.21.0, pnpm 12.6.0, and a disposable PostgreSQL database.
-Docker Compose is the bundled database option; an existing PostgreSQL instance
-also works. No Clerk, Supabase, or provider account is needed for synthetic data.
+Start with [Getting started](docs/getting-started.md): it covers macOS/Linux,
+Windows through WSL2, prerequisites, fresh configuration, PostgreSQL, and expected
+results. Use [VM/remote development](docs/remote-development.md) when the browser
+and app run on different machines. The [development guide](docs/development.md)
+covers fast refresh/restarts, test levels, optional audio/MCP, and data-preserving
+updates. It is the day-to-day command reference.
 
-The seed command resets application tables. Provider requests, including prompt
-validation, may incur charges. Keep all development authentication and local
-storage bypasses off public networks.
+Node/pnpm pins live in `.nvmrc` and `package.json`. No Clerk, Supabase, or provider
+account is needed for synthetic examples. Only initialize a confirmed new,
+disposable database; seed resets application tables. Real provider requests,
+including prompt validation, may incur charges.
 
 ## Development workflow
 
@@ -50,6 +55,7 @@ existing large modules should not grow further.
 Run the checks relevant to your change:
 
 ```bash
+pnpm run test:dev
 pnpm run typecheck
 pnpm run build
 pnpm run test
@@ -62,7 +68,10 @@ pnpm run security
 ```
 
 Install Chromium for Playwright with `pnpm exec playwright install chromium`
-before running browser tests locally. The current `test:e2e` suite covers basic
+before running browser tests locally. Linux may also need Playwright system
+libraries; see [optional tools](docs/development.md#optional-tools). Browser suites
+use separate private ports/caches and can run alongside development. The current
+`test:e2e` suite covers basic
 health and page-rendering checks with a fake API. It does not establish full
 click-through coverage of datasets, prompts, runs, or workflows. The optional API
 health check is skipped unless `PLAYWRIGHT_API_BASE_URL` is set. Production Clerk
@@ -85,8 +94,8 @@ PostgreSQL database. It exercises overlapping graph and node-selection writes.
 Create a dedicated test database, apply the migrations, then run:
 
 ```bash
-MOSAIC_TEST_DATABASE_URL=postgres://user:password@localhost:5432/flash_evals_test \
-  pnpm --filter @mosaic/api exec vitest run src/routes/workflowEditing.integration.test.ts
+FLASH_EVALS_TEST_DATABASE_URL=postgres://user:password@localhost:5432/flash_evals_test \
+  pnpm --filter @flash-evals/api exec vitest run src/routes/workflowEditing.integration.test.ts
 ```
 
 Replace the URL with your test database. The test is skipped when the variable is

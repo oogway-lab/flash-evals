@@ -8,7 +8,7 @@ import {
     putR2Object,
     r2ObjectKey,
     type IR2StorageConfig,
-} from "@mosaic/object-storage";
+} from "@flash-evals/object-storage";
 
 export type ObjectStorageAdapter = "supabase" | "local" | "r2";
 
@@ -187,8 +187,8 @@ function appWorkspaceRoot(): string {
 
 function resolveAdapter(env: NodeJS.ProcessEnv): ObjectStorageAdapter {
     const requested = (
-        env.MOSAIC_STORAGE_ADAPTER ??
-        env.MOSAIC_IMAGE_STORAGE_ADAPTER ??
+        env.FLASH_EVALS_STORAGE_ADAPTER ??
+        env.FLASH_EVALS_IMAGE_STORAGE_ADAPTER ??
         ""
     )
         .trim()
@@ -196,7 +196,7 @@ function resolveAdapter(env: NodeJS.ProcessEnv): ObjectStorageAdapter {
     if (requested === "local") {
         if (env.NODE_ENV === "production") {
             throw new ObjectStorageConfigError(
-                "MOSAIC_STORAGE_ADAPTER=local is not allowed in production",
+                "FLASH_EVALS_STORAGE_ADAPTER=local is not allowed in production",
             );
         }
         return "local";
@@ -204,7 +204,7 @@ function resolveAdapter(env: NodeJS.ProcessEnv): ObjectStorageAdapter {
     if (requested === "r2") return "r2";
     if (requested && requested !== "supabase") {
         throw new ObjectStorageConfigError(
-            `Unsupported MOSAIC_STORAGE_ADAPTER value: ${requested}`,
+            `Unsupported FLASH_EVALS_STORAGE_ADAPTER value: ${requested}`,
         );
     }
     if (requested === "supabase") return "supabase";
@@ -217,7 +217,7 @@ function resolveAdapter(env: NodeJS.ProcessEnv): ObjectStorageAdapter {
     ].some((value) => Boolean(value?.trim()));
     if (hasR2Settings) {
         throw new ObjectStorageConfigError(
-            "R2 storage settings are set but MOSAIC_STORAGE_ADAPTER is not. Set MOSAIC_STORAGE_ADAPTER=r2 in every API and worker environment.",
+            "R2 storage settings are set but FLASH_EVALS_STORAGE_ADAPTER is not. Set FLASH_EVALS_STORAGE_ADAPTER=r2 in every API and worker environment.",
         );
     }
     if (env.NODE_ENV === "production") return "supabase";
@@ -225,24 +225,24 @@ function resolveAdapter(env: NodeJS.ProcessEnv): ObjectStorageAdapter {
     // Dev/test default remains local when no adapter is set. Fail loudly when
     // Supabase credentials are present but the adapter was left implicit —
     // that usually means a worker is missing NODE_ENV=production (or an
-    // explicit MOSAIC_STORAGE_ADAPTER=supabase) while web has it, so web
+    // explicit FLASH_EVALS_STORAGE_ADAPTER=supabase) while web has it, so web
     // writes to Supabase and the worker reads empty local disk (ENOENT on
-    // every audio/image load). Set MOSAIC_STORAGE_ADAPTER=local intentionally
+    // every audio/image load). Set FLASH_EVALS_STORAGE_ADAPTER=local intentionally
     // if you really want local disk despite Supabase env vars.
     //
     // Railway workers must set NODE_ENV=production or
-    // MOSAIC_STORAGE_ADAPTER=supabase so they share the web object's store.
+    // FLASH_EVALS_STORAGE_ADAPTER=supabase so they share the web object's store.
     const hasSupabaseCredentials =
         Boolean(env.SUPABASE_URL?.trim()) &&
         Boolean(env.SUPABASE_SERVICE_ROLE_KEY?.trim()) &&
         Boolean(env.SUPABASE_STORAGE_BUCKET?.trim());
     if (hasSupabaseCredentials) {
         throw new ObjectStorageConfigError(
-            "Supabase storage credentials are set but MOSAIC_STORAGE_ADAPTER is not. " +
-                "Set MOSAIC_STORAGE_ADAPTER=supabase (shared/deployed environments " +
-                "including workers) or MOSAIC_STORAGE_ADAPTER=local for intentional " +
+            "Supabase storage credentials are set but FLASH_EVALS_STORAGE_ADAPTER is not. " +
+                "Set FLASH_EVALS_STORAGE_ADAPTER=supabase (shared/deployed environments " +
+                "including workers) or FLASH_EVALS_STORAGE_ADAPTER=local for intentional " +
                 "local-only use. Railway workers need NODE_ENV=production or " +
-                "MOSAIC_STORAGE_ADAPTER=supabase so they read the same store as web.",
+                "FLASH_EVALS_STORAGE_ADAPTER=supabase so they read the same store as web.",
         );
     }
     return "local";

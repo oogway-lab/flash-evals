@@ -32,7 +32,7 @@ An API `/health` result alone does not establish worker health.
 
 On the first `SIGTERM` or `SIGINT`, the worker marks itself unready, stops its
 stale-claim sweeps, and asks both pg-boss instances to stop polling and drain
-active handlers. `MOSAIC_WORKER_DRAIN_TIMEOUT_MS` controls the drain window: the
+active handlers. `FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS` controls the drain window: the
 default is 20 seconds, values below 1 second use the default, and values above
 5 minutes are capped. Set the process manager's termination grace period above
 the drain window plus five seconds.

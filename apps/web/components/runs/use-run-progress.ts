@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { IRunProgress, RunStatus } from "@mosaic/api-contract";
+import type { IRunProgress, RunStatus } from "@flash-evals/api-contract";
 
 export interface IRunProgressSnapshot extends IRunProgress {
     status: RunStatus;

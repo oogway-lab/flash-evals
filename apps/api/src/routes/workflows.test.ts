@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type {
     ICreateWorkflowRequest,
     IWorkflowNodeInput,
-} from "@mosaic/api-contract";
-import { createMultiWorkflowSeed } from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
+import { createMultiWorkflowSeed } from "@flash-evals/api-contract";
 import { WorkflowNodeInput } from "../mcp/schemas.js";
 import type { IDb } from "../db.js";
 import { ApiNotFoundError } from "../errors.js";

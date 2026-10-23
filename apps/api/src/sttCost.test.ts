@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     sttAudioHourPriceUsdForId,
     sttCostUsdForDuration,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 
 describe("STT audio-duration pricing", () => {
     it("prices a known model from its audio length", () => {

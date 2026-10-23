@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { IWorkflowRunDetailResponse } from "@mosaic/api-contract";
+import type { IWorkflowRunDetailResponse } from "@flash-evals/api-contract";
 import { MISSING_VALUE } from "@/lib/format";
 import type { toTranscriptMetricDetails } from "@/components/runs/types";
 import { formatTranscriptPercent } from "@/components/runs/transcript-score-details";

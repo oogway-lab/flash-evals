@@ -1,12 +1,12 @@
 /* global AbortSignal, console, fetch, process */
 // Read-only MCP connection check. Run from the repository root with Node 24.
-// Supply a local development token through MOSAIC_MCP_LOCAL_TOKEN, never a file
+// Supply a local development token through FLASH_EVALS_MCP_LOCAL_TOKEN, never a file
 // committed to Git. An optional first argument overrides the endpoint URL.
 const endpoint = process.argv[2] ?? "http://127.0.0.1:3001/mcp";
-const token = process.env.MOSAIC_MCP_LOCAL_TOKEN;
+const token = process.env.FLASH_EVALS_MCP_LOCAL_TOKEN;
 if (!token) {
     throw new Error(
-        "Set MOSAIC_MCP_LOCAL_TOKEN to your local MCP bearer token.",
+        "Set FLASH_EVALS_MCP_LOCAL_TOKEN to your local MCP bearer token.",
     );
 }
 let requestId = 0;

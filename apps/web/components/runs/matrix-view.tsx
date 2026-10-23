@@ -12,7 +12,7 @@ import { ArrowRight, Check, CircleAlert, MessageSquare } from "lucide-react";
 import type {
     IMatrixCellScore,
     IRunConfigSnapshot,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     MISSING_VALUE,
     formatCostColumn,

@@ -7,7 +7,7 @@ import {
 import {
     isEmailAllowedForDomain,
     normalizeEmailAddress,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     resolveMcpOAuthConfig,
     type IApiConfig,
@@ -124,7 +124,7 @@ export async function resolveMcpPrincipal(
         );
     }
 
-    if (!config.mosaicMcpRawTokenFallbackEnabled) {
+    if (!config.flashEvalsMcpRawTokenFallbackEnabled) {
         throw new ApiForbiddenError("MCP OAuth is not configured.");
     }
 
@@ -150,14 +150,14 @@ export async function resolveMcpPrincipalForRawToken(
             and u.team_id = mat.team_id
             and mat.revoked_at is null
         limit 1`,
-        [hashMcpToken(token, config.mosaicMcpTokenPepper)],
+        [hashMcpToken(token, config.flashEvalsMcpTokenPepper)],
     );
     const row = result.rows[0];
     if (!row) throw new ApiForbiddenError("Invalid MCP bearer token.");
 
     let email = normalizeEmailAddress(row.email);
     if (requiresDomainAdmission(config)) {
-        if (!isEmailAllowedForDomain(email, config.mosaicAllowedEmailDomain)) {
+        if (!isEmailAllowedForDomain(email, config.flashEvalsAllowedEmailDomain)) {
             throw new ApiForbiddenError(
                 "This Flash Evals account is not allowed to use MCP.",
             );
@@ -329,8 +329,8 @@ export function mcpProfileFromOAuthScopes(
 
 function requiresDomainAdmission(config: IApiConfig): boolean {
     return (
-        config.mosaicTenancyMode === "single-org" ||
-        config.mosaicAllowedEmailDomain !== ""
+        config.flashEvalsTenancyMode === "single-org" ||
+        config.flashEvalsAllowedEmailDomain !== ""
     );
 }
 
@@ -372,7 +372,7 @@ async function verifyCurrentClerkEmailAdmission(
     const normalized = normalizeEmailAddress(email);
     if (
         requiresDomainAdmission(config) &&
-        !isEmailAllowedForDomain(normalized, config.mosaicAllowedEmailDomain)
+        !isEmailAllowedForDomain(normalized, config.flashEvalsAllowedEmailDomain)
     ) {
         throw new ApiForbiddenError(
             "This Flash Evals account is not allowed to use MCP.",

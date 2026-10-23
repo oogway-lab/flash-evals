@@ -3,7 +3,7 @@
 import { ItemCard } from "@/components/datasets/item-card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { IActionState } from "@/app/actions";
-import type { IDatasetDetailResponse } from "@mosaic/api-contract";
+import type { IDatasetDetailResponse } from "@flash-evals/api-contract";
 import { goldCoverage } from "./gold-coverage";
 import { SectionTitle } from "@/components/layout/section-title";
 import { EmptyState } from "@/components/layout/empty-state";

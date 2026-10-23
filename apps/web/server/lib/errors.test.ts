@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 import {
     clientErrorMessage,
     errorMessage,
@@ -31,7 +31,7 @@ describe("clientErrorMessage", () => {
     });
 
     it("passes through API errors", () => {
-        const err = new MosaicApiError("Dataset not found.", 404);
+        const err = new FlashEvalsApiError("Dataset not found.", 404);
 
         expect(clientErrorMessage(err)).toBe("Dataset not found.");
         expect(consoleError).not.toHaveBeenCalled();

@@ -1,6 +1,6 @@
 "use client";
 
-import { ALLOWED_AUDIO_TYPES, MAX_AUDIO_BYTES } from "@mosaic/api-contract";
+import { ALLOWED_AUDIO_TYPES, MAX_AUDIO_BYTES } from "@flash-evals/api-contract";
 import { MediaFileDropzone } from "./media-file-dropzone";
 
 // Same allowlist and limit the server enforces.

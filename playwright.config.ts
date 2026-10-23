@@ -1,10 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
+import { devHost } from "./scripts/lib/dev-env.cjs";
 
-const webPort = process.env.PLAYWRIGHT_WEB_PORT ?? "3000";
+const webPort = process.env.PLAYWRIGHT_WEB_PORT ?? "3100";
 const fakeApiPort = process.env.PLAYWRIGHT_FAKE_API_PORT ?? "3101";
 const webBaseUrl =
-    process.env.PLAYWRIGHT_WEB_BASE_URL ?? `http://127.0.0.1:${webPort}`;
-const defaultApiBaseUrl = `http://127.0.0.1:${fakeApiPort}`;
+    process.env.PLAYWRIGHT_WEB_BASE_URL ?? `http://${devHost}:${webPort}`;
+const defaultApiBaseUrl = `http://${devHost}:${fakeApiPort}`;
+// The fixture runs in a Playwright worker, separate from the Next process.
+process.env.PLAYWRIGHT_FAKE_API_HOST = devHost;
 
 export default defineConfig({
     testDir: "./tests/e2e",
@@ -20,26 +23,28 @@ export default defineConfig({
     webServer: process.env.PLAYWRIGHT_WEB_BASE_URL
         ? undefined
         : {
-              // Build the workspace packages @mosaic/web imports (the same
+              // Build the workspace packages @flash-evals/web imports (the same
               // script its own `dev` script runs), then start Next directly so
               // the port can be set. The API is faked by the tests in tests/e2e.
               command:
                   `node scripts/build-packages.mjs && node scripts/build-marketing.mjs && ` +
-                  `pnpm --filter @mosaic/web exec next dev --port ${webPort}`,
+                  `pnpm --filter @flash-evals/web exec next dev --hostname ${devHost} --port ${webPort}`,
               url: `${webBaseUrl}/api/health`,
-              reuseExistingServer: !process.env.CI,
+              reuseExistingServer: false,
               timeout: 120_000,
               // pnpm 12 runs `next dev` in its own process group, so the
               // default SIGKILL to Playwright's group would orphan it and
               // hang the run. pnpm forwards SIGTERM to its child.
               gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
               env: {
+                  FLASH_EVALS_PLAYWRIGHT: "app",
+                  FLASH_EVALS_DEV_WEB_ORIGIN: webBaseUrl,
                   AUTH_DEV: "true",
                   AUTH_DEV_ALLOW_INSECURE: "1",
                   // Match the fake API fixtures in tests/e2e.
-                  MOSAIC_DEFAULT_TEAM_ID:
+                  FLASH_EVALS_DEFAULT_TEAM_ID:
                       "00000000-0000-4000-8000-000000000001",
-                  MOSAIC_DEFAULT_USER_ID:
+                  FLASH_EVALS_DEFAULT_USER_ID:
                       "00000000-0000-4000-8000-000000000002",
                   NEXT_PUBLIC_API_BASE_URL:
                       process.env.NEXT_PUBLIC_API_BASE_URL ?? defaultApiBaseUrl,

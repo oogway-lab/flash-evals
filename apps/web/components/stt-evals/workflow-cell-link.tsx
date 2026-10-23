@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { IWorkflowRunDetailResponse } from "@mosaic/api-contract";
+import type { IWorkflowRunDetailResponse } from "@flash-evals/api-contract";
 
 type WorkflowCell = IWorkflowRunDetailResponse["cells"][number];
 

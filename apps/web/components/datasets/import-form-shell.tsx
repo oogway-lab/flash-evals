@@ -11,7 +11,7 @@ import {
 } from "react";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
-import { MAX_TEXT_IMPORT_BYTES } from "@mosaic/api-contract";
+import { MAX_TEXT_IMPORT_BYTES } from "@flash-evals/api-contract";
 import { Button } from "@/components/ui/button";
 import { ImportResultSummary } from "./import-result-summary";
 import { UploadProgressPanel } from "./upload-progress-panel";

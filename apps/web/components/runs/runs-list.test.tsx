@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/app/actions", () => ({ deleteRunAction: vi.fn() }));
 
-import type { IRunListRow } from "@mosaic/api-contract";
+import type { IRunListRow } from "@flash-evals/api-contract";
 import { RunsList } from "./runs-list";
 
 afterEach(cleanup);

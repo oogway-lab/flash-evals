@@ -3,13 +3,13 @@ import { createHash } from "node:crypto";
 import {
     canonicalJsonString,
     WORKFLOW_JUDGE_SCHEMA_DIGEST,
-} from "@mosaic/api-contract";
-import type { CompletionRequest, CompletionResult } from "@mosaic/llm-core";
-import type * as LlmCore from "@mosaic/llm-core";
-import { getEvalProvider } from "@mosaic/llm-core";
+} from "@flash-evals/api-contract";
+import type { CompletionRequest, CompletionResult } from "@flash-evals/llm-core";
+import type * as LlmCore from "@flash-evals/llm-core";
+import { getEvalProvider } from "@flash-evals/llm-core";
 import { JUDGE_RESPONSE_SCHEMA, runJudge, type JudgeWinner } from "./judge";
 
-vi.mock("@mosaic/llm-core", async (importOriginal) => {
+vi.mock("@flash-evals/llm-core", async (importOriginal) => {
     const actual = await importOriginal<typeof LlmCore>();
     return {
         ...actual,

@@ -19,7 +19,7 @@ let uploadDir: string | undefined;
 beforeEach(async () => {
     vi.stubGlobal("fetch", vi.fn());
     process.env = { ...originalEnv };
-    uploadDir = await mkdtemp(path.join(os.tmpdir(), "mosaic-audio-"));
+    uploadDir = await mkdtemp(path.join(os.tmpdir(), "flash-evals-audio-"));
     process.env.UPLOAD_DIR = uploadDir;
 });
 
@@ -77,7 +77,7 @@ describe("Supabase audio storage", () => {
         vi.stubEnv("NODE_ENV", "production");
         process.env.SUPABASE_URL = "https://example.supabase.co";
         process.env.SUPABASE_SERVICE_ROLE_KEY = "secret";
-        process.env.SUPABASE_STORAGE_BUCKET = "mosaic-media";
+        process.env.SUPABASE_STORAGE_BUCKET = "flash-evals-media";
         process.env.SUPABASE_STORAGE_PREFIX = "uploads";
     });
 
@@ -91,7 +91,7 @@ describe("Supabase audio storage", () => {
         );
 
         expect(fetch).toHaveBeenCalledWith(
-            "https://example.supabase.co/storage/v1/object/mosaic-media/uploads/11111111-1111-4111-8111-111111111111",
+            "https://example.supabase.co/storage/v1/object/flash-evals-media/uploads/11111111-1111-4111-8111-111111111111",
             expect.objectContaining({
                 method: "POST",
                 headers: expect.objectContaining({

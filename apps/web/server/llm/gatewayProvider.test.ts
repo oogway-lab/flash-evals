@@ -4,7 +4,7 @@ import {
     type LanguageModel,
     type LanguageModelUsage,
 } from "ai";
-import { GatewayEvalProvider, gatewayModelIdFor } from "@mosaic/llm-core";
+import { GatewayEvalProvider, gatewayModelIdFor } from "@flash-evals/llm-core";
 
 const gatewayMocks = vi.hoisted(() => {
     const modelFor = vi.fn(
@@ -59,11 +59,11 @@ describe("gatewayModelIdFor", () => {
 });
 
 describe("GatewayEvalProvider", () => {
-    const originalReferer = process.env.MOSAIC_GATEWAY_HTTP_REFERER;
-    const originalTitle = process.env.MOSAIC_GATEWAY_APP_TITLE;
+    const originalReferer = process.env.FLASH_EVALS_GATEWAY_HTTP_REFERER;
+    const originalTitle = process.env.FLASH_EVALS_GATEWAY_APP_TITLE;
 
     beforeEach(() => {
-        vi.stubEnv("MOSAIC_PROVIDER_ATTRIBUTION", "");
+        vi.stubEnv("FLASH_EVALS_PROVIDER_ATTRIBUTION", "");
         gatewayMocks.createGateway.mockClear();
         gatewayMocks.modelFor.mockClear();
     });
@@ -71,20 +71,20 @@ describe("GatewayEvalProvider", () => {
     afterEach(() => {
         vi.unstubAllEnvs();
         if (originalReferer === undefined) {
-            delete process.env.MOSAIC_GATEWAY_HTTP_REFERER;
+            delete process.env.FLASH_EVALS_GATEWAY_HTTP_REFERER;
         } else {
-            process.env.MOSAIC_GATEWAY_HTTP_REFERER = originalReferer;
+            process.env.FLASH_EVALS_GATEWAY_HTTP_REFERER = originalReferer;
         }
         if (originalTitle === undefined) {
-            delete process.env.MOSAIC_GATEWAY_APP_TITLE;
+            delete process.env.FLASH_EVALS_GATEWAY_APP_TITLE;
         } else {
-            process.env.MOSAIC_GATEWAY_APP_TITLE = originalTitle;
+            process.env.FLASH_EVALS_GATEWAY_APP_TITLE = originalTitle;
         }
     });
 
     it("creates the Gateway client with the API key and attribution headers", async () => {
-        process.env.MOSAIC_GATEWAY_HTTP_REFERER = "https://mosaic.test";
-        process.env.MOSAIC_GATEWAY_APP_TITLE = "Flash Evals";
+        process.env.FLASH_EVALS_GATEWAY_HTTP_REFERER = "https://flash-evals.test";
+        process.env.FLASH_EVALS_GATEWAY_APP_TITLE = "Flash Evals";
         const generateText = vi.fn(async () => ({
             text: "hello",
             output: "hello",
@@ -104,7 +104,7 @@ describe("GatewayEvalProvider", () => {
         expect(gatewayMocks.createGateway).toHaveBeenCalledWith({
             apiKey: "vck-test",
             headers: {
-                "http-referer": "https://mosaic.test",
+                "http-referer": "https://flash-evals.test",
                 "x-title": "Flash Evals",
             },
         });
@@ -112,8 +112,8 @@ describe("GatewayEvalProvider", () => {
     });
 
     it("defaults Gateway attribution headers to Flash Evals when unset", () => {
-        delete process.env.MOSAIC_GATEWAY_HTTP_REFERER;
-        delete process.env.MOSAIC_GATEWAY_APP_TITLE;
+        delete process.env.FLASH_EVALS_GATEWAY_HTTP_REFERER;
+        delete process.env.FLASH_EVALS_GATEWAY_APP_TITLE;
 
         new GatewayEvalProvider("vck-test", {
             createGatewayProvider: gatewayMocks.createGateway,

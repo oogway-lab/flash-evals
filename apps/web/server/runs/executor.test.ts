@@ -409,7 +409,7 @@ describe("loadJudgePromptForRun", () => {
 
         const logged = String(errorSpy.mock.calls[0]?.[0]);
         expect(JSON.parse(logged)).toMatchObject({
-            service: "mosaic-worker",
+            service: "flash-evals-worker",
             event: "judge_prompt.load_failed",
             errorName: "Error",
         });
@@ -436,7 +436,7 @@ describe("loadJudgePromptForRun", () => {
         expect(logged).not.toContain("sk-live-abcdef123456");
         expect(logged).not.toContain("fetch failed");
         expect(JSON.parse(String(errorSpy.mock.calls[0]?.[0]))).toMatchObject({
-            service: "mosaic-worker",
+            service: "flash-evals-worker",
             event: "judge_prompt.load_failed",
             errorName: "Error",
         });

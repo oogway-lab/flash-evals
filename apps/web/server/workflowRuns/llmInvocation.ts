@@ -10,11 +10,11 @@ import type {
     IWorkflowNodeArtifact,
     WorkflowLlmTransport,
     WorkflowNodeType,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     canonicalJsonString,
     WORKFLOW_LLM_FINGERPRINT_VERSION,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     computeCostFromUsageWithPricing,
     getEvalProvider,
@@ -22,8 +22,8 @@ import {
     type CompletionRequest,
     type CompletionResult,
     type EvalImage,
-} from "@mosaic/llm-core";
-import { decryptSecret } from "@mosaic/secrets";
+} from "@flash-evals/llm-core";
+import { decryptSecret } from "@flash-evals/secrets";
 import { isRecord } from "@/lib/objects";
 import { and, eq, max, sql } from "drizzle-orm";
 import { db } from "../db/client";
@@ -119,7 +119,7 @@ export async function executeWorkflowLlmInvocation(
         execution: input.execution,
     });
     const identity = fingerprintFor(input);
-    if (input.execution.route.cache.mosaicReuse === "allow") {
+    if (input.execution.route.cache.flashEvalsReuse === "allow") {
         const hit = await deps.readReuse({
             projectId: input.projectId,
             fingerprint: identity.fingerprint,
@@ -136,7 +136,7 @@ export async function executeWorkflowLlmInvocation(
         upstreamProvider: requestedUpstreamProvider(input.execution),
     };
     const maxAttempts =
-        route.retry.owner === "mosaic" ? route.retry.maxAttempts : 1;
+        route.retry.owner === "flash-evals" ? route.retry.maxAttempts : 1;
     const attempts: IWorkflowLlmAttempt[] = [];
     let result: CompletionResult | undefined;
     let lastError: unknown;
@@ -157,7 +157,7 @@ export async function executeWorkflowLlmInvocation(
             const actual = actualRoute(result, input.execution);
             const attempt: IWorkflowLlmAttempt = {
                 sequence,
-                owner: "mosaic",
+                owner: "flash-evals",
                 requested,
                 actual,
                 outcome: result.schemaViolation ? "failed" : "succeeded",
@@ -184,7 +184,7 @@ export async function executeWorkflowLlmInvocation(
             const errorClass = classifyProviderError(error);
             const attempt: IWorkflowLlmAttempt = {
                 sequence,
-                owner: "mosaic",
+                owner: "flash-evals",
                 requested,
                 outcome: "failed",
                 errorClass,
@@ -193,7 +193,7 @@ export async function executeWorkflowLlmInvocation(
             attempts.push(attempt);
             await deps.appendAttempts(input.cellId, [attempt]);
             const shouldRetry =
-                route.retry.owner !== "mosaic" ||
+                route.retry.owner !== "flash-evals" ||
                 sequence >= maxAttempts ||
                 !route.retry.retryableErrorClasses.some(
                     (candidate) => candidate === errorClass,
@@ -249,7 +249,7 @@ export async function executeWorkflowLlmInvocation(
         ...artifactWithoutProvenance,
         executionProvenance: provenance,
     };
-    if (input.execution.route.cache.mosaicReuse === "allow")
+    if (input.execution.route.cache.flashEvalsReuse === "allow")
         await deps.publishReuse({
             projectId: input.projectId,
             cellId: input.cellId,
@@ -347,7 +347,7 @@ function fingerprintFor(input: IWorkflowLlmInvocationInput) {
         canonicalInputDigest,
         fingerprint: digest(
             canonicalJsonString({
-                domain: "mosaic.workflow.llm.exact-reuse",
+                domain: "flash-evals.workflow.llm.exact-reuse",
                 fingerprintVersion: WORKFLOW_LLM_FINGERPRINT_VERSION,
                 adapterBehaviorVersion: ADAPTER_BEHAVIOR_VERSION,
                 nodeType: input.nodeType,
@@ -364,7 +364,7 @@ function reusedResult(
     hit: IExactReuseHit,
 ): IWorkflowLlmInvocationResult {
     const cache: IWorkflowLlmCacheProvenance = {
-        status: "mosaic_reuse",
+        status: "flash_evals_reuse",
         fingerprintVersion: WORKFLOW_LLM_FINGERPRINT_VERSION,
         fingerprint,
         ...(hit.sourceRunId ? { sourceRunId: hit.sourceRunId } : {}),

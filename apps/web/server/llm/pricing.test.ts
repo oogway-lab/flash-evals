@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type * as LlmCore from "@mosaic/llm-core";
+import type * as LlmCore from "@flash-evals/llm-core";
 import {
     listAvailableModelMetadata,
     providerModeFromEnv,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 import { pricingFor, resolvePricingFor } from "./pricing";
 
-vi.mock("@mosaic/llm-core", async (importOriginal) => {
+vi.mock("@flash-evals/llm-core", async (importOriginal) => {
     const actual = await importOriginal<typeof LlmCore>();
     return {
         ...actual,

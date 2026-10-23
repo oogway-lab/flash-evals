@@ -15,10 +15,10 @@ import { handleMcpRequest } from "./http.js";
  * Real server + real routes + real PostgreSQL + local filesystem storage.
  * No domain handler is mocked. The bearer token and all rows are synthetic.
  * Configure a disposable, migrated DB named flash_evals_mcp_acceptance and
- * set MOSAIC_MCP_ACCEPTANCE_DATABASE_URL to its loopback connection string.
+ * set FLASH_EVALS_MCP_ACCEPTANCE_DATABASE_URL to its loopback connection string.
  */
 const databaseUrl =
-    process.env.MOSAIC_MCP_ACCEPTANCE_DATABASE_URL?.trim() ?? "";
+    process.env.FLASH_EVALS_MCP_ACCEPTANCE_DATABASE_URL?.trim() ?? "";
 
 describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
     const pool = new pg.Pool({ connectionString: databaseUrl, max: 5 });
@@ -98,7 +98,7 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
             [
                 userId,
                 teamId,
-                hashMcpToken(fixtureToken, config.mosaicMcpTokenPepper),
+                hashMcpToken(fixtureToken, config.flashEvalsMcpTokenPepper),
             ],
         );
 
@@ -1281,13 +1281,13 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
                 generation: { maxOutputTokens: 64 },
                 structuredOutput: { mode: "text" },
                 retry: {
-                    owner: "mosaic",
+                    owner: "flash-evals",
                     maxAttempts: 1,
                     timeoutMs: 10000,
                     retryableErrorClasses: [],
                 },
                 cache: {
-                    mosaicReuse: "allow",
+                    flashEvalsReuse: "allow",
                     providerCaching: "allow",
                 },
             };
@@ -2117,14 +2117,14 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
         const templates = await rpc("resources/templates/list", {});
         expect(templates.result?.resourceTemplates).toHaveLength(8);
         const uris = [
-            `mosaic://projects/${projectId}/datasets/${datasetId}`,
-            `mosaic://projects/${projectId}/prompts/${promptId}`,
-            `mosaic://projects/${projectId}/runs/${fixtureRunId}`,
-            `mosaic://projects/${projectId}/models`,
-            `mosaic://projects/${projectId}/datasets/${datasetId}/summary`,
-            `mosaic://projects/${projectId}/datasets/${fixture.textDatasetId}/items/1/first`,
-            `mosaic://projects/${projectId}/runs/${fixtureRunId}/summary`,
-            `mosaic://projects/${projectId}/runs/${fixtureRunId}/cells/1/first`,
+            `flash-evals://projects/${projectId}/datasets/${datasetId}`,
+            `flash-evals://projects/${projectId}/prompts/${promptId}`,
+            `flash-evals://projects/${projectId}/runs/${fixtureRunId}`,
+            `flash-evals://projects/${projectId}/models`,
+            `flash-evals://projects/${projectId}/datasets/${datasetId}/summary`,
+            `flash-evals://projects/${projectId}/datasets/${fixture.textDatasetId}/items/1/first`,
+            `flash-evals://projects/${projectId}/runs/${fixtureRunId}/summary`,
+            `flash-evals://projects/${projectId}/runs/${fixtureRunId}/cells/1/first`,
         ];
         for (const uri of uris) {
             const response = await rpc("resources/read", { uri });
@@ -2231,7 +2231,7 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
         ).toBe(0);
 
         const foreignResource = await rpc("resources/read", {
-            uri: `mosaic://projects/${fixtureProjectId}/datasets/${datasetId}`,
+            uri: `flash-evals://projects/${fixtureProjectId}/datasets/${datasetId}`,
         });
         // Resource callbacks must fail as a JSON-RPC protocol error, not return
         // a tool-call result object inside resources/read's result.contents.
@@ -2504,20 +2504,20 @@ function acceptanceConfig(databaseUrl: string): IApiConfig {
         supabaseServiceRoleKey: "",
         supabaseStorageBucket: "mcp-acceptance-unused",
         clerkSecretKey: "",
-        mosaicTenancyMode: "isolated",
-        mosaicAllowedEmailDomain: "",
+        flashEvalsTenancyMode: "isolated",
+        flashEvalsAllowedEmailDomain: "",
         corsOrigins: [],
-        mosaicLlmProvider: "openai",
+        flashEvalsLlmProvider: "openai",
         sttCapabilityProbes: {},
         profilingEnabled: false,
         workflowLlmWritesEnabled: true,
         rateLimitLlmPerMinute: 0,
         rateLimitRunsPerMinute: 0,
-        mosaicMcpEnabled: true,
-        mosaicMcpAllowedOrigins: ["https://allowed.example"],
-        mosaicMcpRawTokenFallbackEnabled: true,
-        mosaicMcpTokenPepper: "synthetic-acceptance-pepper",
-        mosaicSecretsEncKey: Buffer.alloc(32, 0x41).toString("base64"),
+        flashEvalsMcpEnabled: true,
+        flashEvalsMcpAllowedOrigins: ["https://allowed.example"],
+        flashEvalsMcpRawTokenFallbackEnabled: true,
+        flashEvalsMcpTokenPepper: "synthetic-acceptance-pepper",
+        flashEvalsSecretsEncKey: Buffer.alloc(32, 0x41).toString("base64"),
         featureFlags: resolveApiFeatureFlags({}),
     };
 }

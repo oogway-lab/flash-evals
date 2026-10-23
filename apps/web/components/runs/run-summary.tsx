@@ -6,7 +6,7 @@ import type {
     ILeaderboardRow,
     IRunConfigSnapshot,
     IRunContext,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { fmtCost, fmtDate, fmtScore, MISSING_VALUE } from "@/lib/format";
 import { HintText } from "@/components/ui/hint";
 import { Num } from "@/components/ui/num";

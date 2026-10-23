@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
-import type { IDashboardRun, IRunProgress } from "@mosaic/api-contract";
+import type { IDashboardRun, IRunProgress } from "@flash-evals/api-contract";
 import { shortId } from "@/lib/format";
 import { runNoteTitle } from "@/components/runs/run-title";
 

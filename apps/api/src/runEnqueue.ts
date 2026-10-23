@@ -1,4 +1,4 @@
-import type { ICreateRunResponse } from "@mosaic/api-contract";
+import type { ICreateRunResponse } from "@flash-evals/api-contract";
 import type { IApiConfig } from "./config.js";
 import { withTransaction, type IDb } from "./db.js";
 import { enqueueRun } from "./runQueue.js";

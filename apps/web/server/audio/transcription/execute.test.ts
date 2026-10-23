@@ -1,4 +1,4 @@
-import { TRANSCRIPT_CHUNK_KEY_MARKER } from "@mosaic/api-contract";
+import { TRANSCRIPT_CHUNK_KEY_MARKER } from "@flash-evals/api-contract";
 import { describe, expect, it, vi } from "vitest";
 import { AUDIO_PREPARATION_VERSION, type PreparedAudio } from "../preparation";
 import {

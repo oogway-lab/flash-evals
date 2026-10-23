@@ -50,9 +50,9 @@ beforeEach(() => {
         onConflictDoUpdate: mocks.onConflictDoUpdate,
     });
     vi.stubGlobal("fetch", vi.fn());
-    vi.stubEnv("MOSAIC_GATEWAY_HTTP_REFERER", "");
-    vi.stubEnv("MOSAIC_GATEWAY_APP_TITLE", "");
-    vi.stubEnv("MOSAIC_PROVIDER_ATTRIBUTION", "");
+    vi.stubEnv("FLASH_EVALS_GATEWAY_HTTP_REFERER", "");
+    vi.stubEnv("FLASH_EVALS_GATEWAY_APP_TITLE", "");
+    vi.stubEnv("FLASH_EVALS_PROVIDER_ATTRIBUTION", "");
 });
 
 afterEach(() => vi.unstubAllEnvs());

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -ne 1 || -z "$1" ]]; then
-    echo "usage: $0 <base-url>   e.g. $0 https://mosaic.example.org" >&2
+    echo "usage: $0 <base-url>   e.g. $0 https://flash-evals.example.org" >&2
     exit 64
 fi
 

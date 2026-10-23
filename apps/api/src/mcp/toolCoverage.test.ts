@@ -325,7 +325,7 @@ vi.mock("./auth.js", async (importOriginal) => {
     };
 });
 
-import { registerMosaicMcpCapabilities } from "./registry.js";
+import { registerFlashEvalsMcpCapabilities } from "./registry.js";
 import { handleMcpRequest } from "./http.js";
 
 const projectId = "11111111-1111-4111-8111-111111111111";
@@ -427,7 +427,7 @@ async function connect(profile: "read" | "eval" | "admin" = "admin") {
         version: "1",
     });
     const runtime = runtimeFixture();
-    registerMosaicMcpCapabilities(server, {
+    registerFlashEvalsMcpCapabilities(server, {
         runtime,
         principal: {
             authMode: "oauth",
@@ -456,8 +456,8 @@ async function connect(profile: "read" | "eval" | "admin" = "admin") {
 function runtimeFixture(): IApiRuntime {
     return {
         config: {
-            mosaicMcpEnabled: true,
-            mosaicMcpAllowedOrigins: [],
+            flashEvalsMcpEnabled: true,
+            flashEvalsMcpAllowedOrigins: [],
             workflowLlmWritesEnabled: true,
         },
         db: {
@@ -819,7 +819,7 @@ describe("MCP complete tool call coverage over stdio", () => {
             if (result) expect(result.isError).toBe(true);
         }
         const readableResource = await harness.client.readResource({
-            uri: `mosaic://projects/${projectId}/models`,
+            uri: `flash-evals://projects/${projectId}/models`,
         });
         expect(readableResource.contents).toHaveLength(1);
     });
@@ -831,14 +831,14 @@ describe("MCP complete tool call coverage over stdio", () => {
             await harness.client.listResourceTemplates();
         expect(resourceTemplates).toHaveLength(8);
         const uris = [
-            `mosaic://projects/${projectId}/datasets/${datasetId}`,
-            `mosaic://projects/${projectId}/prompts/${promptId}`,
-            `mosaic://projects/${projectId}/runs/${runId}`,
-            `mosaic://projects/${projectId}/models`,
-            `mosaic://projects/${projectId}/datasets/${datasetId}/summary`,
-            `mosaic://projects/${projectId}/datasets/${datasetId}/items/50/first`,
-            `mosaic://projects/${projectId}/runs/${runId}/summary`,
-            `mosaic://projects/${projectId}/runs/${runId}/cells/50/first`,
+            `flash-evals://projects/${projectId}/datasets/${datasetId}`,
+            `flash-evals://projects/${projectId}/prompts/${promptId}`,
+            `flash-evals://projects/${projectId}/runs/${runId}`,
+            `flash-evals://projects/${projectId}/models`,
+            `flash-evals://projects/${projectId}/datasets/${datasetId}/summary`,
+            `flash-evals://projects/${projectId}/datasets/${datasetId}/items/50/first`,
+            `flash-evals://projects/${projectId}/runs/${runId}/summary`,
+            `flash-evals://projects/${projectId}/runs/${runId}/cells/50/first`,
         ];
         for (const uri of uris) {
             const result = await harness.client.readResource({ uri });
@@ -949,14 +949,14 @@ describe("MCP complete tool call coverage over HTTP", () => {
         });
         expect(templates.result.resourceTemplates).toHaveLength(8);
         const uris = [
-            `mosaic://projects/${projectId}/datasets/${datasetId}`,
-            `mosaic://projects/${projectId}/prompts/${promptId}`,
-            `mosaic://projects/${projectId}/runs/${runId}`,
-            `mosaic://projects/${projectId}/models`,
-            `mosaic://projects/${projectId}/datasets/${datasetId}/summary`,
-            `mosaic://projects/${projectId}/datasets/${datasetId}/items/50/first`,
-            `mosaic://projects/${projectId}/runs/${runId}/summary`,
-            `mosaic://projects/${projectId}/runs/${runId}/cells/50/first`,
+            `flash-evals://projects/${projectId}/datasets/${datasetId}`,
+            `flash-evals://projects/${projectId}/prompts/${promptId}`,
+            `flash-evals://projects/${projectId}/runs/${runId}`,
+            `flash-evals://projects/${projectId}/models`,
+            `flash-evals://projects/${projectId}/datasets/${datasetId}/summary`,
+            `flash-evals://projects/${projectId}/datasets/${datasetId}/items/50/first`,
+            `flash-evals://projects/${projectId}/runs/${runId}/summary`,
+            `flash-evals://projects/${projectId}/runs/${runId}/cells/50/first`,
         ];
         for (const uri of uris) {
             const resource = await callHttp(runtime, {

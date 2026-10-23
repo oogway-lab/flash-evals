@@ -7,12 +7,12 @@ type AnalyticsMetadata = Record<string, string | number | boolean | undefined>;
 // stale. Update it if a flag is intentionally re-scoped.
 export const WEB_FEATURE_FLAGS = {
     analyticsEvents: {
-        env: "NEXT_PUBLIC_MOSAIC_FLAG_ANALYTICS_EVENTS",
+        env: "NEXT_PUBLIC_FLASH_EVALS_FLAG_ANALYTICS_EVENTS",
         defaultValue: false,
         since: "2026-07-08",
     },
     errorTracking: {
-        env: "NEXT_PUBLIC_MOSAIC_FLAG_ERROR_TRACKING",
+        env: "NEXT_PUBLIC_FLASH_EVALS_FLAG_ERROR_TRACKING",
         defaultValue: false,
         since: "2026-07-08",
     },
@@ -21,14 +21,14 @@ export const WEB_FEATURE_FLAGS = {
 // NOTE: Next.js only inlines `NEXT_PUBLIC_*` vars for statically written
 // `process.env.NEXT_PUBLIC_X` member expressions, so these reads must stay
 // literal even though WEB_FEATURE_FLAGS documents the same env names above.
-const analyticsKey = process.env.NEXT_PUBLIC_MOSAIC_ANALYTICS_KEY;
-const errorTrackingDsn = process.env.NEXT_PUBLIC_MOSAIC_ERROR_TRACKING_DSN;
-const debugEnabled = process.env.NEXT_PUBLIC_MOSAIC_ANALYTICS_DEBUG === "true";
+const analyticsKey = process.env.NEXT_PUBLIC_FLASH_EVALS_ANALYTICS_KEY;
+const errorTrackingDsn = process.env.NEXT_PUBLIC_FLASH_EVALS_ERROR_TRACKING_DSN;
+const debugEnabled = process.env.NEXT_PUBLIC_FLASH_EVALS_ANALYTICS_DEBUG === "true";
 const analyticsEnabled = publicFlag(
-    process.env.NEXT_PUBLIC_MOSAIC_FLAG_ANALYTICS_EVENTS,
+    process.env.NEXT_PUBLIC_FLASH_EVALS_FLAG_ANALYTICS_EVENTS,
 );
 const errorTrackingEnabled = publicFlag(
-    process.env.NEXT_PUBLIC_MOSAIC_FLAG_ERROR_TRACKING,
+    process.env.NEXT_PUBLIC_FLASH_EVALS_FLAG_ERROR_TRACKING,
 );
 
 export function trackProductEvent(
@@ -55,7 +55,7 @@ function debugLog(event: string, metadata: AnalyticsMetadata): void {
     console.info(
         JSON.stringify({
             event,
-            service: "mosaic-web",
+            service: "flash-evals-web",
             timestamp: new Date().toISOString(),
             ...metadata,
         }),

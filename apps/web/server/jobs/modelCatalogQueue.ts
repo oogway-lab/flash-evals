@@ -1,5 +1,5 @@
 import PgBoss from "pg-boss";
-import { refreshModelCatalog } from "@mosaic/llm-core";
+import { refreshModelCatalog } from "@flash-evals/llm-core";
 import { modelCatalogStore } from "../llm/catalog";
 import { logWorkerEvent, safeWorkerError } from "./workerObservability";
 

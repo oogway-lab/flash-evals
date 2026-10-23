@@ -11,7 +11,7 @@ vi.mock("next/headers", () => ({
     cookies: vi.fn(async () => ({
         get: (name: string) => {
             const value =
-                name === "mosaic_active_workspace"
+                name === "flash_evals_active_workspace"
                     ? mocks.workspaceCookieValue
                     : mocks.cookieValue;
             return value ? { value } : undefined;

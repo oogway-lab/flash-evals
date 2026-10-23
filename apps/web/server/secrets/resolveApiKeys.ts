@@ -1,5 +1,5 @@
-import type { ApiKeys } from "@mosaic/llm-core";
-import { decryptSecret } from "@mosaic/secrets";
+import type { ApiKeys } from "@flash-evals/llm-core";
+import { decryptSecret } from "@flash-evals/secrets";
 import { eq } from "drizzle-orm";
 import type { ISttProviderKeys } from "../audio/providerKeys";
 import { db } from "../db/client";
@@ -20,7 +20,7 @@ export async function resolveApiKeys(
     } = {},
 ): Promise<IResolvedProviderKeys> {
     const env = options.env ?? process.env;
-    const encryptionKey = options.encryptionKey ?? env.MOSAIC_SECRETS_ENC_KEY;
+    const encryptionKey = options.encryptionKey ?? env.FLASH_EVALS_SECRETS_ENC_KEY;
     const fallbackApiKeys = apiKeysFromEnv(env);
     const fallbackSttKeys = sttProviderKeysFromEnv(env);
     if (!teamId) {
@@ -35,7 +35,7 @@ export async function resolveApiKeys(
     }
     if (!encryptionKey) {
         throw new Error(
-            "MOSAIC_SECRETS_ENC_KEY is required for stored provider keys.",
+            "FLASH_EVALS_SECRETS_ENC_KEY is required for stored provider keys.",
         );
     }
     const stored = new Map(

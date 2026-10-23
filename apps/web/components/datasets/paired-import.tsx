@@ -3,7 +3,7 @@
 import {
     MAX_IMAGE_IMPORT_BYTES,
     MAX_IMPORT_FILE_COUNT,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { FileDropzone } from "@/components/ui/file-dropzone";
 import { IMAGE_ACCEPT, IMAGE_MAX_BYTES } from "./image-dropzone";
 import { Label } from "@/components/ui/label";

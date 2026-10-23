@@ -1,11 +1,11 @@
-import { isProviderKeyProvider } from "@mosaic/api-contract";
+import { isProviderKeyProvider } from "@flash-evals/api-contract";
 import type {
     IClearProviderKeyRequest,
     IListProviderKeysResponse,
     ISetProviderKeyRequest,
     ProviderKeyProvider,
-} from "@mosaic/api-contract";
-import { encryptSecret, maskHint } from "@mosaic/secrets";
+} from "@flash-evals/api-contract";
+import { encryptSecret, maskHint } from "@flash-evals/secrets";
 import { withTransaction, type IDb } from "../db.js";
 import { ApiBadRequestError } from "../errors.js";
 import {

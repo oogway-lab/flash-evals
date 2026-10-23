@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type * as LlmCore from "@mosaic/llm-core";
+import type * as LlmCore from "@flash-evals/llm-core";
 
-vi.mock("@mosaic/llm-core", async (importOriginal) => {
+vi.mock("@flash-evals/llm-core", async (importOriginal) => {
     const actual = await importOriginal<typeof LlmCore>();
     return {
         ...actual,
@@ -20,7 +20,7 @@ vi.mock("@mosaic/llm-core", async (importOriginal) => {
     };
 });
 
-import { listAvailableModelMetadata } from "@mosaic/llm-core";
+import { listAvailableModelMetadata } from "@flash-evals/llm-core";
 import { availableModelOptions } from "./modelRegistry.js";
 
 describe("availableModelOptions", () => {

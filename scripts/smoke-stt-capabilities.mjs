@@ -83,7 +83,7 @@ const probes = Object.fromEntries(
 if (Object.keys(probes).length > 0) {
     console.log(
         JSON.stringify({
-            env: "MOSAIC_STT_CAPABILITY_PROBES",
+            env: "FLASH_EVALS_STT_CAPABILITY_PROBES",
             value: JSON.stringify(probes),
         }),
     );

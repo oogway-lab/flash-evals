@@ -3,7 +3,7 @@ import {
     type ApiKeys,
     type EvalProviderTransport,
     type ReasoningEffort,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 import { scoreFieldDiff } from "./fieldDiff";
 import { judgeFields, type JudgeFn } from "./judgeFields";
 import { runJudge } from "./judge";

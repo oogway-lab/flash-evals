@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
-import type { IPromptListRow } from "@mosaic/api-contract";
+import type { IPromptListRow } from "@flash-evals/api-contract";
 import { MISSING_VALUE } from "@/lib/format";
 import { PROMPT_KIND_LABELS } from "@/lib/labels";
 import { EmptyState } from "@/components/layout/empty-state";

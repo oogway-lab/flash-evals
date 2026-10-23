@@ -1,6 +1,6 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IDashboardStats } from "@mosaic/api-contract";
+import type { IDashboardStats } from "@flash-evals/api-contract";
 
 const mocks = vi.hoisted(() => ({ getDashboard: vi.fn() }));
 

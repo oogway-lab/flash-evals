@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ILeaderboardRow } from "@mosaic/api-contract";
+import type { ILeaderboardRow } from "@flash-evals/api-contract";
 import { summarizeBestModel } from "./best-model";
 
 function row(overrides: Partial<ILeaderboardRow>): ILeaderboardRow {

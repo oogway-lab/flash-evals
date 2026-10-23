@@ -18,7 +18,7 @@ const draft = {
 function registerTools(defaultProvider = "openrouter") {
     const harness = createToolHarness(registerPromptTools, {
         config: {
-            mosaicLlmProvider: defaultProvider,
+            flashEvalsLlmProvider: defaultProvider,
             openaiApiKey: "synthetic-openai",
             openrouterApiKey: "synthetic-openrouter",
         },

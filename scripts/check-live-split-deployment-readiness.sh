@@ -3,7 +3,7 @@ set -euo pipefail
 
 umask 077
 FAILED=0
-TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/mosaic-live-readiness.XXXXXX")
+TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/flash-evals-live-readiness.XXXXXX")
 
 cleanup() {
     rm -rf "$TMP_DIR"
@@ -101,7 +101,7 @@ fi
 if [ "$FAILED" -eq 0 ]; then
     echo "Live split deployment readiness check passed."
     echo "This check reads API and worker variables from Railway and web build/runtime variables from CLOUDFLARE_WEB_ENV. It does not inspect per-service Railway start or healthcheck settings."
-    echo "Expected topology: API uses pnpm run api:start:railway with MOSAIC_API_START_WORKER=false; worker uses pnpm run worker with no HTTP health check. This check does not inspect those Railway service settings."
+    echo "Expected topology: API uses pnpm run api:start:railway with FLASH_EVALS_API_START_WORKER=false; worker uses pnpm run worker with no HTTP health check. This check does not inspect those Railway service settings."
 else
     exit 1
 fi

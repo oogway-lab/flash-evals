@@ -2259,7 +2259,7 @@ export interface IWorkflowLlmTrustedContext {
     actorId: string;
 }
 
-export class MosaicApiError extends Error {
+export class FlashEvalsApiError extends Error {
     constructor(
         message: string,
         readonly status: number,
@@ -2270,17 +2270,17 @@ export class MosaicApiError extends Error {
         readonly retryAfterSeconds?: number,
     ) {
         super(message);
-        this.name = "MosaicApiError";
+        this.name = "FlashEvalsApiError";
     }
 }
 
 async function apiErrorFromResponse(
     response: Response,
-): Promise<MosaicApiError> {
+): Promise<FlashEvalsApiError> {
     const payload = (await response.json().catch(() => undefined)) as
         IApiErrorResponse | undefined;
     const retryAfter = Number(response.headers.get("retry-after"));
-    return new MosaicApiError(
+    return new FlashEvalsApiError(
         payload?.message ??
             `Flash Evals API request failed (${response.status})`,
         response.status,
@@ -2291,7 +2291,7 @@ async function apiErrorFromResponse(
     );
 }
 
-export class MosaicApiClient {
+export class FlashEvalsApiClient {
     private readonly baseUrl: string;
     private readonly internalToken?: string;
     private readonly fetcher: typeof fetch;
@@ -3081,12 +3081,12 @@ export class MosaicApiClient {
     ): Record<string, string> {
         return {
             ...(this.internalToken
-                ? { "X-Mosaic-Internal-Token": this.internalToken }
+                ? { "X-Flash-Evals-Internal-Token": this.internalToken }
                 : {}),
             ...(context
                 ? {
-                      "X-Mosaic-Team-Id": context.teamId,
-                      "X-Mosaic-Actor-Id": context.actorId,
+                      "X-Flash-Evals-Team-Id": context.teamId,
+                      "X-Flash-Evals-Actor-Id": context.actorId,
                   }
                 : {}),
         };

@@ -1,8 +1,9 @@
 import { Buffer } from "node:buffer";
 import { defineConfig, devices } from "@playwright/test";
+import { devHost } from "./scripts/lib/dev-env.cjs";
 
 const port = process.env.PLAYWRIGHT_MARKETING_PORT ?? "3200";
-const baseURL = `http://127.0.0.1:${port}`;
+const baseURL = `http://${devHost}:${port}`;
 
 // These synthetic keys allow Clerk's anonymous-request middleware to run.
 // No Clerk session is created and no live sign-in is verified by this suite.
@@ -19,12 +20,14 @@ export default defineConfig({
     reporter: [["list"]],
     use: { baseURL, trace: "retain-on-failure", screenshot: "only-on-failure" },
     webServer: {
-        command: `node scripts/build-packages.mjs && node scripts/build-marketing.mjs && pnpm --filter @mosaic/web exec next dev --port ${port}`,
+        command: `node scripts/build-packages.mjs && node scripts/build-marketing.mjs && pnpm --filter @flash-evals/web exec next dev --hostname ${devHost} --port ${port}`,
         url: `${baseURL}/api/health`,
         timeout: 120_000,
         reuseExistingServer: false,
         gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
         env: {
+            FLASH_EVALS_PLAYWRIGHT: "marketing",
+            FLASH_EVALS_DEV_WEB_ORIGIN: baseURL,
             AUTH_DEV: "false",
             AUTH_DEV_ALLOW_INSECURE: "0",
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: publishableKey,

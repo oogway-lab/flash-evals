@@ -5,7 +5,7 @@ import {
     type IRunAudioTranscriptSummary,
     type IRunConfigSnapshot,
     type ISttRunVariant,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 
 export interface ISttVariantDisplay {
     variantKey: string;

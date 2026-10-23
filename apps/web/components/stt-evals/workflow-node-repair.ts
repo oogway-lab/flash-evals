@@ -1,4 +1,4 @@
-export const WORKFLOW_NODE_REPAIR_EVENT = "mosaic:repair-workflow-node";
+export const WORKFLOW_NODE_REPAIR_EVENT = "flash-evals:repair-workflow-node";
 
 export function requestWorkflowNodeRepair(nodeKey: string): void {
     document.dispatchEvent(

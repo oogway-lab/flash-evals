@@ -1,4 +1,4 @@
-import type { IRetryWorkflowRunRequest, RunStatus } from "@mosaic/api-contract";
+import type { IRetryWorkflowRunRequest, RunStatus } from "@flash-evals/api-contract";
 import { withTransaction, type IDb } from "../db.js";
 import {
     ApiBadRequestError,

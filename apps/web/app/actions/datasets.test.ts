@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 
 const mocks = vi.hoisted(() => ({
     createDataset: vi.fn(),
@@ -283,9 +283,9 @@ describe("importImagesAction", () => {
         expect(state.formError).toContain("Choose one or more images");
     });
 
-    it("maps a MosaicApiError to typed field state, not a throw (R6)", async () => {
+    it("maps a FlashEvalsApiError to typed field state, not a throw (R6)", async () => {
         mocks.importImages.mockRejectedValue(
-            new MosaicApiError("Uploaded object is missing.", 400),
+            new FlashEvalsApiError("Uploaded object is missing.", 400),
         );
         const formData = new FormData();
         formData.set("datasetId", "ds-1");
@@ -299,7 +299,7 @@ describe("importImagesAction", () => {
 
     it("rethrows not-found/archived/forbidden errors", async () => {
         mocks.importImages.mockRejectedValue(
-            new MosaicApiError("Dataset not found", 404),
+            new FlashEvalsApiError("Dataset not found", 404),
         );
         const formData = new FormData();
         formData.set("datasetId", "ds-1");
@@ -325,9 +325,9 @@ describe("importAudioAction", () => {
         expect(state.ok).toBe(true);
     });
 
-    it("maps a MosaicApiError to typed field state, not a throw (R6)", async () => {
+    it("maps a FlashEvalsApiError to typed field state, not a throw (R6)", async () => {
         mocks.importAudio.mockRejectedValue(
-            new MosaicApiError("Object too large.", 400),
+            new FlashEvalsApiError("Object too large.", 400),
         );
         const formData = new FormData();
         formData.set("datasetId", "ds-1");

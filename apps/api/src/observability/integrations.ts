@@ -62,7 +62,7 @@ export function notifyApiAlert(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-            service: "mosaic-api",
+            service: "flash-evals-api",
             message,
             ...metadata,
         }),

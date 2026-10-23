@@ -5,14 +5,14 @@ import {
     gatewayAttributionHeaders,
     openRouterAttributionHeaders,
     transcribeOpenRouterAudio,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 import type {
     ICreateSttRouteProbeRequest,
     ISttRouteProbeModel,
     ISttRouteProbeResponse,
     SttProviderId,
     SttRouteProbeStatus,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import type { IApiConfig } from "../config.js";
 import type { IDb } from "../db.js";
 import { ApiBadRequestError, ApiNotFoundError } from "../errors.js";
@@ -112,7 +112,7 @@ export async function createSttRouteProbePayload(
     }
     if (config.sttCapabilityProbes[definition.id]) {
         throw new ApiBadRequestError(
-            "This STT route is managed by MOSAIC_STT_CAPABILITY_PROBES.",
+            "This STT route is managed by FLASH_EVALS_STT_CAPABILITY_PROBES.",
         );
     }
     const keys = await resolveApiKeys(db, config, input.teamId);

@@ -1,4 +1,4 @@
-import type { EvalImage } from "@mosaic/llm-core";
+import type { EvalImage } from "@flash-evals/llm-core";
 import {
     deleteObject,
     getObjectStorageConfig,

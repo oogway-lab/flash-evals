@@ -1,4 +1,4 @@
-import type { ICreateWorkflowRunResponse } from "@mosaic/api-contract";
+import type { ICreateWorkflowRunResponse } from "@flash-evals/api-contract";
 import type { IApiConfig } from "./config.js";
 import type { IDb } from "./db.js";
 import { withTransaction } from "./db.js";

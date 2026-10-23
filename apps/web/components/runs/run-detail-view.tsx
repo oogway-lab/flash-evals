@@ -5,7 +5,7 @@ import type {
     IMatrixCellScore,
     IRunAudioTranscriptSummary,
     IRunConfigSnapshot,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { Leaderboard } from "@/components/runs/leaderboard";
 import { MatrixView } from "@/components/runs/matrix-view";
 import { RunTranscriptPanel } from "@/components/runs/run-transcript-panel";

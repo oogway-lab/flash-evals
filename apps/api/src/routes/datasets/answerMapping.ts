@@ -5,7 +5,7 @@ import type {
     IAnswerImportMapping,
     IAnswerImportPreview,
     LabelJson,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     isSpeakerTurnTranscript,
     normalizeSpeakerTurns,

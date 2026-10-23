@@ -1,4 +1,4 @@
-import { createCatalogLoader, type IModelCatalogStore } from "@mosaic/llm-core";
+import { createCatalogLoader, type IModelCatalogStore } from "@flash-evals/llm-core";
 import { modelCatalogSnapshots } from "../db/schema";
 
 // Imported lazily: modules that only consult the registry must load without a database.

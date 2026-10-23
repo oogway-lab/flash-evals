@@ -47,10 +47,10 @@ describe("getImageStorageConfig", () => {
 
     it("rejects local image storage in production", () => {
         vi.stubEnv("NODE_ENV", "production");
-        process.env.MOSAIC_STORAGE_ADAPTER = "local";
+        process.env.FLASH_EVALS_STORAGE_ADAPTER = "local";
 
         expect(() => getImageStorageConfig()).toThrow(
-            "MOSAIC_STORAGE_ADAPTER=local is not allowed in production",
+            "FLASH_EVALS_STORAGE_ADAPTER=local is not allowed in production",
         );
     });
 
@@ -58,14 +58,14 @@ describe("getImageStorageConfig", () => {
         vi.stubEnv("NODE_ENV", "production");
         process.env.SUPABASE_URL = "https://example.supabase.co/";
         process.env.SUPABASE_SERVICE_ROLE_KEY = "secret";
-        process.env.SUPABASE_STORAGE_BUCKET = "mosaic-images";
+        process.env.SUPABASE_STORAGE_BUCKET = "flash-evals-images";
         process.env.SUPABASE_STORAGE_PREFIX = "/team-a/";
 
         expect(getImageStorageConfig()).toEqual({
             adapter: "supabase",
             supabaseUrl: "https://example.supabase.co",
             supabaseServiceRoleKey: "secret",
-            supabaseStorageBucket: "mosaic-images",
+            supabaseStorageBucket: "flash-evals-images",
             supabaseStoragePrefix: "team-a",
         });
     });
@@ -76,7 +76,7 @@ describe("Supabase image storage", () => {
         vi.stubEnv("NODE_ENV", "production");
         process.env.SUPABASE_URL = "https://example.supabase.co";
         process.env.SUPABASE_SERVICE_ROLE_KEY = "secret";
-        process.env.SUPABASE_STORAGE_BUCKET = "mosaic-images";
+        process.env.SUPABASE_STORAGE_BUCKET = "flash-evals-images";
         process.env.SUPABASE_STORAGE_PREFIX = "uploads";
     });
 
@@ -87,7 +87,7 @@ describe("Supabase image storage", () => {
 
         expect(key).toMatch(/^[a-f0-9-]{36}$/i);
         expect(fetch).toHaveBeenCalledWith(
-            `https://example.supabase.co/storage/v1/object/mosaic-images/uploads/${key}`,
+            `https://example.supabase.co/storage/v1/object/flash-evals-images/uploads/${key}`,
             expect.objectContaining({
                 method: "POST",
                 headers: expect.objectContaining({
@@ -117,7 +117,7 @@ describe("Supabase image storage", () => {
             base64Data: Buffer.from("image").toString("base64"),
         });
         expect(fetch).toHaveBeenCalledWith(
-            "https://example.supabase.co/storage/v1/object/mosaic-images/uploads/11111111-1111-4111-8111-111111111111",
+            "https://example.supabase.co/storage/v1/object/flash-evals-images/uploads/11111111-1111-4111-8111-111111111111",
             expect.objectContaining({ method: "GET" }),
         );
     });
@@ -128,7 +128,7 @@ describe("Supabase image storage", () => {
         await deleteImage("11111111-1111-4111-8111-111111111111");
 
         expect(fetch).toHaveBeenCalledWith(
-            "https://example.supabase.co/storage/v1/object/mosaic-images",
+            "https://example.supabase.co/storage/v1/object/flash-evals-images",
             expect.objectContaining({
                 method: "DELETE",
                 body: JSON.stringify({
@@ -149,7 +149,7 @@ describe("Supabase image storage", () => {
         );
 
         expect(fetch).toHaveBeenCalledWith(
-            "https://example.supabase.co/storage/v1/object/mosaic-images/uploads/11111111-1111-4111-8111-111111111111",
+            "https://example.supabase.co/storage/v1/object/flash-evals-images/uploads/11111111-1111-4111-8111-111111111111",
             expect.objectContaining({
                 method: "POST",
                 headers: expect.objectContaining({

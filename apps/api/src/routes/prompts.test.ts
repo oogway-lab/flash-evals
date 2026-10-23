@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type * as LlmCore from "@mosaic/llm-core";
+import type * as LlmCore from "@flash-evals/llm-core";
 import { Buffer } from "node:buffer";
-import { encryptSecret } from "@mosaic/secrets";
-import { getEvalProvider, listAvailableModelMetadata } from "@mosaic/llm-core";
+import { encryptSecret } from "@flash-evals/secrets";
+import { getEvalProvider, listAvailableModelMetadata } from "@flash-evals/llm-core";
 
 const llmCoreMocks = vi.hoisted(() => ({
     complete: vi.fn(),
 }));
 const TEAM_ID = "11111111-1111-4111-8111-111111111111";
 
-vi.mock("@mosaic/llm-core", async (importOriginal) => {
+vi.mock("@flash-evals/llm-core", async (importOriginal) => {
     const actual = await importOriginal<typeof LlmCore>();
     return {
         ...actual,
@@ -107,12 +107,12 @@ function testConfig(overrides: Partial<IApiConfig> = {}): IApiConfig {
         storageAdapter: "supabase",
         supabaseUrl: "https://supabase.example.com",
         supabaseServiceRoleKey: "service-role",
-        supabaseStorageBucket: "mosaic-images",
+        supabaseStorageBucket: "flash-evals-images",
         clerkSecretKey: "clerk-secret",
-        mosaicTenancyMode: "single-org",
-        mosaicAllowedEmailDomain: "example.com",
+        flashEvalsTenancyMode: "single-org",
+        flashEvalsAllowedEmailDomain: "example.com",
         corsOrigins: [],
-        mosaicLlmProvider: "openai",
+        flashEvalsLlmProvider: "openai",
         openaiApiKey: "test-openai",
         sttCapabilityProbes: {},
         profilingEnabled: false,
@@ -145,7 +145,7 @@ it("uses the team database key for a real prompt provider call", async () => {
 
     const result = await testPromptDraftPayload(
         db,
-        testConfig({ mosaicSecretsEncKey: encryptionKey }),
+        testConfig({ flashEvalsSecretsEncKey: encryptionKey }),
         {
             teamId: TEAM_ID,
             prompt: "Answer",
@@ -207,8 +207,8 @@ it("runs newly discovered Gateway models with their live transport ids", async (
     const lunaResult = await testPromptDraftPayload(
         db,
         testConfig({
-            mosaicLlmProvider: "gateway",
-            mosaicSecretsEncKey: encryptionKey,
+            flashEvalsLlmProvider: "gateway",
+            flashEvalsSecretsEncKey: encryptionKey,
         }),
         {
             teamId: TEAM_ID,
@@ -243,8 +243,8 @@ it("runs newly discovered Gateway models with their live transport ids", async (
     await testPromptDraftPayload(
         db,
         testConfig({
-            mosaicLlmProvider: "gateway",
-            mosaicSecretsEncKey: encryptionKey,
+            flashEvalsLlmProvider: "gateway",
+            flashEvalsSecretsEncKey: encryptionKey,
         }),
         {
             teamId: TEAM_ID,
@@ -1005,7 +1005,7 @@ describe("optimizePromptPayload", () => {
         const result = await optimizePromptPayload(
             db,
             testConfig({
-                mosaicLlmProvider: "gateway",
+                flashEvalsLlmProvider: "gateway",
                 aiGatewayApiKey: "gateway",
             }),
             optimizeInput,
@@ -1048,7 +1048,7 @@ describe("optimizePromptPayload", () => {
         const result = await optimizePromptPayload(
             db,
             testConfig({
-                mosaicLlmProvider: "gateway",
+                flashEvalsLlmProvider: "gateway",
                 aiGatewayApiKey: "gateway",
             }),
             {
@@ -1059,7 +1059,7 @@ describe("optimizePromptPayload", () => {
 
         expect(result.optimizationGuidanceSource).toEqual({
             title: "Flash Evals generic prompt optimization guidance",
-            url: "internal://mosaic/prompt-optimization",
+            url: "internal://flash-evals/prompt-optimization",
             retrievedAt: "2026-07-08",
         });
         expect(llmCoreMocks.complete).toHaveBeenCalledWith(
@@ -1078,7 +1078,7 @@ it.each([
     async ({ samples }) => {
         const message = "Please add your OpenRouter API key to run evals.";
         const actual =
-            await vi.importActual<typeof LlmCore>("@mosaic/llm-core");
+            await vi.importActual<typeof LlmCore>("@flash-evals/llm-core");
         vi.mocked(getEvalProvider).mockImplementationOnce(
             actual.getEvalProvider,
         );
@@ -1095,7 +1095,7 @@ it.each([
         const result = await validateRunnablePromptPayload(
             db,
             testConfig({
-                mosaicLlmProvider: "openrouter",
+                flashEvalsLlmProvider: "openrouter",
                 openaiApiKey: undefined,
             }),
             {

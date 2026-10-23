@@ -32,16 +32,16 @@ const config: IApiConfig = {
     storageAdapter: "local",
     supabaseUrl: "https://example.supabase.co",
     supabaseServiceRoleKey: "service-role",
-    supabaseStorageBucket: "mosaic-images",
+    supabaseStorageBucket: "flash-evals-images",
     clerkSecretKey: "sk_test",
-    mosaicTenancyMode: "single-org",
-    mosaicAllowedEmailDomain: "example.com",
+    flashEvalsTenancyMode: "single-org",
+    flashEvalsAllowedEmailDomain: "example.com",
     corsOrigins: [],
-    mosaicLlmProvider: "openai",
+    flashEvalsLlmProvider: "openai",
     sttCapabilityProbes: {},
     profilingEnabled: false,
-    mosaicMcpTokenPepper: "pepper",
-    mosaicMcpRawTokenFallbackEnabled: false,
+    flashEvalsMcpTokenPepper: "pepper",
+    flashEvalsMcpRawTokenFallbackEnabled: false,
     featureFlags: resolveApiFeatureFlags({}),
 };
 
@@ -110,7 +110,7 @@ describe("MCP auth", () => {
 
         const principal = await resolveMcpPrincipal(
             db,
-            { ...config, mosaicMcpRawTokenFallbackEnabled: true },
+            { ...config, flashEvalsMcpRawTokenFallbackEnabled: true },
             new Request("https://api.example.com/mcp", {
                 headers: { authorization: "Bearer mcp_test" },
             }),
@@ -159,8 +159,8 @@ describe("MCP auth", () => {
                 db,
                 {
                     ...config,
-                    mosaicAllowedEmailDomain: "oogwaylabs.com",
-                    mosaicMcpRawTokenFallbackEnabled: true,
+                    flashEvalsAllowedEmailDomain: "oogwaylabs.com",
+                    flashEvalsMcpRawTokenFallbackEnabled: true,
                 },
                 new Request("https://api.example.com/mcp", {
                     headers: { authorization: "Bearer mcp_test" },
@@ -181,7 +181,7 @@ describe("MCP auth", () => {
         await expect(
             resolveMcpPrincipal(
                 db,
-                { ...config, mosaicMcpRawTokenFallbackEnabled: true },
+                { ...config, flashEvalsMcpRawTokenFallbackEnabled: true },
                 new Request("https://api.example.com/mcp", {
                     headers: { authorization: "Bearer mcp_test" },
                 }),
@@ -304,7 +304,7 @@ describe("MCP auth", () => {
         ).rejects.toMatchObject({ reason: "issuer_verification_failed" });
     });
 
-    // With MOSAIC_MCP_OAUTH_DYNAMIC_CLIENTS=true and no MOSAIC_MCP_OAUTH_CLIENT_ID,
+    // With FLASH_EVALS_MCP_OAUTH_DYNAMIC_CLIENTS=true and no FLASH_EVALS_MCP_OAUTH_CLIENT_ID,
     // both client guards are skipped rather than failed — that is what lets
     // dynamically registered clients (Codex, Cursor, MCP Inspector) work at all.
     // It is also the whole security cost of enabling DCR, so it is asserted
@@ -405,9 +405,9 @@ describe("MCP auth", () => {
                 db,
                 {
                     ...config,
-                    mosaicMcpEnabled: true,
-                    mosaicMcpResourceUrl: "https://api.example.com/mcp",
-                    mosaicMcpOAuthClientId: "oauth-client",
+                    flashEvalsMcpEnabled: true,
+                    flashEvalsMcpResourceUrl: "https://api.example.com/mcp",
+                    flashEvalsMcpOAuthClientId: "oauth-client",
                     clerkIssuer: "https://clerk.example.com",
                     clerkPublishableKey: "pk_test",
                     clerkJwtKey: "jwt-key",
@@ -462,10 +462,10 @@ describe("MCP auth", () => {
                 db,
                 {
                     ...config,
-                    mosaicAllowedEmailDomain: "oogwaylabs.com",
-                    mosaicMcpEnabled: true,
-                    mosaicMcpResourceUrl: "https://api.example.com/mcp",
-                    mosaicMcpOAuthClientId: "oauth-client",
+                    flashEvalsAllowedEmailDomain: "oogwaylabs.com",
+                    flashEvalsMcpEnabled: true,
+                    flashEvalsMcpResourceUrl: "https://api.example.com/mcp",
+                    flashEvalsMcpOAuthClientId: "oauth-client",
                     clerkIssuer: "https://clerk.example.com",
                     clerkPublishableKey: "pk_test",
                     clerkJwtKey: "jwt-key",
@@ -515,10 +515,10 @@ describe("MCP auth", () => {
                 db,
                 {
                     ...config,
-                    mosaicAllowedEmailDomain: "oogwaylabs.com",
-                    mosaicMcpEnabled: true,
-                    mosaicMcpResourceUrl: "https://api.example.com/mcp",
-                    mosaicMcpOAuthClientId: "oauth-client",
+                    flashEvalsAllowedEmailDomain: "oogwaylabs.com",
+                    flashEvalsMcpEnabled: true,
+                    flashEvalsMcpResourceUrl: "https://api.example.com/mcp",
+                    flashEvalsMcpOAuthClientId: "oauth-client",
                     clerkIssuer: "https://clerk.example.com",
                     clerkPublishableKey: "pk_test",
                     clerkJwtKey: "jwt-key",

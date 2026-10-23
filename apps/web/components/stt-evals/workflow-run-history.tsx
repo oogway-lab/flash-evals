@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { IWorkflowRunSummary } from "@mosaic/api-contract";
+import type { IWorkflowRunSummary } from "@flash-evals/api-contract";
 import { EmptyState } from "@/components/layout/empty-state";
 import { SectionTitle } from "@/components/layout/section-title";
 import { RelativeTime } from "@/components/ui/relative-time";

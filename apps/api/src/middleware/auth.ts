@@ -11,7 +11,7 @@ export class ApiUnauthorizedError extends Error {
     }
 }
 
-const INTERNAL_TOKEN_HEADER = "x-mosaic-internal-token";
+const INTERNAL_TOKEN_HEADER = "x-flash-evals-internal-token";
 
 export function assertInternalToken(
     request: Request,

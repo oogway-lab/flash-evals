@@ -1,4 +1,4 @@
-import { getEvalProvider, type ApiKeys } from "@mosaic/llm-core";
+import { getEvalProvider, type ApiKeys } from "@flash-evals/llm-core";
 import type {
     ISchemaCompatibilityIssue,
     JsonSchemaObject,

@@ -1,4 +1,4 @@
-import { openAiTransportErrorClass } from "@mosaic/llm-core";
+import { openAiTransportErrorClass } from "@flash-evals/llm-core";
 import { errorMessage } from "../../lib/errors";
 import { retryAfterMs } from "../../lib/retryAfter";
 import type { ITranscriptionAttemptRecord } from "../../db/jsonTypes";

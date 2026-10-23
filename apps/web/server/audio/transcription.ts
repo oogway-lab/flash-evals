@@ -3,7 +3,7 @@ import {
     sttPayloadConfigFieldsForModelId,
     sttModelSupportsLanguage,
     unsupportedSttConfigKeysForFields,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { loadAudioBytes } from "./source";
 import {
     cachedPreparationIsCurrent,

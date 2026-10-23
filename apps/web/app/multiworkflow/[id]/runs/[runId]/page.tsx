@@ -1,6 +1,6 @@
 import type { Route } from "next";
 import { notFound } from "next/navigation";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 import { Page } from "@/components/layout/page";
 import { PageHeader } from "@/components/layout/page-header";
 import { SttRunResults } from "@/components/stt-evals/stt-run-results";
@@ -21,7 +21,7 @@ export default async function SttEvalRunPage({
     const detail = await serverApiClient()
         .getWorkflowRunDetail(principal.teamId, principal.projectId, id, runId)
         .catch((err: unknown) => {
-            if (err instanceof MosaicApiError && err.status === 404) notFound();
+            if (err instanceof FlashEvalsApiError && err.status === 404) notFound();
             throw err;
         });
     return (

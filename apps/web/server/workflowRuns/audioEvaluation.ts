@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
-import type { ApiKeys } from "@mosaic/llm-core";
-import type { ISttRunConfig } from "@mosaic/api-contract";
+import type { ApiKeys } from "@flash-evals/llm-core";
+import type { ISttRunConfig } from "@flash-evals/api-contract";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { workflowRunItems } from "../db/schema";

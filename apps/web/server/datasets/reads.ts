@@ -1,4 +1,4 @@
-import { hasGoldenLabel } from "@mosaic/api-contract";
+import { hasGoldenLabel } from "@flash-evals/api-contract";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { datasets, datasetItems, labels } from "../db/schema";

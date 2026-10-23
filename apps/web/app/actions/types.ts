@@ -4,7 +4,7 @@ import type {
     IPromptSampleInput,
     IPromptTestRunResponse,
     ISchemaCompatibilityIssue,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 
 export interface IActionState {
     ok?: boolean;

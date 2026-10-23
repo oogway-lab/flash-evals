@@ -137,8 +137,8 @@ describe("rateLimitPrincipalFromRequest", () => {
                 post(
                     { teamId: "body-team", createdBy: "body-user" },
                     {
-                        "x-mosaic-team-id": "header-team",
-                        "x-mosaic-actor-id": "header-user",
+                        "x-flash-evals-team-id": "header-team",
+                        "x-flash-evals-actor-id": "header-user",
                     },
                 ),
             ),

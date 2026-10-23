@@ -193,7 +193,7 @@ async function uploadGeminiFile(
                 ),
                 "X-Goog-Upload-Header-Content-Type": mimeType,
             },
-            body: JSON.stringify({ file: { displayName: "mosaic-stt-audio" } }),
+            body: JSON.stringify({ file: { displayName: "flash-evals-stt-audio" } }),
         },
     );
     if (!start.ok) {

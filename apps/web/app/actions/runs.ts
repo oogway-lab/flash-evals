@@ -17,7 +17,7 @@ import {
     type ISttRunEvaluation,
     type ISttRunVariant,
     type ProviderTransport,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { actionErrorState, parseJsonField } from "./shared";
 import type { IActionState } from "./types";
 

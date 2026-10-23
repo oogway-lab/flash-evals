@@ -1,4 +1,4 @@
-import { hasGoldenLabel } from "@mosaic/api-contract";
+import { hasGoldenLabel } from "@flash-evals/api-contract";
 import { randomUUID } from "node:crypto";
 import { createWriteStream, promises as fs } from "node:fs";
 import path from "node:path";
@@ -43,7 +43,7 @@ import type {
     IUpdateDatasetNameRequest,
     LabelJson,
     SchemaFieldType,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     createR2SignedUploadUrl,
     deleteR2Object,
@@ -54,11 +54,11 @@ import {
     R2_CREATE_ONLY_UPLOAD_HEADER,
     R2_CREATE_ONLY_UPLOAD_VALUE,
     R2_UPLOAD_URL_TTL_SECONDS,
-} from "@mosaic/object-storage";
+} from "@flash-evals/object-storage";
 import {
     ALLOWED_AUDIO_TYPES as CONTRACT_ALLOWED_AUDIO_TYPES,
     ALLOWED_IMAGE_TYPES as CONTRACT_ALLOWED_IMAGE_TYPES,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { previewAnswerFiles } from "./datasets/answerMapping.js";
 import {
     MAX_AUDIO_BYTES,

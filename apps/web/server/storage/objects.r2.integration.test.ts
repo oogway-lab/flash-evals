@@ -7,7 +7,7 @@ import {
     getR2ObjectPrefix,
     headR2Object,
     R2StorageError,
-} from "@mosaic/object-storage";
+} from "@flash-evals/object-storage";
 import {
     deleteObject,
     getObjectStorageConfig,
@@ -270,7 +270,7 @@ beforeAll(async () => {
     if (!address || typeof address === "string") {
         throw new Error("Could not start the local S3 fixture.");
     }
-    vi.stubEnv("MOSAIC_STORAGE_ADAPTER", "r2");
+    vi.stubEnv("FLASH_EVALS_STORAGE_ADAPTER", "r2");
     vi.stubEnv("R2_ACCOUNT_ID", "synthetic-account");
     vi.stubEnv("R2_ACCESS_KEY_ID", ACCESS_KEY);
     vi.stubEnv("R2_SECRET_ACCESS_KEY", SECRET_KEY);

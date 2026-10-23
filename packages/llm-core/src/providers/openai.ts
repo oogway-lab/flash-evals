@@ -191,10 +191,10 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
             if (this.transport !== "openrouter") return await request;
             const wrapped = await request.withResponse();
             return Object.assign(wrapped.data, {
-                __mosaicOpenRouterCacheStatus:
+                __flashEvalsOpenRouterCacheStatus:
                     wrapped.response.headers.get("x-openrouter-cache-status") ??
                     undefined,
-                __mosaicOpenRouterGenerationId:
+                __flashEvalsOpenRouterGenerationId:
                     wrapped.response.headers.get("x-generation-id") ??
                     undefined,
             });
@@ -262,7 +262,7 @@ function actualRouteFrom(
         typeof record.provider === "string" && record.provider.length <= 100
             ? record.provider
             : undefined;
-    const headerGenerationId = record.__mosaicOpenRouterGenerationId;
+    const headerGenerationId = record.__flashEvalsOpenRouterGenerationId;
     const generationId =
         typeof headerGenerationId === "string" &&
         headerGenerationId.length <= 200
@@ -302,7 +302,7 @@ function cacheProvenanceFrom(
     response: OpenAI.Chat.Completions.ChatCompletion,
 ): CompletionCacheProvenance {
     const record = response as unknown as Record<string, unknown>;
-    const cacheStatus = record.__mosaicOpenRouterCacheStatus;
+    const cacheStatus = record.__flashEvalsOpenRouterCacheStatus;
     if (typeof cacheStatus === "string") {
         const normalized = cacheStatus.trim().toLowerCase();
         if (normalized === "hit" || normalized === "miss")

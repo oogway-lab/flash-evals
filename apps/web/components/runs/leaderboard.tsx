@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { ILeaderboardRow, IRunConfigSnapshot } from "@mosaic/api-contract";
+import type { ILeaderboardRow, IRunConfigSnapshot } from "@flash-evals/api-contract";
 import {
     MISSING_VALUE,
     formatCostColumn,

@@ -4,8 +4,8 @@ import { serverApiClient } from "@/server/api/client";
 import { requirePrincipal } from "@/server/auth/session";
 import { UserFacingError } from "@/server/lib/errors";
 
-export const ACTIVE_PROJECT_COOKIE = "mosaic_active_project";
-export const ACTIVE_WORKSPACE_COOKIE = "mosaic_active_workspace";
+export const ACTIVE_PROJECT_COOKIE = "flash_evals_active_project";
+export const ACTIVE_WORKSPACE_COOKIE = "flash_evals_active_workspace";
 
 export async function activeProjectCookieValue(): Promise<string | undefined> {
     return (await cookies()).get(ACTIVE_PROJECT_COOKIE)?.value;

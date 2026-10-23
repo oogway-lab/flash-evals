@@ -18,7 +18,7 @@ import {
     type IJsonSchemaObject,
     type ReasoningEffort,
     type ProviderTransport,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { actionErrorState, jsonFieldError, parseJsonField } from "./shared";
 import type {
     IGenerateSchemaActionState,

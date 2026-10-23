@@ -12,13 +12,13 @@ import {
     MAX_IMAGE_IMPORT_BYTES,
     MAX_IMPORT_FILE_COUNT,
     MAX_TEXT_IMPORT_BYTES,
-    MosaicApiError,
+    FlashEvalsApiError,
     type IApiAudioImportFile,
     type IApiImageImportFile,
     type IImportSummary,
     type IAnswerImportFile,
     type AnswerImportTargetField,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { requireActiveProject as requirePrincipal } from "@/server/projects/activeProject";
 import {
     clientErrorMessage,
@@ -154,7 +154,7 @@ function validateImportMetaBatch(
  */
 function importErrorToSummary(err: unknown): IImportSummary {
     if (
-        err instanceof MosaicApiError &&
+        err instanceof FlashEvalsApiError &&
         !shouldRethrowDatasetMutationError(err.message)
     ) {
         return rejectedImport(err.message);

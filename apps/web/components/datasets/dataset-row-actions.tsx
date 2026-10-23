@@ -2,7 +2,7 @@
 
 import { startTransition, useActionState, useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { IDatasetListRow } from "@mosaic/api-contract";
+import type { IDatasetListRow } from "@flash-evals/api-contract";
 import type { IActionState } from "@/app/actions";
 import {
     archiveDatasetAction,

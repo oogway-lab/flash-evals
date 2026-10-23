@@ -5,7 +5,7 @@ import {
     MAX_STT_VARIANTS,
     type IRunSetupSttModelOption,
     type ISttRunVariant,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { configForSttModel } from "./stt-config-fields";
 
 export interface ISttVariantDraft {

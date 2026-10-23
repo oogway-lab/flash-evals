@@ -5,7 +5,7 @@ import {
     type IWorkflowLlmRoute,
     type IWorkflowLlmRouteConfig,
     type WorkflowLlmTransport as WorkflowLlmTransportName,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { z } from "zod";
 import { ApiBadRequestError } from "../../errors.js";
 import { logApiEvent } from "../../observability/logger.js";
@@ -61,7 +61,7 @@ const SimpleWorkflowLlmRouteInput = z
             .optional(),
         timeoutMs: z.number().int().min(1).max(600_000).optional(),
         maxAttempts: z.number().int().min(1).max(10).optional(),
-        mosaicReuse: z.enum(["allow", "force_fresh"]).optional(),
+        flashEvalsReuse: z.enum(["allow", "force_fresh"]).optional(),
         // Retained for clients that used the pre-node-configuration tool.
         reasoningEffort: ReasoningEffort.optional(),
     })
@@ -115,7 +115,7 @@ export function registerSettingsTools(
         async (input) => {
             await setProviderKeyPayload(
                 runtime.db,
-                runtime.config.mosaicSecretsEncKey,
+                runtime.config.flashEvalsSecretsEncKey,
                 {
                     teamId: principal.teamId,
                     provider: input.provider,
@@ -616,7 +616,7 @@ function simpleRouteConfig(
                       timeoutMs: input.timeoutMs ?? 60_000,
                   }
                 : {
-                      owner: "mosaic",
+                      owner: "flash-evals",
                       maxAttempts: input.maxAttempts ?? 1,
                       timeoutMs: input.timeoutMs ?? 60_000,
                       retryableErrorClasses: [
@@ -627,7 +627,7 @@ function simpleRouteConfig(
                       ],
                   },
         cache: {
-            mosaicReuse: input.mosaicReuse ?? "force_fresh",
+            flashEvalsReuse: input.flashEvalsReuse ?? "force_fresh",
             providerCaching: "allow",
         },
     };

@@ -41,7 +41,7 @@ vi.mock("pg", () => ({
 }));
 
 const cloudflareContextKey = Symbol.for("__cloudflare-context__");
-const originalWebDatabaseUrl = process.env.MOSAIC_WEB_DATABASE_URL;
+const originalWebDatabaseUrl = process.env.FLASH_EVALS_WEB_DATABASE_URL;
 const originalDatabaseUrl = process.env.DATABASE_URL;
 
 function useCloudflareContext(
@@ -64,15 +64,15 @@ describe("web database client", () => {
         state.context = undefined;
         state.pools.length = 0;
         Reflect.deleteProperty(globalThis, cloudflareContextKey);
-        delete process.env.MOSAIC_WEB_DATABASE_URL;
+        delete process.env.FLASH_EVALS_WEB_DATABASE_URL;
         delete process.env.DATABASE_URL;
     });
 
     afterEach(() => {
         if (originalWebDatabaseUrl === undefined) {
-            delete process.env.MOSAIC_WEB_DATABASE_URL;
+            delete process.env.FLASH_EVALS_WEB_DATABASE_URL;
         } else {
-            process.env.MOSAIC_WEB_DATABASE_URL = originalWebDatabaseUrl;
+            process.env.FLASH_EVALS_WEB_DATABASE_URL = originalWebDatabaseUrl;
         }
         if (originalDatabaseUrl === undefined) {
             delete process.env.DATABASE_URL;
@@ -112,7 +112,7 @@ describe("web database client", () => {
     });
 
     it("fails closed when a Worker request has no database binding", async () => {
-        process.env.MOSAIC_WEB_DATABASE_URL = "postgres://must-not-fallback";
+        process.env.FLASH_EVALS_WEB_DATABASE_URL = "postgres://must-not-fallback";
         process.env.DATABASE_URL = "postgres://must-not-fallback";
         useCloudflareContext(undefined);
         await expect(import("./client")).rejects.toThrow(
@@ -137,7 +137,7 @@ describe("web database client", () => {
     });
 
     it("keeps Node processes on the existing bounded pool", async () => {
-        process.env.MOSAIC_WEB_DATABASE_URL = "postgres://local-web-node";
+        process.env.FLASH_EVALS_WEB_DATABASE_URL = "postgres://local-web-node";
         process.env.DATABASE_URL = "postgres://local-node";
         const { db } = await import("./client");
 

@@ -17,18 +17,18 @@ import type {
     ReviewVerdict,
     RunStatus,
     WorkflowKind,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     buildLeaderboardRows,
     buildSttShipGate,
     pickBestModel,
     sharedQualitySource,
     sideQuality,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     getEvalProvider,
     type IEvalCompletionProvider,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 import type { IApiConfig } from "../config.js";
 import type { IDb } from "../db.js";
 import { ApiBadRequestError, ApiNotFoundError } from "../errors.js";
@@ -1200,7 +1200,7 @@ async function evalProvider(
 ): Promise<IEvalCompletionProvider> {
     const resolved = await resolveApiKeys(db, config, teamId);
     return getEvalProvider(resolved.apiKeys, {
-        provider: config.mosaicLlmProvider,
+        provider: config.flashEvalsLlmProvider,
         ...teamBaseUrlProviderOptions(resolved),
     });
 }

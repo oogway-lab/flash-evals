@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
     IPromptWorkflow,
     IRunSetupDatasetOption,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import type { IActionState } from "@/app/actions";
 import { SttRunLaunch } from "./stt-run-launch";
 
@@ -152,7 +152,7 @@ describe("SttRunLaunch", () => {
             ],
         } as IPromptWorkflow;
         const listener = vi.fn();
-        document.addEventListener("mosaic:repair-workflow-node", listener);
+        document.addEventListener("flash-evals:repair-workflow-node", listener);
 
         render(
             <SttRunLaunch
@@ -173,6 +173,6 @@ describe("SttRunLaunch", () => {
         fireEvent.click(repair);
         expect(listener).toHaveBeenCalled();
 
-        document.removeEventListener("mosaic:repair-workflow-node", listener);
+        document.removeEventListener("flash-evals:repair-workflow-node", listener);
     });
 });

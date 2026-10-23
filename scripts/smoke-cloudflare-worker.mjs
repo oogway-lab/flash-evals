@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile, access } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { URL, fileURLToPath } from "node:url";
+import { devHost } from "./lib/dev-env.cjs";
 
 const repoRoot = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -38,7 +39,7 @@ function reservePort() {
     return new Promise((resolve, reject) => {
         const server = createServer();
         server.once("error", reject);
-        server.listen(0, "127.0.0.1", () => {
+        server.listen(0, devHost, () => {
             const address = server.address();
             if (!address || typeof address === "string") {
                 server.close();
@@ -69,7 +70,7 @@ const wrangler = spawn(
         "--config",
         configPath,
         "--ip",
-        "127.0.0.1",
+        devHost,
         "--port",
         String(port),
     ],
@@ -85,9 +86,18 @@ const wrangler = spawn(
             WRANGLER_WRITE_LOGS: "false",
             WRANGLER_LOG_PATH: tempDir,
         },
-        stdio: "ignore",
+        stdio: ["ignore", "pipe", "pipe"],
     },
 );
+
+// The Worker receives only the synthetic vars above, never private app env.
+// Keep bounded startup diagnostics so a failed runtime check is actionable.
+let runtimeLog = "";
+for (const stream of [wrangler.stdout, wrangler.stderr]) {
+    stream.on("data", (chunk) => {
+        runtimeLog = (runtimeLog + chunk.toString()).slice(-16_000);
+    });
+}
 
 let exitInfo;
 wrangler.once("exit", (code, signal) => {
@@ -98,7 +108,7 @@ wrangler.once("error", (error) => {
 });
 
 try {
-    const url = `http://127.0.0.1:${port}/api/health`;
+    const url = `http://${devHost}:${port}/api/health`;
     let response;
     const deadline = Date.now() + 60_000;
     while (Date.now() < deadline) {
@@ -128,6 +138,7 @@ try {
         );
     }
     if (response.status !== 200) {
+        console.error(runtimeLog);
         throw new Error(`GET /api/health returned HTTP ${response.status}.`);
     }
     const body = await response.json();
@@ -138,7 +149,7 @@ try {
         "Cloudflare Worker local smoke passed: GET /api/health returned 200.",
     );
 
-    const origin = `http://127.0.0.1:${port}`;
+    const origin = `http://${devHost}:${port}`;
     const home = await globalThis.fetch(`${origin}/`, { redirect: "manual" });
     assert.equal(
         home.status,

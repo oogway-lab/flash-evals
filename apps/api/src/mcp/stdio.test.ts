@@ -10,7 +10,7 @@ import type {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IApiRuntime } from "../server.js";
 import { ApiForbiddenError } from "../errors.js";
-import { registerMosaicMcpCapabilities } from "./registry.js";
+import { registerFlashEvalsMcpCapabilities } from "./registry.js";
 
 function resourceText(contents: { text?: string; blob?: string }[]): string {
     const content = contents[0];
@@ -290,7 +290,7 @@ async function connectStdioClient(runtime = createRuntime()): Promise<{
     const clientInput = new PassThrough();
     const serverOutput = new PassThrough();
     const server = new McpServer({ name: "stdio-test-server", version: "1" });
-    registerMosaicMcpCapabilities(server, {
+    registerFlashEvalsMcpCapabilities(server, {
         runtime,
         principal: {
             authMode: "oauth",
@@ -403,17 +403,17 @@ describe("MCP stdio transport", () => {
             await harness.client.listResourceTemplates();
         expect(resourceTemplates).toEqual(
             expect.arrayContaining([
-                expect.objectContaining({ name: "mosaic-dataset-summary" }),
-                expect.objectContaining({ name: "mosaic-dataset-items" }),
-                expect.objectContaining({ name: "mosaic-run-summary" }),
-                expect.objectContaining({ name: "mosaic-run-cells" }),
+                expect.objectContaining({ name: "flash-evals-dataset-summary" }),
+                expect.objectContaining({ name: "flash-evals-dataset-items" }),
+                expect.objectContaining({ name: "flash-evals-run-summary" }),
+                expect.objectContaining({ name: "flash-evals-run-cells" }),
             ]),
         );
         expect(resourceTemplates).toHaveLength(8);
 
         const summary = await readResource(
             harness.client,
-            `mosaic://projects/${projectId}/datasets/${datasetId}/summary`,
+            `flash-evals://projects/${projectId}/datasets/${datasetId}/summary`,
         );
         const summaryData = JSON.parse(resourceText(summary.contents));
         expect(summaryData.itemCount).toBe(2);
@@ -421,7 +421,7 @@ describe("MCP stdio transport", () => {
 
         const firstPage = await readResource(
             harness.client,
-            `mosaic://projects/${projectId}/datasets/${datasetId}/items/1/first`,
+            `flash-evals://projects/${projectId}/datasets/${datasetId}/items/1/first`,
         );
         const firstPageData = JSON.parse(resourceText(firstPage.contents));
         expect(firstPageData).toMatchObject({ complete: false });
@@ -438,14 +438,14 @@ describe("MCP stdio transport", () => {
 
         const runSummary = await readResource(
             harness.client,
-            `mosaic://projects/${projectId}/runs/${runId}/summary`,
+            `flash-evals://projects/${projectId}/runs/${runId}/summary`,
         );
         const runSummaryData = JSON.parse(resourceText(runSummary.contents));
         expect(runSummaryData.progress.total).toBe(2);
         expect(runSummaryData.related.tool.name).toBe("list_run_cells");
         const runPage = await readResource(
             harness.client,
-            `mosaic://projects/${projectId}/runs/${runId}/cells/1/first`,
+            `flash-evals://projects/${projectId}/runs/${runId}/cells/1/first`,
         );
         const runPageData = JSON.parse(resourceText(runPage.contents));
         expect(runPageData.cells).toHaveLength(1);
@@ -524,7 +524,7 @@ describe("MCP stdio transport", () => {
     it.each([
         {
             name: "cross tenant",
-            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            uri: "flash-evals://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
             query: vi.fn(async (sql: string) =>
                 sql.includes("from projects")
                     ? { rows: [], rowCount: 0 }
@@ -536,7 +536,7 @@ describe("MCP stdio transport", () => {
         },
         {
             name: "not found",
-            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            uri: "flash-evals://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
             query: vi.fn(async (sql: string) => {
                 if (sql.includes("from projects")) {
                     return {
@@ -555,7 +555,7 @@ describe("MCP stdio transport", () => {
         },
         {
             name: "forbidden",
-            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            uri: "flash-evals://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
             query: vi.fn(async (sql: string) => {
                 if (sql.includes("from projects")) {
                     return {
@@ -574,7 +574,7 @@ describe("MCP stdio transport", () => {
         },
         {
             name: "malformed cursor",
-            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222/items/10/not-a-cursor",
+            uri: "flash-evals://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222/items/10/not-a-cursor",
             query: vi.fn(async (sql: string) =>
                 sql.includes("from projects")
                     ? {
@@ -594,7 +594,7 @@ describe("MCP stdio transport", () => {
         },
         {
             name: "internal failure",
-            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            uri: "flash-evals://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
             query: vi.fn(async (sql: string) => {
                 if (sql.includes("from projects")) {
                     return {

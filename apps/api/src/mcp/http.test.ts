@@ -31,21 +31,21 @@ const config: IApiConfig = {
     storageAdapter: "local",
     supabaseUrl: "https://example.supabase.co",
     supabaseServiceRoleKey: "service-role",
-    supabaseStorageBucket: "mosaic-images",
+    supabaseStorageBucket: "flash-evals-images",
     clerkSecretKey: "sk_test",
     clerkPublishableKey: "pk_test",
     clerkIssuer: "https://clerk.example.com",
     clerkJwtKey: "jwt-key",
-    mosaicTenancyMode: "single-org",
-    mosaicAllowedEmailDomain: "example.com",
+    flashEvalsTenancyMode: "single-org",
+    flashEvalsAllowedEmailDomain: "example.com",
     corsOrigins: ["https://web.example.com"],
-    mosaicLlmProvider: "openai",
+    flashEvalsLlmProvider: "openai",
     sttCapabilityProbes: {},
     profilingEnabled: false,
-    mosaicMcpEnabled: true,
-    mosaicMcpAllowedOrigins: ["https://claude.example.com"],
-    mosaicMcpResourceUrl: "https://api.example.com/mcp",
-    mosaicMcpOAuthClientId: "oauth-client",
+    flashEvalsMcpEnabled: true,
+    flashEvalsMcpAllowedOrigins: ["https://claude.example.com"],
+    flashEvalsMcpResourceUrl: "https://api.example.com/mcp",
+    flashEvalsMcpOAuthClientId: "oauth-client",
     featureFlags: resolveApiFeatureFlags({}),
 };
 
@@ -263,7 +263,7 @@ describe("MCP HTTP OAuth", () => {
             expect(logged).toEqual({
                 level: "warn",
                 event: "mcp.auth.rejected",
-                service: "mosaic-api",
+                service: "flash-evals-api",
                 timestamp: expect.any(String),
                 requestId: "diagnostic-request",
                 reason,
@@ -419,7 +419,7 @@ describe("MCP HTTP OAuth", () => {
         );
         await expect(response.json()).resolves.toMatchObject({
             result: {
-                serverInfo: { name: "mosaic-evals" },
+                serverInfo: { name: "flash-evals" },
             },
             id: 1,
         });
@@ -630,7 +630,7 @@ describe("MCP HTTP OAuth", () => {
         {
             name: "cross-tenant project",
             failure: "cross_tenant" as const,
-            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            uri: "flash-evals://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
             code: -32602,
             message: "Project was not found in the authenticated workspace.",
             dataCode: "not_found",
@@ -638,7 +638,7 @@ describe("MCP HTTP OAuth", () => {
         {
             name: "not found",
             failure: "not_found" as const,
-            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            uri: "flash-evals://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
             code: -32602,
             message: "Not found",
             dataCode: "not_found",
@@ -646,7 +646,7 @@ describe("MCP HTTP OAuth", () => {
         {
             name: "forbidden",
             failure: "forbidden" as const,
-            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            uri: "flash-evals://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
             code: -32003,
             message: "Dataset access denied.",
             dataCode: "forbidden",
@@ -654,7 +654,7 @@ describe("MCP HTTP OAuth", () => {
         {
             name: "internal failure",
             failure: "internal" as const,
-            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
+            uri: "flash-evals://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222",
             code: -32603,
             message:
                 "Internal server error. Check the request ID before retrying.",
@@ -663,7 +663,7 @@ describe("MCP HTTP OAuth", () => {
         {
             name: "malformed cursor",
             failure: "bad_cursor" as const,
-            uri: "mosaic://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222/items/10/not-a-cursor",
+            uri: "flash-evals://projects/11111111-1111-4111-8111-111111111111/datasets/22222222-2222-4222-8222-222222222222/items/10/not-a-cursor",
             code: -32602,
             message:
                 "Invalid page cursor. Restart pagination without a cursor.",

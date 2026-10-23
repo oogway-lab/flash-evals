@@ -9,6 +9,7 @@ const sourceDirs = ["apps/api/src", "apps/web", "packages", "scripts"];
 const sourceExtensions = new Set([".js", ".mjs", ".ts", ".tsx"]);
 const ignoredPathSegments = new Set([
     ".next",
+    ".next-playwright",
     ".open-next",
     ".wrangler",
     "coverage",

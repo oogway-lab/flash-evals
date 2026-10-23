@@ -1,4 +1,4 @@
-import type { IDatasetDetailResponse } from "@mosaic/api-contract";
+import type { IDatasetDetailResponse } from "@flash-evals/api-contract";
 
 export type DatasetAddStrategy =
     | { kind: "evaluation-audio" }

@@ -1,4 +1,4 @@
-import type { IDashboardResponse } from "@mosaic/api-contract";
+import type { IDashboardResponse } from "@flash-evals/api-contract";
 import type { IDb } from "../db.js";
 import { listRecentRunsPayload } from "./runs.js";
 

@@ -21,8 +21,8 @@ import {
 let dir: string;
 
 beforeAll(() => {
-    dir = mkdtempSync(path.join(tmpdir(), "mosaic-objects-"));
-    process.env.MOSAIC_STORAGE_ADAPTER = "local";
+    dir = mkdtempSync(path.join(tmpdir(), "flash-evals-objects-"));
+    process.env.FLASH_EVALS_STORAGE_ADAPTER = "local";
     process.env.UPLOAD_DIR = dir;
 });
 
@@ -64,7 +64,7 @@ describe("R2 storage configuration", () => {
     });
 
     it("uses the same validated prefix and safe keys for R2 object paths", () => {
-        vi.stubEnv("MOSAIC_STORAGE_ADAPTER", "r2");
+        vi.stubEnv("FLASH_EVALS_STORAGE_ADAPTER", "r2");
         vi.stubEnv("R2_ACCOUNT_ID", "synthetic-account");
         vi.stubEnv("R2_ACCESS_KEY_ID", "synthetic-access");
         vi.stubEnv("R2_SECRET_ACCESS_KEY", "synthetic-secret");
@@ -89,7 +89,7 @@ describe("R2 storage configuration", () => {
     });
 
     it("rejects missing credentials, unsafe prefixes, and implicit adapter selection", () => {
-        vi.stubEnv("MOSAIC_STORAGE_ADAPTER", "r2");
+        vi.stubEnv("FLASH_EVALS_STORAGE_ADAPTER", "r2");
         expect(() => getObjectStorageConfig()).toThrow(
             ObjectStorageConfigError,
         );
@@ -105,9 +105,9 @@ describe("R2 storage configuration", () => {
         );
 
         vi.stubEnv("R2_STORAGE_PREFIX", "tenant-media");
-        vi.stubEnv("MOSAIC_STORAGE_ADAPTER", "");
+        vi.stubEnv("FLASH_EVALS_STORAGE_ADAPTER", "");
         expect(() => getObjectStorageConfig()).toThrow(
-            /R2 storage settings are set but MOSAIC_STORAGE_ADAPTER is not/,
+            /R2 storage settings are set but FLASH_EVALS_STORAGE_ADAPTER is not/,
         );
     });
 });

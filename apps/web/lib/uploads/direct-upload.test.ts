@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MAX_IMAGE_BYTES, MAX_IMPORT_FILE_COUNT } from "@mosaic/api-contract";
+import { MAX_IMAGE_BYTES, MAX_IMPORT_FILE_COUNT } from "@flash-evals/api-contract";
 import { UploadError, uploadFiles } from "./direct-upload";
 
 const SIGN_ENDPOINT = "/api/datasets/upload/sign";

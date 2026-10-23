@@ -9,7 +9,7 @@ import {
 describe("assertInternalToken", () => {
     it("accepts a matching internal API token", () => {
         const request = new Request("https://api.example.com", {
-            headers: { "x-mosaic-internal-token": "token" },
+            headers: { "x-flash-evals-internal-token": "token" },
         });
 
         expect(() =>
@@ -27,7 +27,7 @@ describe("assertInternalToken", () => {
 
     it("rejects mismatched request tokens", () => {
         const request = new Request("https://api.example.com", {
-            headers: { "x-mosaic-internal-token": "wrong" },
+            headers: { "x-flash-evals-internal-token": "wrong" },
         });
 
         expect(() =>
@@ -37,7 +37,7 @@ describe("assertInternalToken", () => {
 
     it("rejects tokens of a different length without throwing a RangeError", () => {
         const request = new Request("https://api.example.com", {
-            headers: { "x-mosaic-internal-token": "token-but-longer" },
+            headers: { "x-flash-evals-internal-token": "token-but-longer" },
         });
 
         expect(() =>
@@ -58,7 +58,7 @@ describe("hasValidInternalToken", () => {
     it("is true only for the configured token", () => {
         const withToken = (value: string) =>
             new Request("https://api.example.com", {
-                headers: { "x-mosaic-internal-token": value },
+                headers: { "x-flash-evals-internal-token": value },
             });
 
         expect(

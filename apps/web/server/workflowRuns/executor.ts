@@ -10,8 +10,8 @@ import type { IWorkflowSnapshot } from "../db/jsonTypes";
 import { createSemaphore, forEachPool } from "../lib/concurrency";
 import { ensureModelCatalog } from "../llm/catalog";
 import { pricingFor } from "../llm/pricing";
-import type { EvalImage } from "@mosaic/llm-core";
-import { WORKFLOW_LLM_EXECUTION_CONTRACT_VERSION } from "@mosaic/api-contract";
+import type { EvalImage } from "@flash-evals/llm-core";
+import { WORKFLOW_LLM_EXECUTION_CONTRACT_VERSION } from "@flash-evals/api-contract";
 import { resolveApiKeys } from "../secrets/resolveApiKeys";
 import {
     assembleDagNodeInput,

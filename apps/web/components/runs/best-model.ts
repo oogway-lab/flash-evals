@@ -1,4 +1,4 @@
-import { pickBestModel, type ILeaderboardRow } from "@mosaic/api-contract";
+import { pickBestModel, type ILeaderboardRow } from "@flash-evals/api-contract";
 
 export interface IBestModelSummary {
     /** What the score is: judge score, transcript score, or golden field score. */

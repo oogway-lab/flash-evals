@@ -5,7 +5,7 @@ import type {
     ISaveRunNoteRequest,
     ReviewVerdict,
     RunStatus,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { withTransaction, type IDb } from "../../db.js";
 import { ApiBadRequestError, ApiNotFoundError } from "../../errors.js";
 

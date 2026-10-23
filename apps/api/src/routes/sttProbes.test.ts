@@ -35,10 +35,10 @@ function config(overrides: Partial<IApiConfig> = {}): IApiConfig {
         supabaseServiceRoleKey: "",
         supabaseStorageBucket: "",
         clerkSecretKey: "clerk-secret",
-        mosaicTenancyMode: "single-org",
-        mosaicAllowedEmailDomain: "example.com",
+        flashEvalsTenancyMode: "single-org",
+        flashEvalsAllowedEmailDomain: "example.com",
         corsOrigins: [],
-        mosaicLlmProvider: "auto",
+        flashEvalsLlmProvider: "auto",
         sttCapabilityProbes: {},
         profilingEnabled: false,
         featureFlags: resolveApiFeatureFlags({}),
@@ -67,9 +67,9 @@ function database(probeRows: unknown[] = []): IDb {
 beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
     mocks.gatewayTranscription.mockReset();
-    vi.stubEnv("MOSAIC_GATEWAY_HTTP_REFERER", "");
-    vi.stubEnv("MOSAIC_GATEWAY_APP_TITLE", "");
-    vi.stubEnv("MOSAIC_PROVIDER_ATTRIBUTION", "");
+    vi.stubEnv("FLASH_EVALS_GATEWAY_HTTP_REFERER", "");
+    vi.stubEnv("FLASH_EVALS_GATEWAY_APP_TITLE", "");
+    vi.stubEnv("FLASH_EVALS_PROVIDER_ATTRIBUTION", "");
 });
 
 afterEach(() => vi.unstubAllEnvs());
@@ -347,7 +347,7 @@ describe("STT route probes", () => {
                 probedBy: USER_ID,
             }),
         ).rejects.toThrow(
-            "This STT route is managed by MOSAIC_STT_CAPABILITY_PROBES.",
+            "This STT route is managed by FLASH_EVALS_STT_CAPABILITY_PROBES.",
         );
         expect(fetch).not.toHaveBeenCalled();
     });

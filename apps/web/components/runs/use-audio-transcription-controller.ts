@@ -5,7 +5,7 @@ import type {
     IRunSetupSttModelOption,
     ISttRunConfig,
     ReasoningEffort,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 
 function transcriptionInitialState(
     models: IRunSetupSttModelOption[],

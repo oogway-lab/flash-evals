@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { IWorkflowRunCellLlmExecution } from "@mosaic/api-contract";
+import type { IWorkflowRunCellLlmExecution } from "@flash-evals/api-contract";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
@@ -22,7 +22,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { HintText } from "@/components/ui/hint";
 import { Metric, MetricList } from "@/components/ui/metric";
 import {
-    MOSAIC_REUSE_LABELS,
+    FLASH_EVALS_REUSE_LABELS,
     RETRY_OWNER_LABELS,
     TRANSPORT_LABELS,
     humanize,
@@ -192,7 +192,7 @@ export function LlmExecutionDetails({
                     </DetailRow>
                     <DetailRow label="Retry and timeout">
                         {`${labelFor(RETRY_OWNER_LABELS, route.retry.owner)} · ${route.retry.timeoutMs.toLocaleString()} ms${
-                            route.retry.owner === "mosaic"
+                            route.retry.owner === "flash-evals"
                                 ? ` · ${route.retry.maxAttempts} attempt${
                                       route.retry.maxAttempts === 1 ? "" : "s"
                                   }`
@@ -200,7 +200,7 @@ export function LlmExecutionDetails({
                         }`}
                     </DetailRow>
                     <DetailRow label="Flash Evals reuse">
-                        {labelFor(MOSAIC_REUSE_LABELS, route.cache.mosaicReuse)}
+                        {labelFor(FLASH_EVALS_REUSE_LABELS, route.cache.flashEvalsReuse)}
                     </DetailRow>
                     <DetailRow label="Provider caching">
                         {humanize(route.cache.providerCaching)}
@@ -273,10 +273,10 @@ function UsageSection({ execution }: { execution: CompleteExecution }) {
                     </DetailRow>
                 ) : null}
                 <DetailRow label="Cache result">{cacheLabel(cache)}</DetailRow>
-                {cache.status === "mosaic_reuse" && cache.sourceRunId ? (
+                {cache.status === "flash_evals_reuse" && cache.sourceRunId ? (
                     <CopyableRow label="Source run" value={cache.sourceRunId} />
                 ) : null}
-                {cache.status === "mosaic_reuse" && cache.sourceCellId ? (
+                {cache.status === "flash_evals_reuse" && cache.sourceCellId ? (
                     <CopyableRow
                         label="Source cell"
                         value={cache.sourceCellId}
@@ -564,7 +564,7 @@ function cacheLabel(
         { availability: "complete" }
     >["cache"],
 ): string {
-    if (cache.status === "mosaic_reuse") return "Flash Evals reuse";
+    if (cache.status === "flash_evals_reuse") return "Flash Evals reuse";
     if (cache.status === "provider_cache")
         return `Provider ${cache.kind} cache ${cache.hit ? "hit" : "miss"}`;
     if (cache.status === "miss")

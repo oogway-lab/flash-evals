@@ -9,7 +9,7 @@ import type {
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import type { IApiRuntime } from "../server.js";
-import { registerMosaicMcpCapabilities } from "./registry.js";
+import { registerFlashEvalsMcpCapabilities } from "./registry.js";
 
 // This policy is intentionally written out here instead of importing the
 // effect annotations under test. A tool change must update this reviewed list.
@@ -266,11 +266,11 @@ async function connect(profile: "read" | "eval" | "admin") {
     const toServer = new PassThrough();
     const fromServer = new PassThrough();
     const server = new McpServer({ name: "policy-acceptance", version: "1" });
-    registerMosaicMcpCapabilities(server, {
+    registerFlashEvalsMcpCapabilities(server, {
         runtime: {
             config: {
-                mosaicMcpEnabled: true,
-                mosaicMcpAllowedOrigins: [],
+                flashEvalsMcpEnabled: true,
+                flashEvalsMcpAllowedOrigins: [],
                 workflowLlmWritesEnabled: true,
                 rateLimitLlmPerMinute: 0,
                 rateLimitRunsPerMinute: 0,

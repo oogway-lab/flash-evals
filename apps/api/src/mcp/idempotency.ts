@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { canonicalJsonString } from "@mosaic/api-contract";
+import { canonicalJsonString } from "@flash-evals/api-contract";
 import { isTransactionalDb, type IDb } from "../db.js";
 import {
     ApiConflictError,

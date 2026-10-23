@@ -10,9 +10,9 @@ const DEFAULT_HEADERS = {
 };
 
 beforeEach(() => {
-    vi.stubEnv("MOSAIC_GATEWAY_HTTP_REFERER", "");
-    vi.stubEnv("MOSAIC_GATEWAY_APP_TITLE", "");
-    vi.stubEnv("MOSAIC_PROVIDER_ATTRIBUTION", "");
+    vi.stubEnv("FLASH_EVALS_GATEWAY_HTTP_REFERER", "");
+    vi.stubEnv("FLASH_EVALS_GATEWAY_APP_TITLE", "");
+    vi.stubEnv("FLASH_EVALS_PROVIDER_ATTRIBUTION", "");
 });
 
 afterEach(() => {
@@ -26,8 +26,8 @@ describe("gatewayAttributionHeaders", () => {
     });
 
     it("uses configured values", () => {
-        vi.stubEnv("MOSAIC_GATEWAY_HTTP_REFERER", " https://evals.test ");
-        vi.stubEnv("MOSAIC_GATEWAY_APP_TITLE", "Flash Evals staging");
+        vi.stubEnv("FLASH_EVALS_GATEWAY_HTTP_REFERER", " https://evals.test ");
+        vi.stubEnv("FLASH_EVALS_GATEWAY_APP_TITLE", "Flash Evals staging");
 
         expect(gatewayAttributionHeaders()).toEqual({
             "http-referer": "https://evals.test",
@@ -36,21 +36,21 @@ describe("gatewayAttributionHeaders", () => {
     });
 
     it("sends nothing when attribution is turned off", () => {
-        vi.stubEnv("MOSAIC_PROVIDER_ATTRIBUTION", "OFF");
+        vi.stubEnv("FLASH_EVALS_PROVIDER_ATTRIBUTION", "OFF");
 
         expect(gatewayAttributionHeaders()).toEqual({});
     });
 
     it("falls back with a warning instead of sending an unsendable value", () => {
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-        vi.stubEnv("MOSAIC_GATEWAY_APP_TITLE", "Flash Evals — staging");
+        vi.stubEnv("FLASH_EVALS_GATEWAY_APP_TITLE", "Flash Evals — staging");
 
         const headers = gatewayAttributionHeaders();
 
         expect(headers).toEqual(DEFAULT_HEADERS);
         expect(() => new Headers(headers)).not.toThrow();
         expect(warn).toHaveBeenCalledWith(
-            expect.stringContaining("MOSAIC_GATEWAY_APP_TITLE"),
+            expect.stringContaining("FLASH_EVALS_GATEWAY_APP_TITLE"),
         );
     });
 });

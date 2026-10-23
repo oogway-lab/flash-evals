@@ -6,8 +6,8 @@ describe("timedSpan", () => {
 
     beforeEach(() => {
         infoSpy.mockClear();
-        vi.stubEnv("MOSAIC_TIMING_LOGS", "true");
-        delete process.env.MOSAIC_TIMING_SLOW_MS;
+        vi.stubEnv("FLASH_EVALS_TIMING_LOGS", "true");
+        delete process.env.FLASH_EVALS_TIMING_SLOW_MS;
     });
 
     afterEach(() => {
@@ -24,12 +24,12 @@ describe("timedSpan", () => {
 
         expect(infoSpy).toHaveBeenCalledTimes(1);
         expect(infoSpy.mock.calls[0]?.[0]).toMatch(
-            /^mosaic_timing span=dashboard_stats duration_ms=\d+ route=\/ result=cache_miss$/,
+            /^flash_evals_timing span=dashboard_stats duration_ms=\d+ route=\/ result=cache_miss$/,
         );
     });
 
     it("logs slow spans when forced logging is disabled", async () => {
-        vi.stubEnv("MOSAIC_TIMING_LOGS", "false");
+        vi.stubEnv("FLASH_EVALS_TIMING_LOGS", "false");
         const nowSpy = vi
             .spyOn(performance, "now")
             .mockReturnValueOnce(0)
@@ -39,7 +39,7 @@ describe("timedSpan", () => {
 
         expect(infoSpy).toHaveBeenCalledTimes(1);
         expect(infoSpy.mock.calls[0]?.[0]).toMatch(
-            /^mosaic_timing span=dashboard duration_ms=1000$/,
+            /^flash_evals_timing span=dashboard duration_ms=1000$/,
         );
         nowSpy.mockRestore();
     });

@@ -2,7 +2,7 @@ import { eq, inArray } from "drizzle-orm";
 import {
     buildLeaderboardRows,
     type ILeaderboardRow,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { db } from "../db/client";
 import { runCells, runModels, datasetItems, cellScores } from "../db/schema";
 import { getCellAnnotations, type ICellAnnotation } from "./reviews";

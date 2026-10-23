@@ -1,7 +1,7 @@
 import { Page } from "@/components/layout/page";
 import { PageHeader } from "@/components/layout/page-header";
 import { serverApiClient } from "@/server/api/client";
-import { mosaicTenancyMode } from "@/server/auth/session";
+import { flashEvalsTenancyMode } from "@/server/auth/session";
 import { requireActiveProject } from "@/server/projects/activeProject";
 import { ProviderKeysForm } from "./keys-form";
 import { LlmRoutingForm } from "./llm-routing-form";
@@ -48,7 +48,7 @@ export default async function SettingsPage() {
                     projectDefault={routing.projectDefault}
                     notice={routing.notice}
                 />
-                {mosaicTenancyMode() === "isolated" ? <TeamCard /> : null}
+                {flashEvalsTenancyMode() === "isolated" ? <TeamCard /> : null}
             </div>
         </Page>
     );

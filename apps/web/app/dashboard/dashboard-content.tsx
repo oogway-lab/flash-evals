@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import { ArrowRight, Circle, CircleCheck } from "lucide-react";
-import type { IDashboardStats } from "@mosaic/api-contract";
+import type { IDashboardStats } from "@flash-evals/api-contract";
 import { EmptyState } from "@/components/layout/empty-state";
 import { SectionTitle } from "@/components/layout/section-title";
 import { Num } from "@/components/ui/num";

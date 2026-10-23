@@ -52,7 +52,7 @@ jobs:
         uses: ./.github/actions/setup-workspace
 
       - name: Web unit tests
-        run: pnpm --filter @mosaic/web test
+        run: pnpm --filter @flash-evals/web test
 
       - name: Upload web unit test timing report
         if: always()
@@ -81,7 +81,7 @@ jobs:
           NEXT_PUBLIC_CLERK_SIGN_IN_URL: /sign-in
           NEXT_PUBLIC_CLERK_SIGN_UP_URL: /sign-up
           NEXT_PUBLIC_API_BASE_URL: https://api.example.test
-          MOSAIC_CSP_STORAGE_ORIGIN: https://storage.example.test
+          FLASH_EVALS_CSP_STORAGE_ORIGIN: https://storage.example.test
         run: |
           export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$(node -e 'process.stdout.write("pk_" + ["te", "st"].join("") + "_" + Buffer.from("clerk.example.test$").toString("base64"))')"
           pnpm run web:build:cloudflare
@@ -109,6 +109,9 @@ jobs:
       - name: Set up workspace
         uses: ./.github/actions/setup-workspace
 
+      - name: Development setup and launcher regression tests
+        run: pnpm run test:dev
+
       # Runs the `test` script of every package under apps/ and packages/
       # except web (its own job), API, and site, whose tests run with coverage
       # in the two steps below.
@@ -116,14 +119,14 @@ jobs:
         run: >-
           pnpm -r --workspace-concurrency=1
           --filter './apps/**' --filter './packages/**'
-          --filter '!@mosaic/api' --filter '!@mosaic/web' --filter '!@mosaic/site'
+          --filter '!@flash-evals/api' --filter '!@flash-evals/web' --filter '!@flash-evals/site'
           run test
 
       - name: API unit tests and coverage thresholds
-        run: pnpm --filter @mosaic/api test:coverage
+        run: pnpm --filter @flash-evals/api test:coverage
 
       - name: Marketing site unit tests and coverage thresholds
-        run: pnpm --filter @mosaic/site test:coverage
+        run: pnpm --filter @flash-evals/site test:coverage
 
       - name: Upload coverage and reports
         if: always()
@@ -146,7 +149,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: mosaic_ci
+          POSTGRES_DB: flash_evals_ci
         ports:
           - 5432:5432
         options: >-
@@ -165,7 +168,7 @@ jobs:
 
       - name: Verify generated database migrations are current
         run: |
-          pnpm --filter @mosaic/web db:generate
+          pnpm --filter @flash-evals/web db:generate
           if [ -n "$(git status --porcelain apps/web/server/db/migrations)" ]; then
             git status --short apps/web/server/db/migrations
             echo "Database schema or migration snapshots are out of sync."
@@ -177,7 +180,7 @@ jobs:
       # only on a fresh database. Incremental production runs never hit it.
       - name: Apply all migrations to an empty database
         env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:5432/mosaic_ci
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/flash_evals_ci
         run: pnpm run db:migrate
 
   static-checks:

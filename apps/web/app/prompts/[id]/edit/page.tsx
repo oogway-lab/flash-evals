@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 import { requireActiveProject as requirePagePrincipal } from "@/server/projects/activeProject";
 import {
     generateSchemaFromPromptAction,
@@ -25,7 +25,7 @@ export default async function EditPromptPage({
     const setup = await serverApiClient()
         .getEditPromptWorkbench(p.teamId, p.projectId, id)
         .catch((err: unknown) => {
-            if (err instanceof MosaicApiError && err.status === 404) notFound();
+            if (err instanceof FlashEvalsApiError && err.status === 404) notFound();
             throw err;
         });
     const prompt = setup.initialPrompt;

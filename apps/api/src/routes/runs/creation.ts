@@ -10,12 +10,12 @@ import type {
     ISttRunEvaluation,
     ISttRunConfig,
     ISttRunVariant,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     MAX_STT_VARIANTS,
     sttMetricsModelId,
     sttModelIdentityForId,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import type { IApiConfig } from "../../config.js";
 import type { IDb } from "../../db.js";
 import {
@@ -34,7 +34,7 @@ import {
     sttModelOptions,
     unsupportedSttConfigKeys,
 } from "../../sttModels.js";
-import { sttModelSupportsLanguage } from "@mosaic/api-contract";
+import { sttModelSupportsLanguage } from "@flash-evals/api-contract";
 import {
     resolveApiKeys,
     teamBaseUrlListingGuard,
@@ -386,7 +386,7 @@ async function createRunFromSelectionInTransaction(
     });
     await validateSelectionSourceRun(db, input);
 
-    const providerMode = config?.mosaicLlmProvider ?? "openai";
+    const providerMode = config?.flashEvalsLlmProvider ?? "openai";
     validateTransportAssignments(input);
     validateUniqueModelIds(input.modelIds);
     validateCandidateModels(
@@ -468,7 +468,7 @@ async function validateSelectionSourceRun(
 function validateCandidateModels(
     modelIds: string[],
     datasetModality: "audio" | "image" | "text",
-    providerMode: IApiConfig["mosaicLlmProvider"],
+    providerMode: IApiConfig["flashEvalsLlmProvider"],
     explicitlyRoutedModelIds: ReadonlySet<string>,
 ): void {
     validateModelIdsForProvider(
@@ -550,7 +550,7 @@ function resolveAndValidateFieldConfigs(input: {
     dataset: ISelectionDatasetRow;
     pipeline?: ICreateRunPipelineRow;
     promptRows: IResolvedPromptRow[];
-    providerMode: IApiConfig["mosaicLlmProvider"];
+    providerMode: IApiConfig["flashEvalsLlmProvider"];
 }): IPipelineFieldConfig[] {
     const canonicalConfigs =
         input.pipeline?.field_configs ??
@@ -580,7 +580,7 @@ function validateScoringConfiguration(
         dataset: ISelectionDatasetRow;
         pipeline?: ICreateRunPipelineRow;
         promptRows: IResolvedPromptRow[];
-        providerMode: IApiConfig["mosaicLlmProvider"];
+        providerMode: IApiConfig["flashEvalsLlmProvider"];
     },
     fieldConfigs: IPipelineFieldConfig[],
 ): void {
@@ -1057,7 +1057,7 @@ export function resolveReasoningEffort(
 
 function validateModelIdsForProvider(
     modelIds: string[],
-    providerMode: IApiConfig["mosaicLlmProvider"],
+    providerMode: IApiConfig["flashEvalsLlmProvider"],
     explicitlyRoutedModelIds: ReadonlySet<string>,
 ): void {
     for (const modelId of modelIds) {
@@ -1128,7 +1128,7 @@ function validateJudgeModels(input: {
     judgeModelId?: string;
     judgeTransport?: ICreateRunFromSelectionRequest["judgeTransport"];
     fieldConfigs: IPipelineFieldConfig[];
-    providerMode: IApiConfig["mosaicLlmProvider"];
+    providerMode: IApiConfig["flashEvalsLlmProvider"];
 }): void {
     const modelIds = [
         ...(input.judgeModelId ? [input.judgeModelId] : []),
@@ -1151,7 +1151,7 @@ function validateJudgeModels(input: {
 
 function validateJudgeModel(
     modelId: string,
-    providerMode: IApiConfig["mosaicLlmProvider"],
+    providerMode: IApiConfig["flashEvalsLlmProvider"],
 ): void {
     const entry = registryEntryFor(modelId);
     if (entry && !modelAllowedForProvider(entry, providerMode)) {
@@ -1536,16 +1536,16 @@ export function sttConfigForSnapshot(
     };
     if (!sttConfig.transliteration?.enabled) return baseConfig;
     const providerBaseUrl =
-        config?.mosaicLlmProvider === "openrouter"
+        config?.flashEvalsLlmProvider === "openrouter"
             ? config.openrouterBaseUrl
-            : config?.mosaicLlmProvider === "bifrost"
+            : config?.flashEvalsLlmProvider === "bifrost"
               ? config.bifrostBaseUrl
               : undefined;
     return {
         ...baseConfig,
         transliteration: {
             ...sttConfig.transliteration,
-            providerMode: config?.mosaicLlmProvider ?? "auto",
+            providerMode: config?.flashEvalsLlmProvider ?? "auto",
             ...(providerBaseUrl ? { providerBaseUrl } : {}),
         },
     };

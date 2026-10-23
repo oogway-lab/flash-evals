@@ -5,7 +5,7 @@ import {
     STT_STANDARD_CONFIG_FIELDS,
     sttConfigFieldsForModelId,
     type IRunSetupSttModelOption,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     SttConfigFields,
     configForSttModel,

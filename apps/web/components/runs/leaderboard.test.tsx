@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
-import type { ILeaderboardRow } from "@mosaic/api-contract";
+import type { ILeaderboardRow } from "@flash-evals/api-contract";
 import { Leaderboard } from "./leaderboard";
 
 afterEach(cleanup);

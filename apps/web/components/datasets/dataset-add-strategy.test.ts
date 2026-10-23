@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { IDatasetDetailResponse } from "@mosaic/api-contract";
+import type { IDatasetDetailResponse } from "@flash-evals/api-contract";
 import { resolveDatasetAddStrategy } from "./dataset-add-strategy";
 
 function detail(opts: {

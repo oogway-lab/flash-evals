@@ -8,7 +8,7 @@ import {
     type ProviderMetadata,
     type EvalProviderTransport,
     type UsageData,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 import type { ModelPricing } from "../llm/pricing";
 
 export interface ExecutedCell {

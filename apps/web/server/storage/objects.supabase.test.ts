@@ -7,7 +7,7 @@ const UPSTREAM_BODY =
 
 describe("Supabase storage errors", () => {
     beforeEach(() => {
-        vi.stubEnv("MOSAIC_STORAGE_ADAPTER", "supabase");
+        vi.stubEnv("FLASH_EVALS_STORAGE_ADAPTER", "supabase");
         vi.stubEnv("SUPABASE_URL", "https://project.supabase.example");
         vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-role-key");
         vi.stubEnv("SUPABASE_STORAGE_BUCKET", "media");

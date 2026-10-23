@@ -9,7 +9,7 @@ import type {
     IWorkflowNodeConfig,
     IWorkflowNodeArtifact,
     IWorkflowLlmResolvedExecution,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 
 export type FieldMatcher = "exact" | "numeric_tolerance" | "set_overlap";
 

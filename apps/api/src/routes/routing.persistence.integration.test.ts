@@ -1,7 +1,7 @@
 import pg from "pg";
 import { describe, expect, it } from "vitest";
 
-const databaseUrl = process.env.MOSAIC_ROUTING_INTEGRATION_DATABASE_URL;
+const databaseUrl = process.env.FLASH_EVALS_ROUTING_INTEGRATION_DATABASE_URL;
 
 describe.skipIf(!databaseUrl)("routing persistence concurrency", () => {
     it("serializes same-key run creation across separate connections", async () => {

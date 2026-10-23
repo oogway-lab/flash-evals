@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { IDatasetListRow } from "@mosaic/api-contract";
+import type { IDatasetListRow } from "@flash-evals/api-contract";
 import { filterDatasets } from "./datasets-list-filter";
 
 function row(

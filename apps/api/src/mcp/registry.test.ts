@@ -49,7 +49,7 @@ vi.mock("../routes/prompts.js", () => ({
     validateRunnablePromptPayload: vi.fn(),
 }));
 
-import { registerMosaicMcpCapabilities } from "./registry.js";
+import { registerFlashEvalsMcpCapabilities } from "./registry.js";
 import type { IApiRuntime } from "../server.js";
 
 interface IRegisteredTool {
@@ -130,7 +130,7 @@ describe("MCP prompt tools", () => {
         } as unknown as IApiRuntime;
         promptMocks.testPromptDraftPayload.mockResolvedValue({ results: [] });
 
-        registerMosaicMcpCapabilities(server, {
+        registerFlashEvalsMcpCapabilities(server, {
             runtime,
             principal: {
                 authMode: "oauth",
@@ -445,7 +445,7 @@ function registerTools(profile: "read" | "eval" | "admin" = "admin"): {
         config: {},
         db: { query: vi.fn() },
     } as unknown as IApiRuntime;
-    registerMosaicMcpCapabilities(server, {
+    registerFlashEvalsMcpCapabilities(server, {
         runtime,
         principal: {
             authMode: "oauth",

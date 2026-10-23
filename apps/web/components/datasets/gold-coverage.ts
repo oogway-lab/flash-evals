@@ -1,4 +1,4 @@
-import type { LabelJson } from "@mosaic/api-contract";
+import type { LabelJson } from "@flash-evals/api-contract";
 
 export interface IGoldCoverage {
     transcript: boolean;

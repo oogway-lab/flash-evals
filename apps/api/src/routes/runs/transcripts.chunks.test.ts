@@ -1,7 +1,7 @@
 import {
     TRANSCRIPT_CHUNK_KEY_MARKER,
     type IRunDetailItem,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { describe, expect, it, vi } from "vitest";
 import type { IDb } from "../../db.js";
 import { audioTranscriptPayload } from "./transcripts.js";

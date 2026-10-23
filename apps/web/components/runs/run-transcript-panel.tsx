@@ -3,7 +3,7 @@
 import type {
     IRunAudioTranscriptSummary,
     IRunConfigSnapshot,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { Card } from "@/components/ui/card";
 import { Num } from "@/components/ui/num";
 import { SectionTitle } from "@/components/layout/section-title";

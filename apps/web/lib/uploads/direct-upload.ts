@@ -7,7 +7,7 @@ import {
     MAX_IMAGE_IMPORT_BYTES,
     MAX_IMPORT_FILE_COUNT,
     type ISignedUploadTarget,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 
 export type UploadModality = "audio" | "image";
 

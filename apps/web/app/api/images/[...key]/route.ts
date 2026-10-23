@@ -27,7 +27,7 @@ export async function GET(
         url.searchParams.set("projectId", principal.projectId);
         const upstreamHeaders = new Headers();
         if (internalToken)
-            upstreamHeaders.set("X-Mosaic-Internal-Token", internalToken);
+            upstreamHeaders.set("X-Flash-Evals-Internal-Token", internalToken);
         const range = req.headers.get("range");
         if (range) upstreamHeaders.set("Range", range);
         const response = await fetch(url, {

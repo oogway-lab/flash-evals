@@ -5,7 +5,7 @@ import type {
     AudioRunMode,
     IRunSetupDatasetOption,
     IRunSetupVersionOption,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {

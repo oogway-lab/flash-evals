@@ -5,7 +5,7 @@ import {
     screen,
     within,
 } from "@testing-library/react";
-import type { IPromptListRow } from "@mosaic/api-contract";
+import type { IPromptListRow } from "@flash-evals/api-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/app/actions", () => ({

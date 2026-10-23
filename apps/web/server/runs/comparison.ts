@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
-import type { ReasoningEffort } from "@mosaic/llm-core";
+import type { ReasoningEffort } from "@flash-evals/llm-core";
 import {
     buildSttShipGate,
     sharedQualitySource,
     sideQuality,
     type ISttShipGate,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { db } from "../db/client";
 import { runModels } from "../db/schema";
 import { getLeaderboard, type LeaderboardRow } from "./reads";

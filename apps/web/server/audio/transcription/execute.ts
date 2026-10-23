@@ -1,4 +1,4 @@
-import { TRANSCRIPT_CHUNK_KEY_MARKER } from "@mosaic/api-contract";
+import { TRANSCRIPT_CHUNK_KEY_MARKER } from "@flash-evals/api-contract";
 import type {
     IAudioPreparationMetadata,
     ITranscriptionAttemptRecord,

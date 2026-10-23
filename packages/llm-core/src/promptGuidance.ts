@@ -104,7 +104,7 @@ const MISTRAL_GUIDANCE = {
 const GENERIC_GUIDANCE = {
     source: {
         title: "Flash Evals generic prompt optimization guidance",
-        url: "internal://mosaic/prompt-optimization",
+        url: "internal://flash-evals/prompt-optimization",
         retrievedAt: RETRIEVED_AT,
     },
     text: [

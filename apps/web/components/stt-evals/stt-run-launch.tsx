@@ -4,8 +4,8 @@ import { useActionState, useEffect, useState } from "react";
 import type {
     IPromptWorkflow,
     IRunSetupDatasetOption,
-} from "@mosaic/api-contract";
-import { isWorkflowModelBackedNodeType } from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
+import { isWorkflowModelBackedNodeType } from "@flash-evals/api-contract";
 import type { IActionState } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

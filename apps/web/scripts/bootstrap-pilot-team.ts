@@ -11,10 +11,10 @@ export async function bootstrapPilotTeam(
     teamName: string,
 ): Promise<PilotTeamBootstrapResult> {
     if (!UUID_PATTERN.test(teamId)) {
-        throw new Error("MOSAIC_DEFAULT_TEAM_ID must be a UUID");
+        throw new Error("FLASH_EVALS_DEFAULT_TEAM_ID must be a UUID");
     }
     if (!teamName.trim()) {
-        throw new Error("MOSAIC_DEFAULT_TEAM_NAME must not be empty");
+        throw new Error("FLASH_EVALS_DEFAULT_TEAM_NAME must not be empty");
     }
 
     await client.query("BEGIN");
@@ -74,11 +74,11 @@ async function main(): Promise<void> {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) throw new Error("DATABASE_URL is not set");
 
-    const teamId = process.env.MOSAIC_DEFAULT_TEAM_ID?.trim();
-    if (!teamId) throw new Error("MOSAIC_DEFAULT_TEAM_ID is not set");
+    const teamId = process.env.FLASH_EVALS_DEFAULT_TEAM_ID?.trim();
+    if (!teamId) throw new Error("FLASH_EVALS_DEFAULT_TEAM_ID is not set");
 
     const teamName =
-        process.env.MOSAIC_DEFAULT_TEAM_NAME?.trim() || "Oogway Labs";
+        process.env.FLASH_EVALS_DEFAULT_TEAM_NAME?.trim() || "Oogway Labs";
     const pool = new Pool({
         connectionString: databaseUrl,
         max: 1,

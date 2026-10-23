@@ -48,56 +48,61 @@ export function decryptSecret(
     encodedKey = encryptionKeyFromEnv(),
 ): string {
     const key = encryptionKey(encodedKey);
-    try {
-        const decipher = createDecipheriv(
-            ALGORITHM,
-            key,
-            decodeStoredValue(encrypted.iv),
-            // Without a fixed length, GCM accepts tags truncated to 4 bytes.
-            { authTagLength: AUTH_TAG_BYTES },
-        );
-        decipher.setAAD(authenticatedContext(context));
-        decipher.setAuthTag(decodeStoredValue(encrypted.authTag));
-        return Buffer.concat([
-            decipher.update(decodeStoredValue(encrypted.ciphertext)),
-            decipher.final(),
-        ]).toString("utf8");
-    } catch {
-        throw new Error(
-            "Unable to decrypt secret: ciphertext or key is invalid.",
-        );
+    // Old encrypted rows must remain readable after the product rename. New
+    // writes always use the Flash Evals context; the old AAD is read-only.
+    for (const prefix of ["flash-evals", "mosaic"]) {
+        try {
+            const decipher = createDecipheriv(
+                ALGORITHM,
+                key,
+                decodeStoredValue(encrypted.iv),
+                { authTagLength: AUTH_TAG_BYTES },
+            );
+            decipher.setAAD(authenticatedContext(context, prefix));
+            decipher.setAuthTag(decodeStoredValue(encrypted.authTag));
+            return Buffer.concat([
+                decipher.update(decodeStoredValue(encrypted.ciphertext)),
+                decipher.final(),
+            ]).toString("utf8");
+        } catch {
+            // GCM verifies both the context and the ciphertext for each attempt.
+        }
     }
+    throw new Error("Unable to decrypt secret: ciphertext or key is invalid.");
 }
 
 export function maskHint(secret: string): string {
     return secret.length <= 4 ? "••••" : `••••${secret.slice(-4)}`;
 }
 
-function authenticatedContext(context: ISecretContext): Buffer {
+function authenticatedContext(
+    context: ISecretContext,
+    prefix = "flash-evals",
+): Buffer {
     return Buffer.from(
-        `mosaic-provider-key:${ENVELOPE_VERSION}\0${context.teamId}\0${context.provider}`,
+        `${prefix}-provider-key:${ENVELOPE_VERSION}\0${context.teamId}\0${context.provider}`,
         "utf8",
     );
 }
 
 function encryptionKey(encodedKey: string | undefined): Buffer {
     if (!encodedKey) {
-        throw new Error("MOSAIC_SECRETS_ENC_KEY is required.");
+        throw new Error("FLASH_EVALS_SECRETS_ENC_KEY is required.");
     }
     if (!isCanonicalBase64(encodedKey)) {
-        throw new Error("MOSAIC_SECRETS_ENC_KEY must be valid base64.");
+        throw new Error("FLASH_EVALS_SECRETS_ENC_KEY must be valid base64.");
     }
     const key = Buffer.from(encodedKey, "base64");
     if (key.length !== KEY_BYTES) {
         throw new Error(
-            `MOSAIC_SECRETS_ENC_KEY must decode to exactly ${KEY_BYTES} bytes.`,
+            `FLASH_EVALS_SECRETS_ENC_KEY must decode to exactly ${KEY_BYTES} bytes.`,
         );
     }
     return key;
 }
 
 function encryptionKeyFromEnv(): string | undefined {
-    return process.env.MOSAIC_SECRETS_ENC_KEY;
+    return process.env.FLASH_EVALS_SECRETS_ENC_KEY;
 }
 
 function isCanonicalBase64(value: string): boolean {

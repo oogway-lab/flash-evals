@@ -8,8 +8,8 @@ import type {
     IWorkflowLlmRouteCandidate,
     IWorkflowLlmRouteCandidatesResponse,
     IWorkflowLlmSelection,
-} from "@mosaic/api-contract";
-import { REASONING_EFFORT_LEVELS } from "@mosaic/llm-core";
+} from "@flash-evals/api-contract";
+import { REASONING_EFFORT_LEVELS } from "@flash-evals/llm-core";
 import { z } from "zod";
 import { ApiFieldValidationError } from "../errors.js";
 
@@ -41,7 +41,7 @@ const structuredOutput = z.discriminatedUnion("mode", [
 const retry = z.discriminatedUnion("owner", [
     z
         .object({
-            owner: z.literal("mosaic"),
+            owner: z.literal("flash-evals"),
             maxAttempts: z.number().int().min(1).max(10),
             timeoutMs: z.number().int().min(1).max(600_000),
             retryableErrorClasses: z
@@ -126,7 +126,7 @@ export const WorkflowLlmRouteConfig = z
         retry,
         cache: z
             .object({
-                mosaicReuse: z.enum(["allow", "force_fresh"]),
+                flashEvalsReuse: z.enum(["allow", "force_fresh"]),
                 providerCaching: z.literal("allow"),
             })
             .strict(),

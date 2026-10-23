@@ -4,7 +4,7 @@ import { URL, fileURLToPath } from "node:url";
 import path from "node:path";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const build = spawnSync("pnpm", ["--filter", "@mosaic/site", "build"], {
+const build = spawnSync("pnpm", ["--filter", "@flash-evals/site", "build"], {
     cwd: root,
     stdio: "inherit",
 });

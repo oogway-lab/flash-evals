@@ -4,13 +4,31 @@ import {
     securityHeaders,
 } from "./config/security-headers.mjs";
 
+const devWebOrigin = process.env.FLASH_EVALS_DEV_WEB_ORIGIN;
+const devWebUrl = devWebOrigin ? new URL(devWebOrigin) : undefined;
+const playwrightMode = process.env.FLASH_EVALS_PLAYWRIGHT;
+if (playwrightMode && !["app", "marketing"].includes(playwrightMode)) {
+    throw new Error("FLASH_EVALS_PLAYWRIGHT must be app or marketing");
+}
+
 const nextConfig: NextConfig = {
+    // Each browser suite can run alongside the normal development server.
+    distDir: playwrightMode ? `.next-playwright/${playwrightMode}` : ".next",
+    typescript: {
+        tsconfigPath: playwrightMode
+            ? "tsconfig.playwright.json"
+            : "tsconfig.json",
+    },
+    allowedDevOrigins: devWebUrl ? [devWebUrl.hostname] : [],
+    // In dev, Clerk's same-origin rewrite must retain 127.0.0.1. Normalizing
+    // it to localhost makes Next proxy back into itself when explicitly bound.
+    skipProxyUrlNormalize: process.env.NODE_ENV === "development",
     // Compiles components with the React Compiler (auto-memoization).
     reactCompiler: true,
     // Statically typed `href` / `router.push` route strings.
     typedRoutes: true,
     // The server modules import the workspace package directly from source.
-    transpilePackages: ["@mosaic/llm-core"],
+    transpilePackages: ["@flash-evals/llm-core"],
     // pg and pg-boss are server-only; keep them external to the bundle.
     serverExternalPackages: ["pg", "pg-boss"],
     experimental: {
@@ -26,6 +44,7 @@ const nextConfig: NextConfig = {
         // lowering this back down.
         serverActions: {
             bodySizeLimit: "22mb",
+            allowedOrigins: devWebUrl ? [devWebUrl.host] : [],
         },
     },
     async headers() {

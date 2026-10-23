@@ -5,7 +5,7 @@ import type {
     ICreateWorkflowRequest,
     IPromptWorkflow,
     IWorkflowNodeInput,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import type { IDb, ITransactionalDb } from "../db.js";
 import { ApiConflictError, ApiNotFoundError } from "../errors.js";
 import {
@@ -19,7 +19,7 @@ import {
 // Opt in with a disposable, migrated PostgreSQL database. Fixtures have their
 // own tenant. Immutable routing history remains until the database is discarded;
 // only mutable workflows are removed afterward. No provider calls are made.
-const databaseUrl = process.env.MOSAIC_TEST_DATABASE_URL;
+const databaseUrl = process.env.FLASH_EVALS_TEST_DATABASE_URL;
 
 describe.skipIf(!databaseUrl)("workflow edit locking (PostgreSQL)", () => {
     const pool = new pg.Pool({ connectionString: databaseUrl, max: 5 });
@@ -114,13 +114,13 @@ describe.skipIf(!databaseUrl)("workflow edit locking (PostgreSQL)", () => {
                         generation: { maxOutputTokens: 128 },
                         structuredOutput: { mode: "text" },
                         retry: {
-                            owner: "mosaic",
+                            owner: "flash-evals",
                             maxAttempts: 1,
                             timeoutMs: 1000,
                             retryableErrorClasses: ["timeout"],
                         },
                         cache: {
-                            mosaicReuse: "allow",
+                            flashEvalsReuse: "allow",
                             providerCaching: "allow",
                         },
                     },

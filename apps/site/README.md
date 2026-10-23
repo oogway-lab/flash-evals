@@ -10,10 +10,20 @@ server, database, or secrets.
 From the repository root, after `pnpm install --frozen-lockfile`:
 
 ```bash
-pnpm --filter @mosaic/site dev
+pnpm --filter @flash-evals/site dev
 ```
 
-Open <http://localhost:4321/marketing/> for the standalone design preview.
+Open <http://127.0.0.1:4321/marketing/> for the standalone design preview.
+On a VM/remote server, use the configured Tailscale IP explicitly:
+
+```bash
+FLASH_EVALS_TAILSCALE_IP=$(tailscale ip -4)
+pnpm --filter @flash-evals/site dev --host "$FLASH_EVALS_TAILSCALE_IP"
+```
+
+Open port 4321 on that private IP. Keep previews private; do not use `--host
+0.0.0.0`. For SSH access, keep loopback and forward port 4321. See the
+[VM access guide](../../docs/remote-development.md).
 The login links point to the Next app and need the integrated preview below.
 Content and illustrative demo data live in [`src/lib/content.ts`](src/lib/content.ts);
 styles in [`src/styles/global.css`](src/styles/global.css); the run demo, stamps,
@@ -23,9 +33,18 @@ are illustrative and labeled accordingly; keep that labeling intact.
 ## Build and preview
 
 ```bash
-pnpm --filter @mosaic/site typecheck
+pnpm --filter @flash-evals/site typecheck
 pnpm run marketing:build
-pnpm --filter @mosaic/web dev
+pnpm run dev
+```
+
+The root development launcher supplies the synthetic sign-in identity and
+starts the whole local app. With dev auth enabled, `/` redirects to the dashboard.
+Use the standalone Astro preview for design iteration, or the marketing browser
+suite for anonymous integration checks without a real Clerk account:
+
+```bash
+pnpm exec playwright test --config playwright.marketing.config.ts
 ```
 
 The integration script builds `apps/site/dist`, bundles its complete HTML into
@@ -39,9 +58,13 @@ integration script automatically. Rebuild/restart the integrated preview after
 editing the Astro source. For a design-only static preview:
 
 ```bash
-pnpm --filter @mosaic/site build
-pnpm --filter @mosaic/site preview
+pnpm --filter @flash-evals/site build
+pnpm --filter @flash-evals/site preview
 ```
+
+The static preview uses loopback port 4322. On a remote server add
+`--host "$FLASH_EVALS_TAILSCALE_IP"` to the preview command, or forward 4322 over
+SSH.
 
 ## Routing and authentication
 
@@ -55,7 +78,8 @@ pnpm --filter @mosaic/site preview
 - Sign-out returns to `/`; protected links require sign-in again.
 - Public entry responses and authentication redirects are not cached.
 - API authentication and verified-email/exact-domain admission are unchanged.
-  Production admission still requires a verified `oogwaylabs.com` email.
+  Real account admission follows the configured tenancy mode and allowed domain;
+  the generated local setup uses isolated tenancy.
 - Double-opt-in localhost dev auth treats the visitor as signed in and takes
   `/` to `/dashboard`. Disable dev auth and configure Clerk to test anonymous
   and real authenticated routing interactively.

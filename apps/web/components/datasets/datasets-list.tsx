@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { IDatasetListRow } from "@mosaic/api-contract";
+import type { IDatasetListRow } from "@flash-evals/api-contract";
 import { MISSING_VALUE } from "@/lib/format";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { Button } from "@/components/ui/button";

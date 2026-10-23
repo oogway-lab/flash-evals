@@ -43,12 +43,12 @@ export function startRailwayBackend(): void {
             exitUnexpectedly,
         ),
     );
-    if (process.env.MOSAIC_API_START_WORKER !== "false") {
+    if (process.env.FLASH_EVALS_API_START_WORKER !== "false") {
         children.push(
             spawnManaged(
                 "worker",
                 "pnpm",
-                ["--filter", "@mosaic/web", "worker"],
+                ["--filter", "@flash-evals/web", "worker"],
                 () => shuttingDown,
                 exitUnexpectedly,
             ),

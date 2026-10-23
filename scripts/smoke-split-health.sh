@@ -35,7 +35,7 @@ const apiHealthUrl = endpoint(apiBaseUrl, "/health");
 // internal API token, so the deployment-shape checks run only when it is set.
 const { response: apiResponse, payload: apiHealth } = await readJson(
   apiHealthUrl,
-  internalApiToken ? { "x-mosaic-internal-token": internalApiToken } : {},
+  internalApiToken ? { "x-flash-evals-internal-token": internalApiToken } : {},
 );
 if (!apiResponse.ok) {
   failures.push(`API health returned HTTP ${apiResponse.status}`);
@@ -44,8 +44,8 @@ if (apiHealth?.status !== "ok") {
   failures.push(`API health status is ${JSON.stringify(apiHealth?.status)}`);
 }
 if (internalApiToken) {
-if (apiHealth?.service !== "mosaic-api") {
-  failures.push("API health service is not mosaic-api");
+if (apiHealth?.service !== "flash-evals-api") {
+  failures.push("API health service is not flash-evals-api");
 }
 if (apiHealth?.storage !== "supabase") {
   failures.push("API health storage is not supabase");

@@ -11,7 +11,7 @@ import type {
     IRunSetupModelOption,
     IRunSetupSttModelOption,
     IRunSetupVersionOption,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import type { IActionState } from "@/app/actions";
 import { RunFormHiddenInputs } from "./run-form-hidden-inputs";
 import { RunSetupHeader } from "./run-form-basics";

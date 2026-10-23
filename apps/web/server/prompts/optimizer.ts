@@ -2,7 +2,7 @@ import {
     getEvalProvider,
     guidanceForModel,
     type ApiKeys,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 import type {
     IPromptOptimizerGuidanceSource,
     JsonSchemaObject,
@@ -11,7 +11,7 @@ import { ensureModelCatalog } from "../llm/catalog";
 import { registryEntryFor } from "../llm/modelRegistry";
 import { resolveReasoningEffort } from "../llm/reasoningConfig";
 import { validateDataAgainstSchema } from "./schemaValidation";
-export { guidanceForModel } from "@mosaic/llm-core";
+export { guidanceForModel } from "@flash-evals/llm-core";
 
 export interface IPromptOptimizationResult {
     proposedPrompt: string;

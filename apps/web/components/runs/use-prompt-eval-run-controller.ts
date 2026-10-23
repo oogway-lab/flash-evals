@@ -10,7 +10,7 @@ import type {
     IRunSetupVersionOption,
     ReasoningEffort,
     ProviderTransport,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 
 interface IProviderModelGroup {
     label: string;

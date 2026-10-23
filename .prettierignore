@@ -3,3 +3,5 @@ pnpm-lock.yaml
 .github
 apps/web/generated/
 apps/web/public/marketing/
+.dev.local/
+apps/web/.next-playwright/

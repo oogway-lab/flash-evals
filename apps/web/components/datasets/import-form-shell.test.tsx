@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_TEXT_IMPORT_BYTES } from "@mosaic/api-contract";
+import { MAX_TEXT_IMPORT_BYTES } from "@flash-evals/api-contract";
 import { textSizeGuardMessage } from "./import-form-shell";
 
 function fileOfSize(bytes: number, name: string): File {

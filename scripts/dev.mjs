@@ -2,18 +2,40 @@ import { spawn, spawnSync } from "node:child_process";
 import { EOL } from "node:os";
 import path from "node:path";
 import { clearInterval, setInterval } from "node:timers";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, URL } from "node:url";
+import { apiEnv, devHost, root, webEnv } from "./lib/dev-env.cjs";
 
 const webArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 const hostArgs = optionValue(webArgs, ["-H", "--hostname"])
     ? []
-    : ["--hostname", "127.0.0.1"];
+    : ["--hostname", devHost];
 const webPort =
     optionValue(webArgs, ["-p", "--port"]) || process.env.PORT || "3000";
 // Not PORT: next dev reads PORT for web, so sharing it would collide.
-const apiPort = process.env.MOSAIC_DEV_API_PORT || "3001";
-const webOrigin = `http://localhost:${webPort}`;
+const apiPort = process.env.FLASH_EVALS_DEV_API_PORT || apiEnv.PORT || "3001";
+const localWebOrigin = `http://localhost:${webPort}`;
+const configuredWebOrigin =
+    process.env.FLASH_EVALS_DEV_WEB_ORIGIN ||
+    webEnv.FLASH_EVALS_DEV_WEB_ORIGIN ||
+    localWebOrigin;
+// --port must also update CORS and Next's allowed origin when setup has saved
+// an explicit browser origin, including remote Tailscale configurations.
+const webUrl = new URL(configuredWebOrigin);
+webUrl.port = webPort;
+const webOrigin = webUrl.origin;
 const apiOrigin = `http://localhost:${apiPort}`;
+// Like --port for web: an explicit API port override must also move the saved
+// .env API URLs (setup writes :3001), or the browser and uploads miss the API.
+function savedApiUrl(value) {
+    if (!value || !process.env.FLASH_EVALS_DEV_API_PORT) return value;
+    const url = new URL(value);
+    url.port = apiPort;
+    return url.href.replace(/\/$/, "");
+}
+const browserApiOrigin =
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    savedApiUrl(webEnv.NEXT_PUBLIC_API_BASE_URL) ||
+    apiOrigin;
 const seedTeamId = "f3b1a534-d8ef-4146-aead-96301d99d496";
 const seedUserId = "5b7ecdb4-ac4b-4219-89ea-f5f50aeae7bd";
 
@@ -21,39 +43,46 @@ const commands = [
     {
         name: "api",
         command: "pnpm",
-        args: ["--filter", "@mosaic/api", "dev"],
+        args: ["--filter", "@flash-evals/api", "dev"],
         env: {
-            CORS_ORIGINS: process.env.CORS_ORIGINS || webOrigin,
+            CORS_ORIGINS:
+                process.env.CORS_ORIGINS ||
+                [...new Set([localWebOrigin, webOrigin])].join(","),
+            FLASH_EVALS_API_PUBLIC_URL: browserApiOrigin,
             PORT: apiPort,
-            MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS: "true",
+            FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS: "true",
         },
     },
     {
         name: "web",
         command: "pnpm",
-        args: ["--filter", "@mosaic/web", "dev", ...hostArgs, ...webArgs],
+        args: ["--filter", "@flash-evals/web", "dev", ...hostArgs, ...webArgs],
         env: {
-            API_BASE_URL: apiOrigin,
-            NEXT_PUBLIC_API_BASE_URL: apiOrigin,
+            API_BASE_URL:
+                process.env.API_BASE_URL ||
+                savedApiUrl(webEnv.API_BASE_URL) ||
+                apiOrigin,
+            NEXT_PUBLIC_API_BASE_URL: browserApiOrigin,
+            FLASH_EVALS_DEV_WEB_ORIGIN: webOrigin,
             AUTH_DEV: "true",
             AUTH_DEV_ALLOW_INSECURE: "1",
-            MOSAIC_DEFAULT_TEAM_ID:
-                process.env.MOSAIC_DEFAULT_TEAM_ID || seedTeamId,
-            MOSAIC_DEFAULT_USER_ID:
-                process.env.MOSAIC_DEFAULT_USER_ID || seedUserId,
+            FLASH_EVALS_DEFAULT_TEAM_ID:
+                process.env.FLASH_EVALS_DEFAULT_TEAM_ID || seedTeamId,
+            FLASH_EVALS_DEFAULT_USER_ID:
+                process.env.FLASH_EVALS_DEFAULT_USER_ID || seedUserId,
         },
     },
     {
         name: "worker",
         command: "pnpm",
-        args: ["--filter", "@mosaic/web", "worker"],
+        args: ["--filter", "@flash-evals/web", "worker"],
         env: {
             AUTH_DEV: "true",
             AUTH_DEV_ALLOW_INSECURE: "1",
-            MOSAIC_DEFAULT_TEAM_ID:
-                process.env.MOSAIC_DEFAULT_TEAM_ID || seedTeamId,
-            MOSAIC_DEFAULT_USER_ID:
-                process.env.MOSAIC_DEFAULT_USER_ID || seedUserId,
+            FLASH_EVALS_DEFAULT_TEAM_ID:
+                process.env.FLASH_EVALS_DEFAULT_TEAM_ID || seedTeamId,
+            FLASH_EVALS_DEFAULT_USER_ID:
+                process.env.FLASH_EVALS_DEFAULT_USER_ID || seedUserId,
         },
     },
 ];
@@ -76,8 +105,8 @@ let shuttingDown = false;
 
 for (const entry of commands) {
     const child = spawn(entry.command, entry.args, {
-        cwd: process.cwd(),
-        env: { ...process.env, MOSAIC_PACKAGES_BUILT: "1", ...entry.env },
+        cwd: root,
+        env: { ...process.env, FLASH_EVALS_PACKAGES_BUILT: "1", ...entry.env },
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,
     });
@@ -134,7 +163,18 @@ function shutdown(exitCode) {
 
     signalProcessGroups("SIGTERM");
 
-    const deadline = Date.now() + 2000;
+    // Match the worker's drain window, with time for closing pools and wrappers.
+    const configuredDrain = Number.parseInt(
+        process.env.FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS ??
+            webEnv.FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS ??
+            apiEnv.FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS,
+        10,
+    );
+    const drainMs =
+        Number.isSafeInteger(configuredDrain) && configuredDrain >= 1000
+            ? Math.min(configuredDrain, 300_000)
+            : 20_000;
+    const deadline = Date.now() + drainMs + 10_000;
     const poll = setInterval(() => {
         if (!anyProcessGroupAlive() || Date.now() >= deadline) {
             clearInterval(poll);

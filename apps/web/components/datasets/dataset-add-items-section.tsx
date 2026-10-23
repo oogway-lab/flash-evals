@@ -17,7 +17,7 @@ import { HelpCallout } from "@/components/datasets/help-callout";
 import { resolveDatasetAddStrategy } from "@/components/datasets/dataset-add-strategy";
 import { singleMediaField } from "@/lib/uploads/upload-form-media";
 import type { IActionState } from "@/app/actions";
-import type { IDatasetDetailResponse } from "@mosaic/api-contract";
+import type { IDatasetDetailResponse } from "@flash-evals/api-contract";
 
 export function DatasetAddItemsSection({
     detail,

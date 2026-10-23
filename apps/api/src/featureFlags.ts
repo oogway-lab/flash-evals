@@ -3,17 +3,17 @@
 // stale. Update it if a flag is intentionally re-scoped.
 export const API_FEATURE_FLAGS = {
     analyticsEvents: {
-        env: "MOSAIC_FLAG_ANALYTICS_EVENTS",
+        env: "FLASH_EVALS_FLAG_ANALYTICS_EVENTS",
         defaultValue: false,
         since: "2026-07-08",
     },
     errorTracking: {
-        env: "MOSAIC_FLAG_ERROR_TRACKING",
+        env: "FLASH_EVALS_FLAG_ERROR_TRACKING",
         defaultValue: false,
         since: "2026-07-08",
     },
     profiling: {
-        env: "MOSAIC_FLAG_PROFILING",
+        env: "FLASH_EVALS_FLAG_PROFILING",
         defaultValue: false,
         since: "2026-07-08",
     },

@@ -54,8 +54,8 @@ describe("configured Railway worker launch", () => {
             const env: NodeJS.ProcessEnv = {
                 ...process.env,
                 NODE_OPTIONS: `--import=${preload}`,
-                MOSAIC_WORKER_DRAIN_TIMEOUT_MS: "1000",
-                MOSAIC_WORKER_TEST_FIXTURES: fixtureDir,
+                FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS: "1000",
+                FLASH_EVALS_WORKER_TEST_FIXTURES: fixtureDir,
             };
             if (signal === "SIGINT") env.NODE_EXTRA_CA_CERTS = customCa;
             else delete env.NODE_EXTRA_CA_CERTS;

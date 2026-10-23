@@ -11,7 +11,7 @@ import type {
     IAnswerImportMapping,
     IAnswerImportPreview,
     IImportSummary,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     ImportCountBadge,
     ImportRowStatusBadge,

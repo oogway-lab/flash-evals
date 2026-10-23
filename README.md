@@ -27,46 +27,57 @@ A **workflow** connects several steps when a single prompt is not enough.
 
 ## Run locally
 
-You need Git, Node.js **24.21.0**, pnpm **12.6.0**, and Docker Compose v2 with
-`--wait` support. Use a disposable database: **the seed command resets application
-tables, including existing datasets and runs.**
+Flash Evals runs on macOS or Linux, and on Windows through WSL2. You need Git,
+Node.js **24.21.0** (the `.nvmrc`/CI pin), pnpm **12.6.0**, and a running Docker
+Engine with Compose v2. The application runs on your host; Docker runs PostgreSQL.
+No Clerk, Supabase, or model-provider account is needed for the synthetic examples.
 
-Run these commands in a terminal on your development machine:
+For a **new, disposable development database**:
 
 ```bash
 git clone https://github.com/oogway-lab/flash-evals.git
 cd flash-evals
+# If you use nvm: nvm install && nvm use
 pnpm install --frozen-lockfile
 pnpm run setup:local
 docker compose up -d --wait postgres
 node scripts/build-packages.mjs
 pnpm run db:migrate
+# First initialization ONLY: this resets application tables.
 pnpm run seed
 pnpm run dev
 ```
 
-Open <http://localhost:3000>. You should see the seeded workspace with synthetic
-receipt examples and saved results. The images are placeholders and the stored
-outputs are fixtures, not a benchmark of model quality.
+Open <http://127.0.0.1:3000>. The command starts web, API, and worker together;
+you should see a workspace with synthetic receipts, prompts, and saved results.
+The generated configuration binds to loopback, creates private matching secrets,
+and selects local disk storage. **Never seed an existing database you need to
+preserve.** Keep the sign-in bypass on loopback or a restricted private network.
 
-No Clerk, Supabase, or provider account is needed to explore those examples.
-`setup:local` creates two local environment files with matching generated secrets;
-`dev` starts the web app, API, and background worker. Keep this development stack
-on a trusted machine, without public exposure: it bypasses web sign-in and allows
-local uploads without authentication.
+Use [Getting started](docs/getting-started.md) for tool installation, first-time
+database checks, expected results, and troubleshooting. For a VM or remote host,
+[configure private browser access](docs/remote-development.md) before starting
+any UI. For code changes, tests, audio, and optional MCP, use the
+[development guide](docs/development.md).
 
-To make real model calls, add a provider key to `apps/api/.env` and restart the
-stack. The generated configuration uses `OPENROUTER_API_KEY`. Tests, prompt
-validation, judges, and evaluations can all incur provider charges.
+On subsequent days, run only:
 
-See the [getting-started guide](docs/getting-started.md) for the first evaluation,
-a non-Docker database, stopping and restarting, and setup troubleshooting.
+```bash
+docker compose up -d --wait postgres
+pnpm run dev
+```
+
+Real provider calls require credentials and may incur charges. Setup and the
+synthetic examples do not call models. The generated limits are 50 cells per run
+and $2 in recorded daily team spend; they are guardrails, not a prepaid balance.
 
 ## Documentation
 
 | I want to…                                            | Read                                                  |
 | ----------------------------------------------------- | ----------------------------------------------------- |
 | Start from a fresh clone                              | [Getting started](docs/getting-started.md)            |
+| Develop locally, run tests, or enable audio/MCP       | [Development guide](docs/development.md)              |
+| Work on a VM or remote server                         | [Remote development](docs/remote-development.md)      |
 | Deploy the Cloudflare, Railway, and PostgreSQL stack  | [Deployment guide](docs/deployment.md)                |
 | Connect an agent or call the MCP server               | [MCP guide](docs/mcp-eval-server.md)                  |
 | Set provider keys, storage, authentication, or limits | [Configuration](docs/configuration.md)                |
@@ -105,9 +116,12 @@ PostgreSQL and saves their results.
 | `packages/llm-core`     | Model-provider transports and cost helpers               |
 | `packages/secrets`      | Provider-credential encryption helpers                   |
 
-The product is called Flash Evals. Existing `@mosaic/*` package names,
-`MOSAIC_*` variables, and `mosaic://` resource URIs remain unchanged for
-compatibility. Use those identifiers exactly as documented.
+Flash Evals uses `@flash-evals/*` package names, `FLASH_EVALS_*` environment
+variables, and `flash-evals://` MCP resource URIs. See the
+[remote development guide](docs/remote-development.md) for Tailscale access,
+private browser access and optional Linux background services. Existing
+installations should follow the [update instructions](docs/development.md#update-an-existing-checkout)
+without reseeding.
 
 ## Contributing and license
 

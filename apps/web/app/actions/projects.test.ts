@@ -75,7 +75,7 @@ describe("switchProjectAction", () => {
     it("persists a project from the authenticated workspace", async () => {
         await switchProjectAction("project-b");
         expect(mocks.setCookie).toHaveBeenCalledWith(
-            "mosaic_active_project",
+            "flash_evals_active_project",
             "project-b",
             expect.objectContaining({
                 httpOnly: true,
@@ -89,12 +89,12 @@ describe("switchProjectAction", () => {
     it("activates a project from the workspace browser in one request", async () => {
         await activateProjectAction("workspace-1", "project-b");
         expect(mocks.setCookie).toHaveBeenCalledWith(
-            "mosaic_active_workspace",
+            "flash_evals_active_workspace",
             "workspace-1",
             expect.any(Object),
         );
         expect(mocks.setCookie).toHaveBeenCalledWith(
-            "mosaic_active_project",
+            "flash_evals_active_project",
             "project-b",
             expect.any(Object),
         );
@@ -121,7 +121,7 @@ describe("switchProjectAction", () => {
             createdBy: "user-1",
         });
         expect(mocks.setCookie).toHaveBeenCalledWith(
-            "mosaic_active_project",
+            "flash_evals_active_project",
             "project-new",
             expect.any(Object),
         );

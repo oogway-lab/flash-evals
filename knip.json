@@ -11,10 +11,11 @@
         "apps/web/next-env.d.ts",
         "apps/web/globals.d.ts",
         "apps/web/open-next.config.ts",
-        "apps/web/server/db/migrations/**"
+        "apps/web/server/db/migrations/**",
+        "apps/web/.next-playwright/**"
     ],
     "ignoreDependencies": [
-        "@mosaic/llm-core",
+        "@flash-evals/llm-core",
         "@types/*",
         "autoprefixer",
         "pg-boss",
@@ -24,6 +25,8 @@
         "wrangler"
     ],
     "ignoreBinaries": [
+        "systemctl",
+        "journalctl",
         "gitleaks",
         "semgrep",
         "scripts/check-live-split-deployment-readiness.sh",

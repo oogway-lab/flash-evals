@@ -153,11 +153,11 @@ export async function rateLimitPrincipalFromRequest(
         )
         .catch(() => ({}) as Record<string, unknown>);
     const teamId =
-        request.headers.get("x-mosaic-team-id")?.trim() ||
+        request.headers.get("x-flash-evals-team-id")?.trim() ||
         stringField(body.teamId);
     if (!teamId) return undefined;
     const userId =
-        request.headers.get("x-mosaic-actor-id")?.trim() ||
+        request.headers.get("x-flash-evals-actor-id")?.trim() ||
         stringField(body.createdBy) ||
         stringField(body.userId) ||
         stringField(body.probedBy);

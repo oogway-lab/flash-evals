@@ -15,7 +15,12 @@ export default defineConfig({
         setupFiles: "./vitest.setup.ts",
         include: ["**/*.test.ts", "**/*.test.tsx"],
         // Build output (`next build`, OpenNext) contains copies of the tests.
-        exclude: [...configDefaults.exclude, ".next/**", ".open-next/**"],
+        exclude: [
+            ...configDefaults.exclude,
+            ".next/**",
+            ".next-playwright/**",
+            ".open-next/**",
+        ],
         clearMocks: true,
         pool: "forks",
         isolate: true,

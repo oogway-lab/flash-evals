@@ -1,13 +1,13 @@
 import { eq } from "drizzle-orm";
-import { getBareModelName, type ApiKeys } from "@mosaic/llm-core";
-import { redactSecrets } from "@mosaic/secrets";
+import { getBareModelName, type ApiKeys } from "@flash-evals/llm-core";
+import { redactSecrets } from "@flash-evals/secrets";
 import {
     canonicalJsonString,
     isSttMetricsModelId,
     parseSttMetricsModelId,
     type ISttRunConfig,
     type ProviderTransport,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { db } from "../db/client";
 import {
     runs,

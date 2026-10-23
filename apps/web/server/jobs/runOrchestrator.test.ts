@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type * as LlmCore from "@mosaic/llm-core";
-import type { CompletionRequest, CompletionResult } from "@mosaic/llm-core";
-import { getEvalProvider } from "@mosaic/llm-core";
+import type * as LlmCore from "@flash-evals/llm-core";
+import type { CompletionRequest, CompletionResult } from "@flash-evals/llm-core";
+import { getEvalProvider } from "@flash-evals/llm-core";
 import { executeCell } from "./runOrchestrator";
 
-vi.mock("@mosaic/llm-core", async (importOriginal) => {
+vi.mock("@flash-evals/llm-core", async (importOriginal) => {
     const actual = await importOriginal<typeof LlmCore>();
     return {
         ...actual,

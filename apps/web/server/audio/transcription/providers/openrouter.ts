@@ -2,7 +2,7 @@ import type { ITranscriptSegment } from "../../../db/jsonTypes";
 import {
     openRouterAttributionHeaders,
     transcribeOpenRouterAudio,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 import type {
     ITranscriptArtifact,
     ITranscriptionProviderInput,

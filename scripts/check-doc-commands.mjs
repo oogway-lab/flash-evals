@@ -6,6 +6,8 @@ const packageFiles = [
     "package.json",
     "apps/web/package.json",
     "apps/api/package.json",
+    "apps/site/package.json",
+    "packages/object-storage/package.json",
     "packages/api-contract/package.json",
     "packages/llm-core/package.json",
     "packages/secrets/package.json",
@@ -31,18 +33,21 @@ const docsToCheck = [
     "AGENTS.md",
     ...communityDocs,
     "apps/web/README.md",
+    "apps/site/README.md",
     "apps/web/AGENTS.md",
     ".github/pull_request_template.md",
     ...listMarkdownFiles("docs"),
 ].filter((docPath) => existsSync(join(root, docPath)));
 const commandPattern =
-    /\bpnpm\s+(?:--silent\s+)?(?:(--filter)\s+(@mosaic\/[a-z-]+)\s+)?(?:run\s+)?([a-zA-Z0-9:_-]+)/;
+    /\bpnpm\s+(?:--silent\s+)?(?:(--filter)\s+(@flash-evals\/[a-z-]+)\s+)?(?:run\s+)?([a-zA-Z0-9:_-]+)/;
 const packageToDir = new Map([
-    ["@mosaic/web", "apps/web"],
-    ["@mosaic/api", "apps/api"],
-    ["@mosaic/api-contract", "packages/api-contract"],
-    ["@mosaic/llm-core", "packages/llm-core"],
-    ["@mosaic/secrets", "packages/secrets"],
+    ["@flash-evals/web", "apps/web"],
+    ["@flash-evals/api", "apps/api"],
+    ["@flash-evals/site", "apps/site"],
+    ["@flash-evals/object-storage", "packages/object-storage"],
+    ["@flash-evals/api-contract", "packages/api-contract"],
+    ["@flash-evals/llm-core", "packages/llm-core"],
+    ["@flash-evals/secrets", "packages/secrets"],
 ]);
 
 const failures = [];

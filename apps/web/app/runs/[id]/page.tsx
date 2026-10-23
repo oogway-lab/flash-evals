@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 import { requireActiveProject as requirePagePrincipal } from "@/server/projects/activeProject";
 import { RunComparison } from "@/components/runs/run-comparison";
 import { saveCellAnnotationAction, saveRunNoteAction } from "@/app/actions";
@@ -36,7 +36,7 @@ export default async function RunPage({
             compareWith,
         })
         .catch((err: unknown) => {
-            if (err instanceof MosaicApiError && err.status === 404) notFound();
+            if (err instanceof FlashEvalsApiError && err.status === 404) notFound();
             throw err;
         });
     const { run, progress, models, items, cells } = detail;

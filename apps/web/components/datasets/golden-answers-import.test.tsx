@@ -7,7 +7,7 @@ import {
     screen,
     waitFor,
 } from "@testing-library/react";
-import type { IAnswerImportPreview } from "@mosaic/api-contract";
+import type { IAnswerImportPreview } from "@flash-evals/api-contract";
 import { SttGoldenAnswersImport } from "./golden-answers-import";
 import { pickOption } from "@/components/ui/test-utils";
 

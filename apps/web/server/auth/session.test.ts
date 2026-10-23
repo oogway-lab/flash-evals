@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 import {
     AuthConfigurationError,
     ForbiddenError,
@@ -49,10 +49,10 @@ describe("auth session", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.stubEnv("NODE_ENV", "test");
-        delete process.env.MOSAIC_TENANCY_MODE;
-        process.env.MOSAIC_ALLOWED_EMAIL_DOMAIN = "example.com";
-        delete process.env.MOSAIC_DEFAULT_TEAM_ID;
-        delete process.env.MOSAIC_DEFAULT_USER_ID;
+        delete process.env.FLASH_EVALS_TENANCY_MODE;
+        process.env.FLASH_EVALS_ALLOWED_EMAIL_DOMAIN = "example.com";
+        delete process.env.FLASH_EVALS_DEFAULT_TEAM_ID;
+        delete process.env.FLASH_EVALS_DEFAULT_USER_ID;
         delete process.env.AUTH_DEV;
         delete process.env.AUTH_DEV_ALLOW_INSECURE;
         apiMock.resolvePrincipal.mockResolvedValue({
@@ -62,12 +62,12 @@ describe("auth session", () => {
     });
 
     afterEach(() => {
-        delete process.env.MOSAIC_TENANCY_MODE;
+        delete process.env.FLASH_EVALS_TENANCY_MODE;
         vi.unstubAllEnvs();
     });
 
     it("normalizes and checks the configured email domain", () => {
-        process.env.MOSAIC_ALLOWED_EMAIL_DOMAIN = "@example.com";
+        process.env.FLASH_EVALS_ALLOWED_EMAIL_DOMAIN = "@example.com";
 
         expect(allowedEmailDomain()).toBe("example.com");
         expect(normalizeEmail(" Alice@Example.com ")).toBe("alice@example.com");
@@ -77,7 +77,7 @@ describe("auth session", () => {
     });
 
     it("accepts the normalized pilot domain and rejects malformed addresses", () => {
-        process.env.MOSAIC_ALLOWED_EMAIL_DOMAIN = "oogwaylabs.com";
+        process.env.FLASH_EVALS_ALLOWED_EMAIL_DOMAIN = "oogwaylabs.com";
 
         expect(isAllowedEmail(" Alice+Pilot@OOGWAYLABS.COM ")).toBe(true);
         for (const email of [
@@ -92,7 +92,7 @@ describe("auth session", () => {
     });
 
     it("denies every email when no domain is configured", () => {
-        delete process.env.MOSAIC_ALLOWED_EMAIL_DOMAIN;
+        delete process.env.FLASH_EVALS_ALLOWED_EMAIL_DOMAIN;
 
         expect(allowedEmailDomain()).toBe("");
         expect(isAllowedEmail("anyone@example.com")).toBe(false);
@@ -126,8 +126,8 @@ describe("auth session", () => {
     });
 
     it("keeps a configured domain restriction in isolated mode", async () => {
-        process.env.MOSAIC_TENANCY_MODE = "isolated";
-        process.env.MOSAIC_ALLOWED_EMAIL_DOMAIN = "oogwaylabs.com";
+        process.env.FLASH_EVALS_TENANCY_MODE = "isolated";
+        process.env.FLASH_EVALS_ALLOWED_EMAIL_DOMAIN = "oogwaylabs.com";
         await expect(
             principalForClerkIdentity({
                 clerkUserId: "clerk-1",
@@ -137,12 +137,12 @@ describe("auth session", () => {
             }),
         ).rejects.toBeInstanceOf(ForbiddenError);
         expect(apiMock.resolvePrincipal).not.toHaveBeenCalled();
-        delete process.env.MOSAIC_TENANCY_MODE;
+        delete process.env.FLASH_EVALS_TENANCY_MODE;
     });
 
     it("uses isolated tenancy without a domain restriction only when none is configured", async () => {
-        process.env.MOSAIC_TENANCY_MODE = "isolated";
-        delete process.env.MOSAIC_ALLOWED_EMAIL_DOMAIN;
+        process.env.FLASH_EVALS_TENANCY_MODE = "isolated";
+        delete process.env.FLASH_EVALS_ALLOWED_EMAIL_DOMAIN;
         await expect(
             principalForClerkIdentity({
                 clerkUserId: "clerk-1",
@@ -159,7 +159,7 @@ describe("auth session", () => {
                 name: "Person",
             },
         });
-        delete process.env.MOSAIC_TENANCY_MODE;
+        delete process.env.FLASH_EVALS_TENANCY_MODE;
     });
 
     it("requires a verified email before calling the API", async () => {
@@ -197,7 +197,7 @@ describe("auth session", () => {
 
     it("maps API auth errors to web auth errors", async () => {
         apiMock.resolvePrincipal.mockRejectedValueOnce(
-            new MosaicApiError("Nope", 403, "forbidden"),
+            new FlashEvalsApiError("Nope", 403, "forbidden"),
         );
 
         await expect(
@@ -212,7 +212,7 @@ describe("auth session", () => {
 
     it("maps API configuration errors", async () => {
         apiMock.resolvePrincipal.mockRejectedValueOnce(
-            new MosaicApiError("Missing team", 400, "bad_request"),
+            new FlashEvalsApiError("Missing team", 400, "bad_request"),
         );
 
         await expect(
@@ -234,8 +234,8 @@ describe("auth session", () => {
 
         process.env.AUTH_DEV = "true";
         process.env.AUTH_DEV_ALLOW_INSECURE = "1";
-        process.env.MOSAIC_DEFAULT_TEAM_ID = "team-dev";
-        process.env.MOSAIC_DEFAULT_USER_ID = "user-dev";
+        process.env.FLASH_EVALS_DEFAULT_TEAM_ID = "team-dev";
+        process.env.FLASH_EVALS_DEFAULT_USER_ID = "user-dev";
         await expect(requirePrincipal()).resolves.toEqual({
             teamId: "team-dev",
             userId: "user-dev",
@@ -245,8 +245,8 @@ describe("auth session", () => {
     it("keeps requiring Clerk when AUTH_DEV lacks the insecure opt-in", async () => {
         clerkMock.currentClerkIdentity.mockResolvedValue(undefined);
         process.env.AUTH_DEV = "true";
-        process.env.MOSAIC_DEFAULT_TEAM_ID = "team-dev";
-        process.env.MOSAIC_DEFAULT_USER_ID = "user-dev";
+        process.env.FLASH_EVALS_DEFAULT_TEAM_ID = "team-dev";
+        process.env.FLASH_EVALS_DEFAULT_USER_ID = "user-dev";
 
         await expect(requirePrincipal()).rejects.toBeInstanceOf(
             UnauthorizedError,
@@ -258,7 +258,7 @@ describe("auth session", () => {
         process.env.AUTH_DEV_ALLOW_INSECURE = "1";
 
         await expect(requirePrincipal()).rejects.toThrow(
-            "AUTH_DEV requires MOSAIC_DEFAULT_TEAM_ID and MOSAIC_DEFAULT_USER_ID",
+            "AUTH_DEV requires FLASH_EVALS_DEFAULT_TEAM_ID and FLASH_EVALS_DEFAULT_USER_ID",
         );
     });
 
@@ -292,7 +292,7 @@ describe("auth session", () => {
 
     it("redirects forbidden page auth to access denied", async () => {
         apiMock.resolvePrincipal.mockRejectedValueOnce(
-            new MosaicApiError("Forbidden", 403, "forbidden"),
+            new FlashEvalsApiError("Forbidden", 403, "forbidden"),
         );
         clerkMock.currentClerkIdentity.mockResolvedValue({
             clerkUserId: "clerk-1",

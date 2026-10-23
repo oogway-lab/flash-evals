@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     getEvalProvider,
     type IEvalCompletionProvider,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 
 function provider(): IEvalCompletionProvider {
     return {
@@ -17,20 +17,20 @@ const AUTO_REQUEST = {
 };
 
 describe("getEvalProvider", () => {
-    const originalProviderEnv = process.env.MOSAIC_LLM_PROVIDER;
+    const originalProviderEnv = process.env.FLASH_EVALS_LLM_PROVIDER;
     const originalGatewayFallbackModelsEnv =
-        process.env.MOSAIC_GATEWAY_FALLBACK_MODELS;
+        process.env.FLASH_EVALS_GATEWAY_FALLBACK_MODELS;
 
     afterEach(() => {
         if (originalProviderEnv === undefined) {
-            delete process.env.MOSAIC_LLM_PROVIDER;
+            delete process.env.FLASH_EVALS_LLM_PROVIDER;
         } else {
-            process.env.MOSAIC_LLM_PROVIDER = originalProviderEnv;
+            process.env.FLASH_EVALS_LLM_PROVIDER = originalProviderEnv;
         }
         if (originalGatewayFallbackModelsEnv === undefined) {
-            delete process.env.MOSAIC_GATEWAY_FALLBACK_MODELS;
+            delete process.env.FLASH_EVALS_GATEWAY_FALLBACK_MODELS;
         } else {
-            process.env.MOSAIC_GATEWAY_FALLBACK_MODELS =
+            process.env.FLASH_EVALS_GATEWAY_FALLBACK_MODELS =
                 originalGatewayFallbackModelsEnv;
         }
     });
@@ -51,8 +51,8 @@ describe("getEvalProvider", () => {
         expect(result).toBe(openai);
     });
 
-    it("lets explicit provider options override MOSAIC_LLM_PROVIDER", () => {
-        process.env.MOSAIC_LLM_PROVIDER = "openai";
+    it("lets explicit provider options override FLASH_EVALS_LLM_PROVIDER", () => {
+        process.env.FLASH_EVALS_LLM_PROVIDER = "openai";
         const openai = provider();
         const vercel = provider();
 
@@ -85,7 +85,7 @@ describe("getEvalProvider", () => {
     });
 
     it("routes unqualified auto-mode requests through the OpenAI transport", async () => {
-        delete process.env.MOSAIC_LLM_PROVIDER;
+        delete process.env.FLASH_EVALS_LLM_PROVIDER;
         const openai = provider();
         const vercel = provider();
 
@@ -103,14 +103,14 @@ describe("getEvalProvider", () => {
         expect(vercel.complete).not.toHaveBeenCalled();
     });
 
-    it("selects providers from MOSAIC_LLM_PROVIDER", () => {
+    it("selects providers from FLASH_EVALS_LLM_PROVIDER", () => {
         const openai = provider();
         const vercel = provider();
         const gateway = provider();
         const openrouter = provider();
         const bifrost = provider();
 
-        process.env.MOSAIC_LLM_PROVIDER = "openai";
+        process.env.FLASH_EVALS_LLM_PROVIDER = "openai";
         expect(
             getEvalProvider(
                 { openai: "sk-test", gateway: "vck-test" },
@@ -122,7 +122,7 @@ describe("getEvalProvider", () => {
             ),
         ).toBe(openai);
 
-        process.env.MOSAIC_LLM_PROVIDER = "vercel-ai";
+        process.env.FLASH_EVALS_LLM_PROVIDER = "vercel-ai";
         expect(
             getEvalProvider(
                 { openai: "sk-test", gateway: "vck-test" },
@@ -134,7 +134,7 @@ describe("getEvalProvider", () => {
             ),
         ).toBe(vercel);
 
-        process.env.MOSAIC_LLM_PROVIDER = "gateway";
+        process.env.FLASH_EVALS_LLM_PROVIDER = "gateway";
         expect(
             getEvalProvider(
                 { openai: "sk-test", gateway: "vck-test" },
@@ -146,7 +146,7 @@ describe("getEvalProvider", () => {
             ),
         ).toBe(gateway);
 
-        process.env.MOSAIC_LLM_PROVIDER = "openrouter";
+        process.env.FLASH_EVALS_LLM_PROVIDER = "openrouter";
         expect(
             getEvalProvider(
                 {
@@ -166,7 +166,7 @@ describe("getEvalProvider", () => {
             ),
         ).toBe(openrouter);
 
-        process.env.MOSAIC_LLM_PROVIDER = "bifrost";
+        process.env.FLASH_EVALS_LLM_PROVIDER = "bifrost";
         expect(
             getEvalProvider(
                 {
@@ -188,8 +188,8 @@ describe("getEvalProvider", () => {
         ).toBe(bifrost);
     });
 
-    it("throws on unknown MOSAIC_LLM_PROVIDER values", () => {
-        process.env.MOSAIC_LLM_PROVIDER = "not-a-provider";
+    it("throws on unknown FLASH_EVALS_LLM_PROVIDER values", () => {
+        process.env.FLASH_EVALS_LLM_PROVIDER = "not-a-provider";
 
         expect(() =>
             getEvalProvider(
@@ -199,7 +199,7 @@ describe("getEvalProvider", () => {
                     createVercelAIProvider: () => provider(),
                 },
             ),
-        ).toThrow(/Invalid MOSAIC_LLM_PROVIDER value "not-a-provider"/);
+        ).toThrow(/Invalid FLASH_EVALS_LLM_PROVIDER value "not-a-provider"/);
     });
 
     it("requires OpenRouter and Bifrost provider-specific settings", () => {
@@ -224,8 +224,8 @@ describe("getEvalProvider", () => {
         ).toThrow(/BIFROST_BASE_URL/);
     });
 
-    it("keeps auto mode when MOSAIC_LLM_PROVIDER is empty", async () => {
-        process.env.MOSAIC_LLM_PROVIDER = "";
+    it("keeps auto mode when FLASH_EVALS_LLM_PROVIDER is empty", async () => {
+        process.env.FLASH_EVALS_LLM_PROVIDER = "";
         const openai = provider();
         const vercel = provider();
 
@@ -296,8 +296,8 @@ describe("getEvalProvider", () => {
         ).toThrow(/Gateway fallback models are not supported/);
     });
 
-    it("rejects Gateway fallback models from MOSAIC_GATEWAY_FALLBACK_MODELS", () => {
-        process.env.MOSAIC_GATEWAY_FALLBACK_MODELS =
+    it("rejects Gateway fallback models from FLASH_EVALS_GATEWAY_FALLBACK_MODELS", () => {
+        process.env.FLASH_EVALS_GATEWAY_FALLBACK_MODELS =
             " openai/gpt-4o-mini, ,openai/gpt-4.1-mini ";
 
         expect(() =>

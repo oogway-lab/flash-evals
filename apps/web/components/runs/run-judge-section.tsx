@@ -4,7 +4,7 @@ import type {
     IRunSetupJudgePromptOption,
     IRunSetupModelOption,
     ReasoningEffort,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";

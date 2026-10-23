@@ -38,8 +38,8 @@ export interface IEvalProviderOptions {
     exactTransportModelId?: string;
 }
 
-const PROVIDER_ENV_KEY = "MOSAIC_LLM_PROVIDER";
-const GATEWAY_FALLBACK_MODELS_ENV_KEY = "MOSAIC_GATEWAY_FALLBACK_MODELS";
+const PROVIDER_ENV_KEY = "FLASH_EVALS_LLM_PROVIDER";
+const GATEWAY_FALLBACK_MODELS_ENV_KEY = "FLASH_EVALS_GATEWAY_FALLBACK_MODELS";
 
 export function getEvalProvider(
     apiKeys: ApiKeys,

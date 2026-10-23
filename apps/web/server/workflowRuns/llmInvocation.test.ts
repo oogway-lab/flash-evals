@@ -1,8 +1,8 @@
 import type {
     IWorkflowLlmExecutionProvenance,
     IWorkflowLlmResolvedExecution,
-} from "@mosaic/api-contract";
-import type { CompletionResult } from "@mosaic/llm-core";
+} from "@flash-evals/api-contract";
+import type { CompletionResult } from "@flash-evals/llm-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../db/client", () => ({ db: {} }));
@@ -39,13 +39,13 @@ const execution: IWorkflowLlmResolvedExecution = {
         },
         structuredOutput: { mode: "text" },
         retry: {
-            owner: "mosaic",
+            owner: "flash-evals",
             maxAttempts: 2,
             timeoutMs: 12_345,
             retryableErrorClasses: ["rate_limit"],
         },
         cache: {
-            mosaicReuse: "force_fresh",
+            flashEvalsReuse: "force_fresh",
             providerCaching: "allow",
         },
     },
@@ -129,7 +129,7 @@ describe("workflow explicit LLM invocation", () => {
     });
 
     it("ignores hostile ambient routing and forwards the complete captured route", async () => {
-        vi.stubEnv("MOSAIC_LLM_PROVIDER", "bifrost");
+        vi.stubEnv("FLASH_EVALS_LLM_PROVIDER", "bifrost");
         vi.stubEnv("OPENAI_API_KEY", "ambient-secret");
         const harness = deps();
 
@@ -154,7 +154,7 @@ describe("workflow explicit LLM invocation", () => {
                 seed: 42,
                 timeoutMs: 12_345,
                 maxRetries: 0,
-                retryOwner: "mosaic",
+                retryOwner: "flash-evals",
                 route: {
                     transport: "openrouter",
                     transportModelId: "openai/gpt-4o",
@@ -199,7 +199,7 @@ describe("workflow explicit LLM invocation", () => {
             "cell-1",
             [
                 expect.objectContaining({
-                    owner: "mosaic",
+                    owner: "flash-evals",
                     outcome: "succeeded",
                     requested: {
                         transport: "openrouter",
@@ -255,7 +255,7 @@ describe("workflow explicit LLM invocation", () => {
                     ...execution.route,
                     cache: {
                         ...execution.route.cache,
-                        mosaicReuse: "allow" as const,
+                        flashEvalsReuse: "allow" as const,
                     },
                 },
             },
@@ -287,7 +287,7 @@ describe("workflow explicit LLM invocation", () => {
             usage: {},
             currentCost: { source: "unavailable" },
             cache: {
-                status: "mosaic_reuse",
+                status: "flash_evals_reuse",
                 sourceCellId: "origin-cell",
                 sourceRunId: "origin-run",
             },

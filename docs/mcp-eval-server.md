@@ -11,7 +11,7 @@ It can inspect datasets and results, build prompts and workflows, start runs, an
 save review notes. These operations use the same API logic and data as the web app.
 
 The HTTP endpoint is `/mcp` on the **API**, normally
-`http://127.0.0.1:3001/mcp` locally. Enable it with `MOSAIC_MCP_ENABLED=true`.
+`http://127.0.0.1:3001/mcp` locally. Enable it with `FLASH_EVALS_MCP_ENABLED=true`.
 The server uses **stateless Streamable HTTP**, not the older standalone SSE
 transport. It creates no persistent MCP session ID. Send authorization on every
 request; reconnecting does not cancel or undo work already created.
@@ -29,7 +29,15 @@ publish local bearer tokens or put them in checked-in client configuration.
 ## Local setup
 
 First complete [Getting started](getting-started.md), including migrations and
-the synthetic seed. Keep the API, web app, and worker running with `pnpm run dev`.
+the synthetic examples. If your development data already exists, keep it: do
+not reseed to enable MCP. Keep the API, web app, and worker running with
+`pnpm run dev` (or the installed development service).
+
+Fresh `setup:local` selects `FLASH_EVALS_TENANCY_MODE=isolated` in both env files.
+For an older local setup, check this mode and leave the allowed-email-domain
+restriction unset so the synthetic `dev@local` account can use MCP. This does not
+move its existing team/data. The web auth bypass alone does not establish this
+MCP admission configuration.
 
 ### Enable and create a development token
 
@@ -38,9 +46,9 @@ the synthetic seed. Keep the API, web app, and worker running with `pnpm run dev
    and use its output in place of the placeholder:
 
     ```dotenv
-    MOSAIC_MCP_ENABLED=true
-    MOSAIC_MCP_RAW_TOKEN_FALLBACK_ENABLED=true
-    MOSAIC_MCP_TOKEN_PEPPER=replace-with-your-generated-value
+    FLASH_EVALS_MCP_ENABLED=true
+    FLASH_EVALS_MCP_RAW_TOKEN_FALLBACK_ENABLED=true
+    FLASH_EVALS_MCP_TOKEN_PEPPER=replace-with-your-generated-value
     ```
 
 2. Stop and restart `pnpm run dev` to load the changes. Leave the OAuth settings
@@ -51,7 +59,7 @@ the synthetic seed. Keep the API, web app, and worker running with `pnpm run dev
    development account:
 
     ```bash
-    pnpm --filter @mosaic/api mcp:token:create -- --email dev@local --name "Local MCP"
+    pnpm --filter @flash-evals/api mcp:token:create -- --email dev@local --name "Local MCP"
     ```
 
     The command prints `tokenId`, `userId`, `teamId`, and the full `token` once.
@@ -68,17 +76,32 @@ In a Bash terminal, read the token without putting it into shell history, then
 run the included example:
 
 ```bash
-read -r -s -p "Local MCP token: " MOSAIC_MCP_LOCAL_TOKEN
+read -r -s -p "Local MCP token: " FLASH_EVALS_MCP_LOCAL_TOKEN
 printf '\n'
-export MOSAIC_MCP_LOCAL_TOKEN
+export FLASH_EVALS_MCP_LOCAL_TOKEN
 node docs/examples/mcp-read-only.mjs
 ```
 
 The [example source](examples/mcp-read-only.mjs) negotiates the protocol, lists
 tools, resource templates, and prompts, and reads your user, workspaces, and
-projects. It does not create datasets or run evaluations. It reports **84 tools,
-8 resource templates, and 1 prompt** on this revision. It also gives you the
-workspace and project IDs needed for subsequent calls.
+projects. It does not create datasets or run evaluations. It reports the current tool/resource/prompt inventory and gives you the
+workspace and project IDs needed for subsequent calls. Inventory counts can
+change as tools are added.
+
+For the built-in HTTP and stdio smoke checks, save the token privately as
+`FLASH_EVALS_MCP_LOCAL_TOKEN` in `apps/api/.env` and run:
+
+```bash
+pnpm run smoke:mcp
+pnpm run smoke:mcp -- --stdio
+```
+
+These read existing workspace/project/dataset records and check missing/invalid
+HTTP token rejection without calling providers. They require existing example
+data and never seed it. The HTTP endpoint follows `FLASH_EVALS_API_PUBLIC_URL`;
+`FLASH_EVALS_MCP_TEST_URL` can override it. For a remote client, use the configured
+private API address or forward the API port as described in the
+[VM access guide](remote-development.md).
 
 An optional first argument selects another local API address:
 
@@ -98,7 +121,7 @@ For an HTTP client, select Streamable HTTP and use:
 
 Store the header in the client's private configuration. If it sends an `Origin`
 header, add that exact origin to the comma-separated
-`MOSAIC_MCP_ALLOWED_ORIGINS` in `apps/api/.env`, then restart the API. A client
+`FLASH_EVALS_MCP_ALLOWED_ORIGINS` in `apps/api/.env`, then restart the API. A client
 without an `Origin` header does not need an origin-list entry. This setting is
 separate from the web app's `CORS_ORIGINS`.
 
@@ -107,12 +130,12 @@ root. Build shared packages first if this is a fresh checkout:
 
 ```bash
 node scripts/build-packages.mjs
-pnpm --silent --filter @mosaic/api mcp:stdio
+pnpm --silent --filter @flash-evals/api mcp:stdio
 ```
 
 `--silent` keeps pnpm's command banners off the stdio protocol stream.
-The client process must inherit `MOSAIC_MCP_LOCAL_TOKEN`, and the API environment
-file must enable `MOSAIC_MCP_RAW_TOKEN_FALLBACK_ENABLED=true`. Configure the
+The client process must inherit `FLASH_EVALS_MCP_LOCAL_TOKEN`, and the API environment
+file must enable `FLASH_EVALS_MCP_RAW_TOKEN_FALLBACK_ENABLED=true`. Configure the
 client's working directory as the repository root. The stdio server talks to the
 same database and queue directly; it still needs a running database and worker
 for evaluations. It does not turn the server into an unauthenticated local tool.
@@ -120,8 +143,8 @@ for evaluations. It does not turn the server into an unauthenticated local tool.
 When finished, revoke the token by the ID printed during creation:
 
 ```bash
-pnpm --filter @mosaic/api mcp:token:revoke -- --token-id YOUR_TOKEN_UUID
-unset MOSAIC_MCP_LOCAL_TOKEN
+pnpm --filter @flash-evals/api mcp:token:revoke -- --token-id YOUR_TOKEN_UUID
+unset FLASH_EVALS_MCP_LOCAL_TOKEN
 ```
 
 ## Understand scope and responses
@@ -349,23 +372,23 @@ Poll `get_workflow_run_progress` with the project, workflow, and workflow-run ID
 Discover the eight **resource templates** with `resources/templates/list`.
 `resources/list` is not the inventory of these parameterized resources.
 
-| Resource          | URI template                                          |
-| ----------------- | ----------------------------------------------------- |
-| Dataset           | `mosaic://projects/{projectId}/datasets/{id}`         |
-| Prompt            | `mosaic://projects/{projectId}/prompts/{id}`          |
-| Eval run          | `mosaic://projects/{projectId}/runs/{id}`             |
-| Model options     | `mosaic://projects/{projectId}/models`                |
-| Dataset summary   | `mosaic://projects/{projectId}/datasets/{id}/summary` |
-| Dataset item page | `mosaic://projects/{projectId}/datasets/{id}/items`   |
-| Run summary       | `mosaic://projects/{projectId}/runs/{id}/summary`     |
-| Run cell page     | `mosaic://projects/{projectId}/runs/{id}/cells`       |
+| Resource          | URI template                                               |
+| ----------------- | ---------------------------------------------------------- |
+| Dataset           | `flash-evals://projects/{projectId}/datasets/{id}`         |
+| Prompt            | `flash-evals://projects/{projectId}/prompts/{id}`          |
+| Eval run          | `flash-evals://projects/{projectId}/runs/{id}`             |
+| Model options     | `flash-evals://projects/{projectId}/models`                |
+| Dataset summary   | `flash-evals://projects/{projectId}/datasets/{id}/summary` |
+| Dataset item page | `flash-evals://projects/{projectId}/datasets/{id}/items`   |
+| Run summary       | `flash-evals://projects/{projectId}/runs/{id}/summary`     |
+| Run cell page     | `flash-evals://projects/{projectId}/runs/{id}/cells`       |
 
 Replace the braces with actual IDs, then call `resources/read` with a `uri`.
 The content is JSON text. The original dataset and run resources retain their
 full v1 responses. Use the summary resources for compact context and item/cell
 resources for pages. Start at `/items/{limit}/first` or `/cells/{limit}/first`,
 then follow `nextPageUri` until `complete` is true. Use the page tools when you
-need filters or opt-in item/cell detail. The `mosaic://` prefix is an existing
+need filters or opt-in item/cell detail. The `flash-evals://` prefix is an existing
 protocol identifier and should not be renamed to `flash-evals://`.
 
 `prompts/list` exposes one prompt, `create_eval_happy_path`. Retrieve it with
@@ -407,30 +430,30 @@ already operate. It is not a complete hosted-deployment walkthrough.
 2. Enable MCP and supply the API's OAuth settings:
 
     ```dotenv
-    MOSAIC_MCP_ENABLED=true
-    MOSAIC_MCP_RESOURCE_URL=https://your-api.example/mcp
+    FLASH_EVALS_MCP_ENABLED=true
+    FLASH_EVALS_MCP_RESOURCE_URL=https://your-api.example/mcp
     CLERK_ISSUER=https://your-clerk-host.example
     CLERK_SECRET_KEY=your-server-secret
     CLERK_PUBLISHABLE_KEY=your-publishable-key
     CLERK_JWT_KEY=your-jwt-public-key
-    MOSAIC_MCP_RAW_TOKEN_FALLBACK_ENABLED=false
+    FLASH_EVALS_MCP_RAW_TOKEN_FALLBACK_ENABLED=false
     ```
 
 3. Choose a client-registration policy:
-    - **One pinned client:** set `MOSAIC_MCP_OAUTH_CLIENT_ID` to that Clerk OAuth
+    - **One pinned client:** set `FLASH_EVALS_MCP_OAUTH_CLIENT_ID` to that Clerk OAuth
       application's client ID and register the client's exact redirect URI in
       Clerk. Tokens issued for another client are rejected.
     - **Dynamic clients:** enable dynamic client registration in Clerk, set
-      `MOSAIC_MCP_OAUTH_DYNAMIC_CLIENTS=true`, and leave
-      `MOSAIC_MCP_OAUTH_CLIENT_ID` unset. The Flash Evals setting alone does not
+      `FLASH_EVALS_MCP_OAUTH_DYNAMIC_CLIENTS=true`, and leave
+      `FLASH_EVALS_MCP_OAUTH_CLIENT_ID` unset. The Flash Evals setting alone does not
       enable registration in Clerk. Without a pin, the client-ID equality guard
       does not restrict access to one application; review that trust decision.
-4. Set `MOSAIC_MCP_ALLOWED_ORIGINS` to the exact origins of browser-based clients
+4. Set `FLASH_EVALS_MCP_ALLOWED_ORIGINS` to the exact origins of browser-based clients
    you want to allow. Avoid copying another deployment's allowlist. Review
    `CLERK_AUTHORIZED_PARTIES` if you use additional token restrictions. Clerk
    checks that explicit allowlist against the token's `azp` claim. OAuth JWTs
    identify the client with `client_id`; Flash Evals checks the verified client
-   ID against `MOSAIC_MCP_OAUTH_CLIENT_ID` separately. The client ID is not an
+   ID against `FLASH_EVALS_MCP_OAUTH_CLIENT_ID` separately. The client ID is not an
    implicit `azp` restriction.
 5. In the MCP client, select Streamable HTTP, enter your API's `/mcp` URL, and
    complete OAuth. Grant a profile scope explicitly when the client supports
@@ -463,7 +486,7 @@ in, call `get_current_user` and verify it returns the intended account.
 
 | Symptom                                                | Likely next check                                                                                        |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| 404 or “MCP is not enabled”                            | Enable `MOSAIC_MCP_ENABLED` and restart the API; use its port, not the web port.                         |
+| 404 or “MCP is not enabled”                            | Enable `FLASH_EVALS_MCP_ENABLED` and restart the API; use its port, not the web port.                    |
 | “Missing MCP bearer token”                             | Supply authorization on every request. Web development sign-in does not apply.                           |
 | “MCP OAuth is not configured”                          | Configure OAuth, or explicitly enable the local raw-token fallback.                                      |
 | “Invalid MCP bearer token”                             | Verify the token exists in this database, is not revoked, and uses the same pepper.                      |

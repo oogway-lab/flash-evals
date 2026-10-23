@@ -25,8 +25,16 @@ const child = spawn(process.execPath, process.argv.slice(2), {
     stdio: "inherit",
 });
 
-const forwardSigint = () => child.kill("SIGINT");
-const forwardSigterm = () => child.kill("SIGTERM");
+// A process-group signal and pnpm's forwarding can reach this wrapper together.
+// Forward once so the worker's second-signal emergency exit isn't triggered.
+let stopping = false;
+function forwardSignal(signal) {
+    if (stopping) return;
+    stopping = true;
+    child.kill(signal);
+}
+const forwardSigint = () => forwardSignal("SIGINT");
+const forwardSigterm = () => forwardSignal("SIGTERM");
 process.on("SIGINT", forwardSigint);
 process.on("SIGTERM", forwardSigterm);
 

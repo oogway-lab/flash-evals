@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { IPromptWorkflow, IRunSetupResponse } from "@mosaic/api-contract";
+import type { IPromptWorkflow, IRunSetupResponse } from "@flash-evals/api-contract";
 const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 

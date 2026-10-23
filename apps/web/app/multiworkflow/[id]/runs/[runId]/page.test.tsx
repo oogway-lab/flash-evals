@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 
 const mocks = vi.hoisted(() => ({
     getWorkflowRunDetail: vi.fn(),
@@ -78,7 +78,7 @@ describe("Pipeline run page", () => {
 
     it("shows not found only when the API reports a missing run", async () => {
         mocks.getWorkflowRunDetail.mockRejectedValue(
-            new MosaicApiError("Not found", 404),
+            new FlashEvalsApiError("Not found", 404),
         );
 
         await expect(
