@@ -12,7 +12,7 @@ import {
     sttConfigFieldsForModelId,
     type IRunSetupResponse,
     type IWorkflowLlmRoute,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { SttNodeInspector } from "./stt-node-inspector";
 import type { SttCanvasNode, SttNodeData } from "./stt-canvas";
 import { pickOption } from "@/components/ui/test-utils";
@@ -112,13 +112,13 @@ const llmRoutes: IWorkflowLlmRoute[] = [
                 },
                 structuredOutput: { mode: "text" },
                 retry: {
-                    owner: "mosaic",
+                    owner: "flash-evals",
                     maxAttempts: 1,
                     timeoutMs: 60_000,
                     retryableErrorClasses: ["timeout"],
                 },
                 cache: {
-                    mosaicReuse: "force_fresh",
+                    flashEvalsReuse: "force_fresh",
                     providerCaching: "allow",
                 },
             },
@@ -406,7 +406,7 @@ describe("SttNodeInspector", () => {
                     },
                     timeoutMs: 60_000,
                     maxAttempts: 1,
-                    mosaicReuse: "force_fresh",
+                    flashEvalsReuse: "force_fresh",
                 }),
             ),
         );

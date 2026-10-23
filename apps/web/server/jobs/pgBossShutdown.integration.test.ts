@@ -11,7 +11,7 @@ import {
     vi,
 } from "vitest";
 
-const databaseUrl = process.env.MOSAIC_TEST_DATABASE_URL;
+const databaseUrl = process.env.FLASH_EVALS_TEST_DATABASE_URL;
 const integration = databaseUrl ? describe : describe.skip;
 
 function deferred<T = void>() {
@@ -46,7 +46,7 @@ integration("pg-boss shutdown and durable replay", () => {
         const databaseName = new URL(databaseUrl).pathname.slice(1);
         if (!databaseName.includes("test")) {
             throw new Error(
-                "MOSAIC_TEST_DATABASE_URL must point to a disposable database with 'test' in its name.",
+                "FLASH_EVALS_TEST_DATABASE_URL must point to a disposable database with 'test' in its name.",
             );
         }
         pool = new Pool({ connectionString: databaseUrl, max: 2 });

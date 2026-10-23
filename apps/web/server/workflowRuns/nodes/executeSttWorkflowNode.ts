@@ -1,5 +1,5 @@
-import type { ApiKeys, EvalImage } from "@mosaic/llm-core";
-import type { IWorkflowNodeArtifact } from "@mosaic/api-contract";
+import type { ApiKeys, EvalImage } from "@flash-evals/llm-core";
+import type { IWorkflowNodeArtifact } from "@flash-evals/api-contract";
 import { db } from "../../db/client";
 import { workflowCellScores } from "../../db/schema";
 import type { IWorkflowSnapshotNode, LabelJson } from "../../db/jsonTypes";

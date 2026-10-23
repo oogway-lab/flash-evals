@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import * as ObjectStorage from "@mosaic/object-storage";
+import * as ObjectStorage from "@flash-evals/object-storage";
 import type { IApiConfig } from "../config.js";
 import type { IDb } from "../db.js";
 import { importImagesPayload, signUploadPayload } from "./datasets.js";
@@ -12,7 +12,7 @@ const r2Mocks = vi.hoisted(() => ({
     deleteR2Object: vi.fn(),
 }));
 
-vi.mock("@mosaic/object-storage", async (importOriginal) => ({
+vi.mock("@flash-evals/object-storage", async (importOriginal) => ({
     ...(await importOriginal<typeof ObjectStorage>()),
     createR2SignedUploadUrl: r2Mocks.createR2SignedUploadUrl,
     headR2Object: r2Mocks.headR2Object,
@@ -57,9 +57,9 @@ const config: IApiConfig = {
     supabaseServiceRoleKey: "",
     supabaseStorageBucket: "",
     clerkSecretKey: "sk_test",
-    mosaicTenancyMode: "single-org",
-    mosaicAllowedEmailDomain: "example.com",
-    mosaicLlmProvider: "openai",
+    flashEvalsTenancyMode: "single-org",
+    flashEvalsAllowedEmailDomain: "example.com",
+    flashEvalsLlmProvider: "openai",
     corsOrigins: [],
     sttCapabilityProbes: {},
     profilingEnabled: false,

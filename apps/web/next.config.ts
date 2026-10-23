@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
     // Statically typed `href` / `router.push` route strings.
     typedRoutes: true,
     // The server modules import the workspace package directly from source.
-    transpilePackages: ["@mosaic/llm-core"],
+    transpilePackages: ["@flash-evals/llm-core"],
     // pg and pg-boss are server-only; keep them external to the bundle.
     serverExternalPackages: ["pg", "pg-boss"],
     experimental: {

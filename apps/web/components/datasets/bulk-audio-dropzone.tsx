@@ -3,7 +3,7 @@
 import {
     MAX_IMPORT_FILE_COUNT,
     MAX_AUDIO_IMPORT_BYTES,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     AUDIO_ACCEPT,
     AUDIO_MAX_BYTES,

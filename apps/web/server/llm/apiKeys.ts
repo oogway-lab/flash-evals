@@ -1,4 +1,4 @@
-import type { ApiKeys } from "@mosaic/llm-core";
+import type { ApiKeys } from "@flash-evals/llm-core";
 
 export function apiKeysFromEnv(
     env: Record<string, string | undefined> = process.env,

@@ -47,7 +47,7 @@ also describe deployment settings and contain placeholders for external services
 ## 3. Prepare a disposable database
 
 **Check `DATABASE_URL` in `apps/api/.env` before seeding.** The default is
-`postgres://mosaic:mosaic@localhost:54322/mosaic`. The seed script truncates
+`postgres://flash_evals:flash_evals@localhost:54322/flash_evals`. The seed script truncates
 application tables and cascading references, then inserts synthetic data. Never
 point it at a database you need to preserve.
 

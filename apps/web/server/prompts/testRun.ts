@@ -1,4 +1,4 @@
-import type { CompletionResult } from "@mosaic/llm-core";
+import type { CompletionResult } from "@flash-evals/llm-core";
 import {
     completionCostFields,
     getBareModelName,
@@ -7,7 +7,7 @@ import {
     type EvalImage,
     type ReasoningEffort,
     type UsageData,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 import { errorMessage } from "../lib/errors";
 import { resolveApiKeys } from "@/server/secrets/resolveApiKeys";
 import { resolvePricingFor } from "@/server/llm/pricing";

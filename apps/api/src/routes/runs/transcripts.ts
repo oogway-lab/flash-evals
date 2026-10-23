@@ -6,7 +6,7 @@ import {
     type IRunAudioTranscriptVariantSummary,
     type IRunDetailItem,
     type ISttRunConfig,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import type { IDb } from "../../db.js";
 
 interface IAudioTranscriptDbRow {

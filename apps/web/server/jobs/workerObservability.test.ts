@@ -38,7 +38,7 @@ describe("worker observability", () => {
             unknown
         >;
         expect(payload).toMatchObject({
-            service: "mosaic-worker",
+            service: "flash-evals-worker",
             event: "job.started",
             queue: "eval-run",
             runId: "run-1",

@@ -19,7 +19,7 @@ export default defineConfig({
     reporter: [["list"]],
     use: { baseURL, trace: "retain-on-failure", screenshot: "only-on-failure" },
     webServer: {
-        command: `node scripts/build-packages.mjs && node scripts/build-marketing.mjs && pnpm --filter @mosaic/web exec next dev --port ${port}`,
+        command: `node scripts/build-packages.mjs && node scripts/build-marketing.mjs && pnpm --filter @flash-evals/web exec next dev --port ${port}`,
         url: `${baseURL}/api/health`,
         timeout: 120_000,
         reuseExistingServer: false,

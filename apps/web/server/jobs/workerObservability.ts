@@ -76,7 +76,7 @@ export function logWorkerEvent(
     const payload = {
         timestamp: new Date().toISOString(),
         level,
-        service: "mosaic-worker",
+        service: "flash-evals-worker",
         event,
         ...metadata,
     };

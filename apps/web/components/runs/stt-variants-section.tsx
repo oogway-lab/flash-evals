@@ -3,7 +3,7 @@
 import {
     sttModelSupportsLanguage,
     type ISttRunEvaluation,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { Button } from "@/components/ui/button";
 import { SectionTitle } from "@/components/layout/section-title";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

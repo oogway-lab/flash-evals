@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { eq, and, inArray, desc, sql } from "drizzle-orm";
-import type { ProviderTransport } from "@mosaic/api-contract";
+import type { ProviderTransport } from "@flash-evals/api-contract";
 import { db } from "../db/client";
 import {
     runs,

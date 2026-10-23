@@ -10,9 +10,9 @@ import type {
     IWorkflowNodeInput,
     WorkflowKind,
     IWorkflowLlmRouteConfig,
-} from "@mosaic/api-contract";
-import { isWorkflowModelBackedNodeType } from "@mosaic/api-contract";
-import { registryEntryFor } from "@mosaic/llm-core";
+} from "@flash-evals/api-contract";
+import { isWorkflowModelBackedNodeType } from "@flash-evals/api-contract";
+import { registryEntryFor } from "@flash-evals/llm-core";
 import type { IDb } from "../db.js";
 import { withTransaction } from "../db.js";
 import {

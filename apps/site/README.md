@@ -10,7 +10,7 @@ server, database, or secrets.
 From the repository root, after `pnpm install --frozen-lockfile`:
 
 ```bash
-pnpm --filter @mosaic/site dev
+pnpm --filter @flash-evals/site dev
 ```
 
 Open <http://localhost:4321/marketing/> for the standalone design preview.
@@ -23,9 +23,9 @@ are illustrative and labeled accordingly; keep that labeling intact.
 ## Build and preview
 
 ```bash
-pnpm --filter @mosaic/site typecheck
+pnpm --filter @flash-evals/site typecheck
 pnpm run marketing:build
-pnpm --filter @mosaic/web dev
+pnpm --filter @flash-evals/web dev
 ```
 
 The integration script builds `apps/site/dist`, bundles its complete HTML into
@@ -39,8 +39,8 @@ integration script automatically. Rebuild/restart the integrated preview after
 editing the Astro source. For a design-only static preview:
 
 ```bash
-pnpm --filter @mosaic/site build
-pnpm --filter @mosaic/site preview
+pnpm --filter @flash-evals/site build
+pnpm --filter @flash-evals/site preview
 ```
 
 ## Routing and authentication

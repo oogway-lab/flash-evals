@@ -12,18 +12,18 @@ describe("getEvalProvider transport routing", () => {
             process: { env: Record<string, string | undefined> };
         }
     ).process.env;
-    const originalProviderEnv = env.MOSAIC_LLM_PROVIDER;
+    const originalProviderEnv = env.FLASH_EVALS_LLM_PROVIDER;
 
     afterEach(() => {
         if (originalProviderEnv === undefined) {
-            delete env.MOSAIC_LLM_PROVIDER;
+            delete env.FLASH_EVALS_LLM_PROVIDER;
         } else {
-            env.MOSAIC_LLM_PROVIDER = originalProviderEnv;
+            env.FLASH_EVALS_LLM_PROVIDER = originalProviderEnv;
         }
     });
 
     it("preserves environment selection when transport is absent", () => {
-        env.MOSAIC_LLM_PROVIDER = "openai";
+        env.FLASH_EVALS_LLM_PROVIDER = "openai";
         const openai = provider();
 
         expect(
@@ -38,7 +38,7 @@ describe("getEvalProvider transport routing", () => {
     });
 
     it("uses an explicit transport instead of the environment default", async () => {
-        env.MOSAIC_LLM_PROVIDER = "openai";
+        env.FLASH_EVALS_LLM_PROVIDER = "openai";
         const gateway = provider();
 
         const routed = getEvalProvider(

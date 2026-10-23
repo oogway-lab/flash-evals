@@ -3,7 +3,7 @@ import type {
     IProject,
     IListProjectsResponse,
     IUpdateProjectRequest,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import type { IDb } from "../db.js";
 import { ApiBadRequestError, ApiNotFoundError } from "../errors.js";
 

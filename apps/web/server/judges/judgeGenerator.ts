@@ -1,4 +1,4 @@
-import { getEvalProvider, type ApiKeys } from "@mosaic/llm-core";
+import { getEvalProvider, type ApiKeys } from "@flash-evals/llm-core";
 import type { JsonSchemaObject } from "../db/jsonTypes";
 import { ensureModelCatalog } from "../llm/catalog";
 import { registryEntryFor } from "../llm/modelRegistry";

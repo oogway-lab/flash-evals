@@ -9,7 +9,7 @@ const root = process.cwd();
 const localCheck = path.join(root, "scripts/check-split-deployment-readiness.sh");
 const liveCheck = path.join(root, "scripts/check-live-split-deployment-readiness.sh");
 const r2Origin =
-    "https://mosaic-media.0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com";
+    "https://flash-evals-media.0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com";
 const testSecret = "synthetic-secret-never-print-this";
 
 function makeR2Env(kind, prefix = "flash-evals") {
@@ -18,9 +18,9 @@ function makeR2Env(kind, prefix = "flash-evals") {
             ? {
                   DATABASE_URL: "postgres://synthetic:synthetic@db.example.test:5432/test",
                   CLERK_SECRET_KEY: "sk_test_synthetic",
-                  MOSAIC_ALLOWED_EMAIL_DOMAIN: "example.test",
+                  FLASH_EVALS_ALLOWED_EMAIL_DOMAIN: "example.test",
                   CORS_ORIGINS: "https://app.example.test",
-                  MOSAIC_API_START_WORKER: "false",
+                  FLASH_EVALS_API_START_WORKER: "false",
               }
             : {
                   NEXT_PUBLIC_API_BASE_URL: "https://api.example.test",
@@ -31,13 +31,13 @@ function makeR2Env(kind, prefix = "flash-evals") {
         ...common,
         NODE_ENV: "production",
         INTERNAL_API_TOKEN: "synthetic-internal-token",
-        MOSAIC_STORAGE_ADAPTER: "r2",
+        FLASH_EVALS_STORAGE_ADAPTER: "r2",
         R2_ACCOUNT_ID: "0123456789abcdef0123456789abcdef",
         R2_ACCESS_KEY_ID: "synthetic-access-id",
         R2_SECRET_ACCESS_KEY: testSecret,
-        R2_BUCKET: "mosaic-media",
+        R2_BUCKET: "flash-evals-media",
         R2_STORAGE_PREFIX: prefix,
-        ...(kind === "web" ? { MOSAIC_CSP_STORAGE_ORIGIN: r2Origin } : {}),
+        ...(kind === "web" ? { FLASH_EVALS_CSP_STORAGE_ORIGIN: r2Origin } : {}),
     };
 }
 
@@ -47,9 +47,9 @@ function makeSupabaseEnv(kind, prefix = "flash-evals") {
             ? {
                   DATABASE_URL: "postgres://synthetic:synthetic@db.example.test:5432/test",
                   CLERK_SECRET_KEY: "sk_test_synthetic",
-                  MOSAIC_ALLOWED_EMAIL_DOMAIN: "example.test",
+                  FLASH_EVALS_ALLOWED_EMAIL_DOMAIN: "example.test",
                   CORS_ORIGINS: "https://app.example.test",
-                  MOSAIC_API_START_WORKER: "false",
+                  FLASH_EVALS_API_START_WORKER: "false",
               }
             : {
                   NEXT_PUBLIC_API_BASE_URL: "https://api.example.test",
@@ -60,13 +60,13 @@ function makeSupabaseEnv(kind, prefix = "flash-evals") {
         ...common,
         NODE_ENV: "production",
         INTERNAL_API_TOKEN: "synthetic-internal-token",
-        MOSAIC_STORAGE_ADAPTER: "supabase",
+        FLASH_EVALS_STORAGE_ADAPTER: "supabase",
         SUPABASE_URL: "https://project.supabase.co",
         SUPABASE_SERVICE_ROLE_KEY: "synthetic-supabase-service-role",
-        SUPABASE_STORAGE_BUCKET: "mosaic-private",
+        SUPABASE_STORAGE_BUCKET: "flash-evals-private",
         SUPABASE_STORAGE_PREFIX: prefix,
         ...(kind === "web"
-            ? { MOSAIC_CSP_STORAGE_ORIGIN: "https://project.supabase.co" }
+            ? { FLASH_EVALS_CSP_STORAGE_ORIGIN: "https://project.supabase.co" }
             : {}),
     };
 }
@@ -237,11 +237,11 @@ test("local check reports missing R2 keys without printing configured secrets", 
 
 test("local check rejects adapter, prefix, and CSP-origin mismatches", () => {
     const web = makeR2Env("web", "different-prefix");
-    web.MOSAIC_CSP_STORAGE_ORIGIN = "https://wrong.example.test";
+    web.FLASH_EVALS_CSP_STORAGE_ORIGIN = "https://wrong.example.test";
     const result = runLocal(makeR2Env("api"), web);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /R2_STORAGE_PREFIX does not match/);
-    assert.match(result.stderr, /MOSAIC_CSP_STORAGE_ORIGIN does not match/);
+    assert.match(result.stderr, /FLASH_EVALS_CSP_STORAGE_ORIGIN does not match/);
 
     const wrongAdapter = makeSupabaseEnv("web");
     const adapterResult = runLocal(makeR2Env("api"), wrongAdapter);
@@ -251,16 +251,16 @@ test("local check rejects adapter, prefix, and CSP-origin mismatches", () => {
 
 test("local check rejects local and insecure deployment modes", () => {
     const localApi = makeR2Env("api");
-    localApi.MOSAIC_STORAGE_ADAPTER = "local";
+    localApi.FLASH_EVALS_STORAGE_ADAPTER = "local";
     const localResult = runLocal(localApi, makeR2Env("web"));
     assert.notEqual(localResult.status, 0);
     assert.match(localResult.stderr, /must not use the local storage adapter/);
 
     const insecureApi = makeR2Env("api");
-    insecureApi.MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS = "true";
+    insecureApi.FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS = "true";
     const insecureResult = runLocal(insecureApi, makeR2Env("web"));
     assert.notEqual(insecureResult.status, 0);
-    assert.match(insecureResult.stderr, /must not enable MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS/);
+    assert.match(insecureResult.stderr, /must not enable FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS/);
 
     const authBypassWeb = makeR2Env("web");
     authBypassWeb.AUTH_DEV = "true";
@@ -373,12 +373,12 @@ test("live check rejects missing, mismatched, and insecure Railway values withou
     assert.match(mismatch.result.stderr, /Railway worker service R2_STORAGE_PREFIX does not match/);
 
     const insecureApi = makeR2Env("api");
-    insecureApi.MOSAIC_API_START_WORKER = "true";
-    insecureApi.MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS = "true";
+    insecureApi.FLASH_EVALS_API_START_WORKER = "true";
+    insecureApi.FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS = "true";
     const insecure = runLive(insecureApi, makeR2Env("api"), makeR2Env("web"));
     assert.notEqual(insecure.result.status, 0);
-    assert.match(insecure.result.stderr, /MOSAIC_API_START_WORKER=false/);
-    assert.match(insecure.result.stderr, /must not enable MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS/);
+    assert.match(insecure.result.stderr, /FLASH_EVALS_API_START_WORKER=false/);
+    assert.match(insecure.result.stderr, /must not enable FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS/);
 });
 
 test("live check rejects a same-service API/worker topology", () => {

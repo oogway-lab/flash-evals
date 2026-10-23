@@ -24,14 +24,14 @@ export function openRouterAttributionHeaders(
 }
 
 function attributionHeaders(env: Env): Record<string, string> {
-    if (env.MOSAIC_PROVIDER_ATTRIBUTION?.trim().toLowerCase() === "off") {
+    if (env.FLASH_EVALS_PROVIDER_ATTRIBUTION?.trim().toLowerCase() === "off") {
         return {};
     }
     return {
         "http-referer":
-            headerValue(env, "MOSAIC_GATEWAY_HTTP_REFERER") ?? DEFAULT_APP_URL,
+            headerValue(env, "FLASH_EVALS_GATEWAY_HTTP_REFERER") ?? DEFAULT_APP_URL,
         "x-title":
-            headerValue(env, "MOSAIC_GATEWAY_APP_TITLE") ?? DEFAULT_APP_TITLE,
+            headerValue(env, "FLASH_EVALS_GATEWAY_APP_TITLE") ?? DEFAULT_APP_TITLE,
     };
 }
 

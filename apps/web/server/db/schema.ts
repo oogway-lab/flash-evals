@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import type { ProviderMetadata, IModelCatalogSnapshot } from "@mosaic/llm-core";
+import type { ProviderMetadata, IModelCatalogSnapshot } from "@flash-evals/llm-core";
 import type {
     ISttRunConfig,
     IWorkflowLlmActualRoute,
@@ -9,7 +9,7 @@ import type {
     IWorkflowLlmRouteIdentity,
     WorkflowLlmTransport,
     IWorkflowNodeArtifact,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     pgTable,
     pgEnum,
@@ -1062,7 +1062,7 @@ export const workflowCellAttempts = pgTable(
             .notNull()
             .references(() => workflowRunCells.id, { onDelete: "restrict" }),
         sequence: integer("sequence").notNull(),
-        owner: text("owner").$type<"mosaic" | "gateway">().notNull(),
+        owner: text("owner").$type<"flash-evals" | "gateway">().notNull(),
         requested: jsonb("requested")
             .$type<IWorkflowLlmRouteIdentity>()
             .notNull(),
@@ -1081,7 +1081,7 @@ export const workflowCellAttempts = pgTable(
         check("workflow_cell_attempts_sequence_check", sql`${t.sequence} > 0`),
         check(
             "workflow_cell_attempts_owner_check",
-            sql`${t.owner} in ('mosaic', 'gateway')`,
+            sql`${t.owner} in ('flash-evals', 'gateway')`,
         ),
         check(
             "workflow_cell_attempts_outcome_check",

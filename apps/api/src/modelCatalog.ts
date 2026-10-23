@@ -1,4 +1,4 @@
-import { createCatalogLoader } from "@mosaic/llm-core";
+import { createCatalogLoader } from "@flash-evals/llm-core";
 import type { IDb } from "./db.js";
 
 const loaders = new WeakMap<IDb, ReturnType<typeof createCatalogLoader>>();

@@ -36,7 +36,7 @@ describe("guidanceForModel", () => {
         expect(guidance.source.title).toBe(
             "Flash Evals generic prompt optimization guidance",
         );
-        expect(guidance.source.url).toBe("internal://mosaic/prompt-optimization");
+        expect(guidance.source.url).toBe("internal://flash-evals/prompt-optimization");
     });
 });
 

@@ -7,7 +7,7 @@ import {
     waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { IWorkflowRunDetailResponse } from "@mosaic/api-contract";
+import type { IWorkflowRunDetailResponse } from "@flash-evals/api-contract";
 import { SttRunResults } from "./stt-run-results";
 
 afterEach(() => {
@@ -180,7 +180,7 @@ function detail(): IWorkflowRunDetailResponse {
                                 timeoutMs: 60_000,
                             },
                             cache: {
-                                mosaicReuse: "force_fresh",
+                                flashEvalsReuse: "force_fresh",
                                 providerCaching: "allow",
                             },
                         },
@@ -769,7 +769,7 @@ describe("SttRunResults", () => {
         if (execution?.availability !== "complete")
             throw new Error("Expected complete execution fixture");
         execution.cache = {
-            status: "mosaic_reuse",
+            status: "flash_evals_reuse",
             fingerprintVersion: 1,
             fingerprint: "fingerprint-1",
             sourceRunId: "origin-run",

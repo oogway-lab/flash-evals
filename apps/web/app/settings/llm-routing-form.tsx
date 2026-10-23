@@ -17,8 +17,8 @@ import type {
     IWorkflowLlmRoute,
     WorkflowLlmGenerationControl,
     WorkflowLlmTransport,
-} from "@mosaic/api-contract";
-import { REASONING_EFFORT_LEVELS } from "@mosaic/llm-core";
+} from "@flash-evals/api-contract";
+import { REASONING_EFFORT_LEVELS } from "@flash-evals/llm-core";
 import {
     clearWorkflowLlmDefaultAction,
     disableWorkflowLlmRouteAction,
@@ -497,13 +497,13 @@ function RouteBuilder({
                             >
                                 <Field
                                     label="Flash Evals result reuse"
-                                    id="llm-mosaic-reuse"
+                                    id="llm-flash-evals-reuse"
                                 >
                                     <Select
-                                        name="mosaicReuse"
+                                        name="flashEvalsReuse"
                                         defaultValue="force_fresh"
                                     >
-                                        <SelectTrigger id="llm-mosaic-reuse">
+                                        <SelectTrigger id="llm-flash-evals-reuse">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>

@@ -1,6 +1,6 @@
 "use client";
 
-import type { AudioRunMode } from "@mosaic/api-contract";
+import type { AudioRunMode } from "@flash-evals/api-contract";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioCard, RadioGroup } from "@/components/ui/radio-group";
 

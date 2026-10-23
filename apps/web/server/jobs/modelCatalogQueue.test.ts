@@ -23,7 +23,7 @@ vi.mock("pg-boss", () => ({
         stop = mocks.stop;
     },
 }));
-vi.mock("@mosaic/llm-core", () => ({
+vi.mock("@flash-evals/llm-core", () => ({
     refreshModelCatalog: mocks.refresh,
 }));
 vi.mock("../llm/catalog", () => ({ modelCatalogStore: {} }));

@@ -2,11 +2,11 @@ import type {
     ICreateWorkflowRunRequest,
     IWorkflowLlmCapabilitySnapshot,
     IWorkflowLlmRouteConfig,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     WORKFLOW_JUDGE_SCHEMA_DIGEST,
     WORKFLOW_JUDGE_SCHEMA_NAME,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { describe, expect, it, vi } from "vitest";
 import type { IApiConfig } from "../config.js";
 import type { IDb, ITransactionalDb } from "../db.js";
@@ -42,7 +42,7 @@ const runRouteConfig: IWorkflowLlmRouteConfig = {
     generation: { maxOutputTokens: 512, temperature: 0 },
     structuredOutput: { mode: "text" },
     retry: { owner: "gateway", timeoutMs: 30_000 },
-    cache: { mosaicReuse: "allow", providerCaching: "allow" },
+    cache: { flashEvalsReuse: "allow", providerCaching: "allow" },
 };
 
 const runCapability: IWorkflowLlmCapabilitySnapshot = {
@@ -1055,13 +1055,13 @@ function dbForWorkflowRunDetail(): IDb {
                                                     mode: "text",
                                                 },
                                                 retry: {
-                                                    owner: "mosaic",
+                                                    owner: "flash-evals",
                                                     maxAttempts: 1,
                                                     timeoutMs: 60_000,
                                                     retryableErrorClasses: [],
                                                 },
                                                 cache: {
-                                                    mosaicReuse: "force_fresh",
+                                                    flashEvalsReuse: "force_fresh",
                                                     providerCaching: "allow",
                                                 },
                                             },

@@ -6,7 +6,7 @@ import {
     type IRunSetupSttModelOption,
     type ISttRunConfig,
     type ReasoningEffort,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

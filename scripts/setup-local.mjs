@@ -19,18 +19,18 @@ const encryptionKey = randomBytes(32).toString("base64");
 writeFileSync(
     apiPath,
     `# Local development only. Never use this file for a deployment.
-DATABASE_URL=postgres://mosaic:mosaic@localhost:54322/mosaic
+DATABASE_URL=postgres://flash_evals:flash_evals@localhost:54322/flash_evals
 PORT=3001
-MOSAIC_API_PUBLIC_URL=http://localhost:3001
-MOSAIC_STORAGE_ADAPTER=local
-MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS=true
+FLASH_EVALS_API_PUBLIC_URL=http://localhost:3001
+FLASH_EVALS_STORAGE_ADAPTER=local
+FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS=true
 CORS_ORIGINS=http://localhost:3000
 INTERNAL_API_TOKEN=${token}
-MOSAIC_SECRETS_ENC_KEY=${encryptionKey}
-MOSAIC_WORKFLOW_LLM_WRITES_ENABLED=true
-MOSAIC_WORKFLOW_LLM_WORKER_CONTRACT_VERSION=1
+FLASH_EVALS_SECRETS_ENC_KEY=${encryptionKey}
+FLASH_EVALS_WORKFLOW_LLM_WRITES_ENABLED=true
+FLASH_EVALS_WORKFLOW_LLM_WORKER_CONTRACT_VERSION=1
 # Optional. Add a key to run model calls, then restart pnpm run dev.
-MOSAIC_LLM_PROVIDER=openrouter
+FLASH_EVALS_LLM_PROVIDER=openrouter
 OPENROUTER_API_KEY=
 `,
     { mode: 0o600, flag: "wx" },
@@ -39,7 +39,7 @@ writeFileSync(
     webPath,
     `API_BASE_URL=http://localhost:3001
 NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
-MOSAIC_WEB_DATABASE_URL=postgres://mosaic:mosaic@localhost:54322/mosaic
+FLASH_EVALS_WEB_DATABASE_URL=postgres://flash_evals:flash_evals@localhost:54322/flash_evals
 INTERNAL_API_TOKEN=${token}
 `,
     { mode: 0o600, flag: "wx" },

@@ -294,9 +294,9 @@ describe("OpenRouter reported charges", () => {
 
 describe("OpenAI-compatible attribution headers", () => {
     beforeEach(() => {
-        vi.stubEnv("MOSAIC_GATEWAY_HTTP_REFERER", "");
-        vi.stubEnv("MOSAIC_GATEWAY_APP_TITLE", "");
-        vi.stubEnv("MOSAIC_PROVIDER_ATTRIBUTION", "");
+        vi.stubEnv("FLASH_EVALS_GATEWAY_HTTP_REFERER", "");
+        vi.stubEnv("FLASH_EVALS_GATEWAY_APP_TITLE", "");
+        vi.stubEnv("FLASH_EVALS_PROVIDER_ATTRIBUTION", "");
         vi.stubGlobal(
             "fetch",
             vi.fn(

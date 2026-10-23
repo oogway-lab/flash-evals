@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { and, eq } from "drizzle-orm";
-import { getEvalProvider, type ApiKeys } from "@mosaic/llm-core";
-import type { ISttTransliterationConfig } from "@mosaic/api-contract";
+import { getEvalProvider, type ApiKeys } from "@flash-evals/llm-core";
+import type { ISttTransliterationConfig } from "@flash-evals/api-contract";
 import { db } from "../db/client";
 import { audioTranscriptVariants } from "../db/schema";
 import { errorMessage } from "../lib/errors";

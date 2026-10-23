@@ -7,7 +7,7 @@ import {
     securityHeaders,
 } from "./security-headers.mjs";
 
-const CLERK_HOST = "clerk.mosaic.example";
+const CLERK_HOST = "clerk.flash-evals.example";
 const PUBLISHABLE_KEY = `pk_live_${Buffer.from(`${CLERK_HOST}$`).toString("base64")}`;
 
 function directive(policy: string, name: string): string[] {
@@ -39,7 +39,7 @@ describe("contentSecurityPolicy", () => {
     const production = {
         NODE_ENV: "production",
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: PUBLISHABLE_KEY,
-        NEXT_PUBLIC_API_BASE_URL: "https://api.mosaic.example/v1",
+        NEXT_PUBLIC_API_BASE_URL: "https://api.flash-evals.example/v1",
     };
 
     it("forbids framing, plugins, and foreign base URIs", () => {
@@ -59,7 +59,7 @@ describe("contentSecurityPolicy", () => {
         expect(directive(policy, "connect-src")).toEqual(
             expect.arrayContaining([
                 `https://${CLERK_HOST}`,
-                "https://api.mosaic.example",
+                "https://api.flash-evals.example",
                 "https://*.supabase.co",
             ]),
         );
@@ -82,7 +82,7 @@ describe("contentSecurityPolicy", () => {
     it("uses an explicit storage origin when configured", () => {
         const policy = contentSecurityPolicy({
             ...production,
-            MOSAIC_CSP_STORAGE_ORIGIN: "https://abc.supabase.co",
+            FLASH_EVALS_CSP_STORAGE_ORIGIN: "https://abc.supabase.co",
         });
 
         expect(directive(policy, "connect-src")).toContain(

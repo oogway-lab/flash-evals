@@ -28,7 +28,7 @@ describe("LLM routing HTTP schemas", () => {
                     structuredOutput: { mode: "text" },
                     retry: { owner: "gateway", timeoutMs: 30_000 },
                     cache: {
-                        mosaicReuse: "allow",
+                        flashEvalsReuse: "allow",
                         providerCaching: "allow",
                     },
                 },
@@ -54,7 +54,7 @@ describe("LLM routing HTTP schemas", () => {
                     timeoutMs: 60_000,
                 },
                 cache: {
-                    mosaicReuse: "allow" as const,
+                    flashEvalsReuse: "allow" as const,
                     providerCaching: "allow" as const,
                 },
             },
@@ -86,7 +86,7 @@ describe("LLM routing HTTP schemas", () => {
                 structuredOutput: { mode: "text" },
                 retry: { owner: "gateway", timeoutMs: 60_000 },
                 cache: {
-                    mosaicReuse: "allow",
+                    flashEvalsReuse: "allow",
                     providerCaching: "allow",
                 },
             },
@@ -183,7 +183,7 @@ describe("LLM routing HTTP schemas", () => {
                     structuredOutput: { mode: "text" },
                     retry: { owner: "gateway", timeoutMs: 60_000 },
                     cache: {
-                        mosaicReuse: "force_fresh",
+                        flashEvalsReuse: "force_fresh",
                         providerCaching: "allow",
                     },
                 },
@@ -192,7 +192,7 @@ describe("LLM routing HTTP schemas", () => {
             config: {
                 generation: { maxOutputTokens: 128, seed: 123 },
                 retry: { timeoutMs: 60_000 },
-                cache: { mosaicReuse: "force_fresh" },
+                cache: { flashEvalsReuse: "force_fresh" },
             },
         });
     });

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { ChevronDown, PanelRight, Search } from "lucide-react";
-import type { IWorkflowRunDetailResponse } from "@mosaic/api-contract";
+import type { IWorkflowRunDetailResponse } from "@flash-evals/api-contract";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

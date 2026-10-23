@@ -1,6 +1,6 @@
 "use client";
 
-import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_BYTES } from "@mosaic/api-contract";
+import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_BYTES } from "@flash-evals/api-contract";
 
 import { KeepFieldsOnReset } from "@/components/ui/keep-fields-on-reset";
 import { PendingFieldset } from "@/components/ui/pending-fieldset";
@@ -50,8 +50,8 @@ import type {
     JudgeDeclaredInput,
     PromptKind,
 } from "@/server/db/jsonTypes";
-import type { ReasoningEffort } from "@mosaic/llm-core";
-import type { ProviderTransport } from "@mosaic/api-contract";
+import type { ReasoningEffort } from "@flash-evals/llm-core";
+import type { ProviderTransport } from "@flash-evals/api-contract";
 import { ScorePill } from "@/components/ui/score-pill";
 import {
     PromptTestResultBadge,
@@ -348,7 +348,7 @@ export function PromptWorkbench({
             : "New prompt";
         window.opener?.postMessage(
             {
-                type: "mosaic:workflow-prompt-created",
+                type: "flash-evals:workflow-prompt-created",
                 kind: promptKind,
                 nodeKey: workflowNodeKey,
                 promptVersionId: saveState.promptVersionId,

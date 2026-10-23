@@ -182,7 +182,7 @@ describe("workflow LLM routing settings actions", () => {
                     seed: 42,
                 },
                 timeoutMs: 45_000,
-                mosaicReuse: "force_fresh",
+                flashEvalsReuse: "force_fresh",
             }),
         ).resolves.toMatchObject({ route: { id: "route-1" } });
         expect(mocks.createWorkflowLlmRouteVersion).toHaveBeenCalledWith(
@@ -254,7 +254,7 @@ describe("workflow LLM routing settings actions", () => {
                         responseCache: "disable",
                     },
                     cache: {
-                        mosaicReuse: "force_fresh",
+                        flashEvalsReuse: "force_fresh",
                         providerCaching: "allow",
                     },
                 }),

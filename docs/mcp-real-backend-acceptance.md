@@ -17,11 +17,11 @@ This ledger distinguishes catalog/profile checks from operations that reached th
 Use a dedicated disposable PostgreSQL 16 database on loopback named `flash_evals_mcp_acceptance`; do not point this suite at a persistent development or production database. Apply migrations and run:
 
 ```sh
-DATABASE_URL="$DISPOSABLE_DATABASE_URL" pnpm --filter @mosaic/web db:migrate
-pnpm --filter @mosaic/api build
-MOSAIC_MCP_ACCEPTANCE_DATABASE_URL="$DISPOSABLE_DATABASE_URL" pnpm --filter @mosaic/api exec vitest run src/mcp/realBackend.acceptance.test.ts
-MOSAIC_TEST_DATABASE_URL="$DISPOSABLE_DATABASE_URL" pnpm --filter @mosaic/api exec vitest run src/routes/mcpReaders.integration.test.ts src/mcp/idempotency.integration.test.ts
-pnpm --filter @mosaic/api exec vitest run src/mcp/policyCoverage.acceptance.test.ts
+DATABASE_URL="$DISPOSABLE_DATABASE_URL" pnpm --filter @flash-evals/web db:migrate
+pnpm --filter @flash-evals/api build
+FLASH_EVALS_MCP_ACCEPTANCE_DATABASE_URL="$DISPOSABLE_DATABASE_URL" pnpm --filter @flash-evals/api exec vitest run src/mcp/realBackend.acceptance.test.ts
+FLASH_EVALS_TEST_DATABASE_URL="$DISPOSABLE_DATABASE_URL" pnpm --filter @flash-evals/api exec vitest run src/routes/mcpReaders.integration.test.ts src/mcp/idempotency.integration.test.ts
+pnpm --filter @flash-evals/api exec vitest run src/mcp/policyCoverage.acceptance.test.ts
 ```
 
 The test refuses non-loopback hosts and any database name other than `flash_evals_mcp_acceptance`. It runs no paid provider calls. Temporary uploaded files are removed in `afterAll`. If workflow LLM route versions were created, PostgreSQL immutability triggers prevent deleting that history and its referenced fixture graph; discard the dedicated database/container after the run, as required by `CONTRIBUTING.md`.

@@ -20,12 +20,12 @@ export default defineConfig({
     webServer: process.env.PLAYWRIGHT_WEB_BASE_URL
         ? undefined
         : {
-              // Build the workspace packages @mosaic/web imports (the same
+              // Build the workspace packages @flash-evals/web imports (the same
               // script its own `dev` script runs), then start Next directly so
               // the port can be set. The API is faked by the tests in tests/e2e.
               command:
                   `node scripts/build-packages.mjs && node scripts/build-marketing.mjs && ` +
-                  `pnpm --filter @mosaic/web exec next dev --port ${webPort}`,
+                  `pnpm --filter @flash-evals/web exec next dev --port ${webPort}`,
               url: `${webBaseUrl}/api/health`,
               reuseExistingServer: !process.env.CI,
               timeout: 120_000,
@@ -37,9 +37,9 @@ export default defineConfig({
                   AUTH_DEV: "true",
                   AUTH_DEV_ALLOW_INSECURE: "1",
                   // Match the fake API fixtures in tests/e2e.
-                  MOSAIC_DEFAULT_TEAM_ID:
+                  FLASH_EVALS_DEFAULT_TEAM_ID:
                       "00000000-0000-4000-8000-000000000001",
-                  MOSAIC_DEFAULT_USER_ID:
+                  FLASH_EVALS_DEFAULT_USER_ID:
                       "00000000-0000-4000-8000-000000000002",
                   NEXT_PUBLIC_API_BASE_URL:
                       process.env.NEXT_PUBLIC_API_BASE_URL ?? defaultApiBaseUrl,

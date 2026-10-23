@@ -13,7 +13,7 @@ import type {
     IRetryWorkflowRunRequest,
     IUpdateWorkflowRequest,
     WorkflowLlmTransport,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { getApiConfig, type IApiConfig } from "./config.js";
 import { createDb, type IDb } from "./db.js";
 import { ApiBadRequestError } from "./errors.js";
@@ -466,7 +466,7 @@ export async function handleRequest(
             assertInternalToken(request, config);
             await setProviderKeyPayload(
                 db,
-                config.mosaicSecretsEncKey,
+                config.flashEvalsSecretsEncKey,
                 await request.json(),
             );
             return new Response(null, { status: 204, headers });
@@ -1529,8 +1529,8 @@ function trustedWorkflowLlmContext(request: Request): {
     teamId: string;
     actorId: string;
 } {
-    const teamId = request.headers.get("x-mosaic-team-id")?.trim();
-    const actorId = request.headers.get("x-mosaic-actor-id")?.trim();
+    const teamId = request.headers.get("x-flash-evals-team-id")?.trim();
+    const actorId = request.headers.get("x-flash-evals-actor-id")?.trim();
     if (!isUuid(teamId) || !isUuid(actorId)) {
         throw new ApiBadRequestError(
             "Missing or invalid trusted routing context.",
@@ -1611,13 +1611,14 @@ if (isEntrypoint) {
     const config = getApiConfig();
     if (config.storageAdapter === "local") {
         console.warn(
-            "mosaic-api: local storage adapter active; uploads are unauthenticated. Do not expose this API publicly.",
+            "flash-evals-api: local storage adapter active; uploads are unauthenticated. Do not expose this API publicly.",
         );
     }
     const server = createApiServer(config);
     server.listen(
         config.port,
-        config.storageAdapter === "local" ? "127.0.0.1" : undefined,
+        config.bindHost ??
+            (config.storageAdapter === "local" ? "127.0.0.1" : undefined),
         () => {},
     );
 }

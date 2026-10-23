@@ -13,12 +13,12 @@ import {
     globalStoredSttProviders,
     globalSttCapabilityProbes,
 } from "./routes/sttProbes.js";
-import type { SttProviderId } from "@mosaic/api-contract";
-import { checkR2Bucket } from "@mosaic/object-storage";
+import type { SttProviderId } from "@flash-evals/api-contract";
+import { checkR2Bucket } from "@flash-evals/object-storage";
 
 export interface IHealthPayload {
     status: "ok" | "degraded";
-    service: "mosaic-api";
+    service: "flash-evals-api";
     storage: "local" | "supabase" | "r2";
     database: "supabase-postgres";
     checks: {
@@ -85,7 +85,7 @@ export async function healthPayload(
 
     return {
         status,
-        service: "mosaic-api",
+        service: "flash-evals-api",
         storage: config.storageAdapter,
         database: "supabase-postgres",
         checks: { database, storage },

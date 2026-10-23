@@ -1,4 +1,4 @@
-import { MosaicApiClient } from "@mosaic/api-contract";
+import { FlashEvalsApiClient } from "@flash-evals/api-contract";
 
 export class WebApiConfigError extends Error {
     constructor(message: string) {
@@ -7,9 +7,9 @@ export class WebApiConfigError extends Error {
     }
 }
 
-export function serverApiClient(): MosaicApiClient {
+export function serverApiClient(): FlashEvalsApiClient {
     const { baseUrl, internalToken } = serverApiConfig();
-    return new MosaicApiClient({
+    return new FlashEvalsApiClient({
         baseUrl,
         internalToken,
     });

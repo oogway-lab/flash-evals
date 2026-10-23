@@ -72,7 +72,7 @@ import {
 import * as datasetService from "@/server/datasets/service";
 import * as pipelinesService from "@/server/pipelines/service";
 import * as promptsService from "@/server/prompts/service";
-import { MAX_TEXT_IMPORT_BYTES, MosaicApiError } from "@mosaic/api-contract";
+import { MAX_TEXT_IMPORT_BYTES, FlashEvalsApiError } from "@flash-evals/api-contract";
 import { assertSameTeam } from "@/server/auth/session";
 import { requireActiveProject } from "@/server/projects/activeProject";
 
@@ -361,7 +361,7 @@ describe("addItemAction", () => {
         });
         data.set("image", image, "plate.png");
         mockApiClient.createDatasetItemFromForm.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 datasetService.DUPLICATE_ITEM_SOURCE_NAME_MESSAGE,
                 400,
             ),
@@ -395,7 +395,7 @@ describe("addItemAction", () => {
             ]),
         );
         mockApiClient.createDatasetItemFromForm.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 datasetService.DUPLICATE_ITEM_SOURCE_NAME_MESSAGE,
                 400,
             ),
@@ -422,7 +422,7 @@ describe("addItemAction", () => {
         });
         data.set("image", image, "plate.png");
         mockApiClient.updateDatasetItemFromForm.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 datasetService.DUPLICATE_ITEM_SOURCE_NAME_MESSAGE,
                 400,
             ),
@@ -457,7 +457,7 @@ describe("addItemAction", () => {
             ]),
         );
         mockApiClient.updateDatasetItemFromForm.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 datasetService.DUPLICATE_ITEM_SOURCE_NAME_MESSAGE,
                 400,
             ),
@@ -471,7 +471,7 @@ describe("addItemAction", () => {
 
     it("refuses to add an item to an archived dataset", async () => {
         mockApiClient.createDatasetItemFromForm.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 "This dataset is archived. Restore it to make changes.",
                 400,
             ),
@@ -492,7 +492,7 @@ describe("addItemAction", () => {
 
     it("refuses to add an image item to an archived dataset", async () => {
         mockApiClient.createDatasetItemFromForm.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 "This dataset is archived. Restore it to make changes.",
                 400,
             ),
@@ -516,7 +516,7 @@ describe("addItemAction", () => {
 
     it("refuses edit attempts for another team's dataset before writing", async () => {
         mockApiClient.updateDatasetItemFromForm.mockRejectedValue(
-            new MosaicApiError("Forbidden", 400),
+            new FlashEvalsApiError("Forbidden", 400),
         );
 
         await expect(
@@ -535,7 +535,7 @@ describe("addItemAction", () => {
 
     it("refuses to edit an item in an archived dataset", async () => {
         mockApiClient.updateDatasetItemFromForm.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 "This dataset is archived. Restore it to make changes.",
                 400,
             ),
@@ -557,7 +557,7 @@ describe("addItemAction", () => {
 
     it("refuses delete attempts for another team's dataset before writing", async () => {
         mockApiClient.deleteDatasetItem.mockRejectedValue(
-            new MosaicApiError("Forbidden", 400),
+            new FlashEvalsApiError("Forbidden", 400),
         );
 
         await expect(
@@ -567,7 +567,7 @@ describe("addItemAction", () => {
 
     it("refuses to delete an item in an archived dataset", async () => {
         mockApiClient.deleteDatasetItem.mockRejectedValue(
-            new MosaicApiError("archived", 400),
+            new FlashEvalsApiError("archived", 400),
         );
 
         await expect(
@@ -595,7 +595,7 @@ describe("addItemAction", () => {
 
     it("returns item delete blockers as form errors", async () => {
         mockApiClient.deleteDatasetItem.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 "Delete the runs that use this item before deleting it.",
                 400,
             ),
@@ -751,7 +751,7 @@ describe("createRunAction", () => {
 
     it("returns a form error when no runnable prompt is chosen", async () => {
         mockApiClient.createRunFromSelection.mockRejectedValue(
-            new MosaicApiError("Choose a runnable prompt version first.", 400),
+            new FlashEvalsApiError("Choose a runnable prompt version first.", 400),
         );
 
         await expect(
@@ -892,7 +892,7 @@ describe("createRunAction", () => {
 
     it("returns API validation failures as form errors", async () => {
         mockApiClient.createRunFromSelection.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 "Cannot start a run with no candidate models.",
                 400,
                 "bad_request",
@@ -915,7 +915,7 @@ describe("createRunAction", () => {
 
     it("rejects a run against an archived dataset", async () => {
         mockApiClient.createRunFromSelection.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 "This dataset is archived. Restore it before running.",
                 400,
             ),
@@ -936,7 +936,7 @@ describe("createRunAction", () => {
 
     it("returns a form error when the chosen prompt bundle does not exist", async () => {
         mockApiClient.createRunFromSelection.mockRejectedValue(
-            new MosaicApiError("Prompt bundle not found.", 400),
+            new FlashEvalsApiError("Prompt bundle not found.", 400),
         );
 
         await expect(
@@ -1211,7 +1211,7 @@ describe("createRunAction", () => {
 
     it("still rejects golden runs when a prompt lacks a scored factual field", async () => {
         mockApiClient.createRunFromSelection.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 'Prompt schema does not define the scorable field "fatPrimarySource".',
                 400,
             ),
@@ -1413,7 +1413,7 @@ describe("createRunAction", () => {
 
     it("rejects non-runnable prompt versions before creating a run", async () => {
         mockApiClient.createRunFromSelection.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 "Choose a runnable prompt version for gpt-4o.",
                 400,
             ),
@@ -1435,7 +1435,7 @@ describe("createRunAction", () => {
 
     it("rejects prompt schemas incompatible with selected scoring fields", async () => {
         mockApiClient.createRunFromSelection.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 'Field config "missing" is not defined in the output structure.',
                 400,
             ),
@@ -1481,7 +1481,7 @@ describe("generateJudgeForRunAction", () => {
 
     it("returns an API error when the prompt version is not runnable yet", async () => {
         mockApiClient.generateJudgeForRun.mockRejectedValue(
-            new MosaicApiError("Select a runnable prompt version first.", 400),
+            new FlashEvalsApiError("Select a runnable prompt version first.", 400),
         );
 
         const result = await generateJudgeForRunAction("pv-1", "dataset-1");
@@ -2389,7 +2389,7 @@ describe("dataset lifecycle actions", () => {
 
     it("returns dataset delete blockers as form errors", async () => {
         mockApiClient.deleteDataset.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 "Delete the runs that use this dataset first.",
                 400,
             ),
@@ -2405,7 +2405,7 @@ describe("dataset lifecycle actions", () => {
 
     it("returns a form error when duplicating a dataset that does not exist", async () => {
         mockApiClient.duplicateDataset.mockRejectedValue(
-            new MosaicApiError("Dataset not found", 400),
+            new FlashEvalsApiError("Dataset not found", 400),
         );
 
         await expect(
@@ -2415,7 +2415,7 @@ describe("dataset lifecycle actions", () => {
 
     it("refuses to duplicate an archived dataset", async () => {
         mockApiClient.duplicateDataset.mockRejectedValue(
-            new MosaicApiError("archived", 400),
+            new FlashEvalsApiError("archived", 400),
         );
 
         await expect(
@@ -2503,7 +2503,7 @@ describe("dataset lifecycle actions", () => {
 
     it("refuses to edit the description of an archived dataset", async () => {
         mockApiClient.updateDatasetDescription.mockRejectedValue(
-            new MosaicApiError("archived", 400),
+            new FlashEvalsApiError("archived", 400),
         );
 
         await expect(
@@ -2516,7 +2516,7 @@ describe("dataset lifecycle actions", () => {
 
     it("refuses to edit the name of an archived dataset", async () => {
         mockApiClient.updateDatasetName.mockRejectedValue(
-            new MosaicApiError("archived", 400),
+            new FlashEvalsApiError("archived", 400),
         );
 
         await expect(
@@ -2544,7 +2544,7 @@ describe("dataset lifecycle actions", () => {
 
     it("rejects archive for another team's dataset", async () => {
         mockApiClient.setDatasetArchived.mockRejectedValue(
-            new MosaicApiError("Forbidden", 400),
+            new FlashEvalsApiError("Forbidden", 400),
         );
 
         await expect(
@@ -2554,7 +2554,7 @@ describe("dataset lifecycle actions", () => {
 
     it("rejects restore for another team's dataset", async () => {
         mockApiClient.setDatasetArchived.mockRejectedValue(
-            new MosaicApiError("Forbidden", 400),
+            new FlashEvalsApiError("Forbidden", 400),
         );
 
         await expect(
@@ -2564,7 +2564,7 @@ describe("dataset lifecycle actions", () => {
 
     it("rejects duplicate for another team's dataset", async () => {
         mockApiClient.duplicateDataset.mockRejectedValue(
-            new MosaicApiError("Forbidden", 400),
+            new FlashEvalsApiError("Forbidden", 400),
         );
 
         await expect(
@@ -2574,7 +2574,7 @@ describe("dataset lifecycle actions", () => {
 
     it("rejects description update for another team's dataset", async () => {
         mockApiClient.updateDatasetDescription.mockRejectedValue(
-            new MosaicApiError("Forbidden", 400),
+            new FlashEvalsApiError("Forbidden", 400),
         );
 
         await expect(
@@ -2587,7 +2587,7 @@ describe("dataset lifecycle actions", () => {
 
     it("rejects name update for another team's dataset", async () => {
         mockApiClient.updateDatasetName.mockRejectedValue(
-            new MosaicApiError("Forbidden", 400),
+            new FlashEvalsApiError("Forbidden", 400),
         );
 
         await expect(
@@ -2602,7 +2602,7 @@ describe("dataset lifecycle actions", () => {
 describe("delete actions report failures instead of throwing", () => {
     it("returns a run delete failure as a form error", async () => {
         mockApiClient.deleteRun.mockRejectedValueOnce(
-            new MosaicApiError("Run is still running", 409),
+            new FlashEvalsApiError("Run is still running", 409),
         );
         await expect(
             deleteRunAction({}, formData({ runId: "run-1" })),
@@ -2611,7 +2611,7 @@ describe("delete actions report failures instead of throwing", () => {
 
     it("returns a label delete failure as a form error", async () => {
         mockApiClient.deleteLabel.mockRejectedValueOnce(
-            new MosaicApiError("Label is locked", 409),
+            new FlashEvalsApiError("Label is locked", 409),
         );
         await expect(
             deleteLabelAction({}, formData({ itemId: "item-1" })),
@@ -2620,7 +2620,7 @@ describe("delete actions report failures instead of throwing", () => {
 
     it("keeps a 5xx on a dataset name save in the form", async () => {
         mockApiClient.updateDatasetName.mockRejectedValueOnce(
-            new MosaicApiError("Flash Evals API request failed (500)", 500),
+            new FlashEvalsApiError("Flash Evals API request failed (500)", 500),
         );
         await expect(
             updateDatasetNameAction(
@@ -2646,7 +2646,7 @@ describe("run review actions report failures instead of throwing", () => {
 
     it("returns a run note API failure as a form error", async () => {
         mockApiClient.saveRunNote.mockRejectedValueOnce(
-            new MosaicApiError("Run not found", 404),
+            new FlashEvalsApiError("Run not found", 404),
         );
         await expect(
             saveRunNoteAction({}, formData({ runId: "run-1", body: "x" })),
@@ -2655,7 +2655,7 @@ describe("run review actions report failures instead of throwing", () => {
 
     it("returns cell feedback failures and invalid verdicts as form errors", async () => {
         mockApiClient.saveCellAnnotation.mockRejectedValueOnce(
-            new MosaicApiError("Cell not found", 404),
+            new FlashEvalsApiError("Cell not found", 404),
         );
         await expect(
             saveCellAnnotationAction(
@@ -2712,7 +2712,7 @@ describe("delete actions", () => {
 
     it("returns rate-limited retries as a form error", async () => {
         mockApiClient.retryRun.mockRejectedValueOnce(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 "Too many run requests: the limit is 10 per minute. Try again in 30 seconds.",
                 429,
                 "rate_limited",
@@ -2746,7 +2746,7 @@ describe("delete actions", () => {
 
     it("returns prompt delete blockers as form errors", async () => {
         mockApiClient.deletePrompt.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 "Delete the runs that use this prompt first.",
                 400,
             ),
@@ -2764,7 +2764,7 @@ describe("delete actions", () => {
 describe("test-draft actions require authentication", () => {
     it("testJudgeDraftAction returns a bounded timeout error", async () => {
         mockApiClient.testJudgeDraft.mockRejectedValue(
-            new MosaicApiError("Judge test timed out.", 400),
+            new FlashEvalsApiError("Judge test timed out.", 400),
         );
         const fd = new FormData();
         fd.set("content", "Score the candidate against the rubric.");
@@ -2889,7 +2889,7 @@ describe("test-draft actions require authentication", () => {
 
     it("generateSchemaFromPromptAction records a failed attempt when generation throws", async () => {
         mockApiClient.generatePromptSchema.mockRejectedValueOnce(
-            new MosaicApiError("schema boom", 400),
+            new FlashEvalsApiError("schema boom", 400),
         );
         const fd = new FormData();
         fd.set("content", "Return the dish name as JSON.");

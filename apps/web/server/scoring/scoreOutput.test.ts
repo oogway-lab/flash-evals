@@ -3,7 +3,7 @@ import { scoreOutput } from "./scoreOutput";
 import { scoreFieldDiff } from "./fieldDiff";
 import { fieldConfigsFromSchema } from "../pipelines/service";
 import type { JudgeFn } from "./judgeFields";
-import type { ApiKeys } from "@mosaic/llm-core";
+import type { ApiKeys } from "@flash-evals/llm-core";
 import type {
     FieldRule,
     IPipelineFieldConfig,

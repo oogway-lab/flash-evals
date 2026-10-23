@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-    MOSAIC_REUSE_LABELS,
+    FLASH_EVALS_REUSE_LABELS,
     NODE_TYPE_LABELS,
     REASONING_EFFORT_LABELS,
     TRANSPORT_LABELS,
@@ -16,12 +16,12 @@ describe("labels", () => {
     });
 
     it("maps known values and humanizes unknown ones", () => {
-        expect(labelFor(MOSAIC_REUSE_LABELS, "force_fresh")).toBe(
+        expect(labelFor(FLASH_EVALS_REUSE_LABELS, "force_fresh")).toBe(
             "Force fresh",
         );
         expect(
             labelFor(
-                MOSAIC_REUSE_LABELS as Record<string, string>,
+                FLASH_EVALS_REUSE_LABELS as Record<string, string>,
                 "brand_new_mode",
             ),
         ).toBe("Brand new mode");

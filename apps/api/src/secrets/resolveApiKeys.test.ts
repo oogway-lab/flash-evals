@@ -1,10 +1,10 @@
 import { Buffer } from "node:buffer";
-import type * as LlmCore from "@mosaic/llm-core";
-import { encryptSecret } from "@mosaic/secrets";
+import type * as LlmCore from "@flash-evals/llm-core";
+import { encryptSecret } from "@flash-evals/secrets";
 import { describe, expect, it, vi } from "vitest";
 
 const providerComplete = vi.hoisted(() => vi.fn(async () => ({ text: "ok" })));
-vi.mock("@mosaic/llm-core", async (importOriginal) => ({
+vi.mock("@flash-evals/llm-core", async (importOriginal) => ({
     ...(await importOriginal<typeof LlmCore>()),
     OpenAIEvalProvider: vi.fn(function () {
         return { complete: providerComplete };
@@ -32,10 +32,10 @@ function config(): IApiConfig {
         supabaseServiceRoleKey: "",
         supabaseStorageBucket: "",
         clerkSecretKey: "test",
-        mosaicTenancyMode: "single-org",
-        mosaicAllowedEmailDomain: "example.com",
+        flashEvalsTenancyMode: "single-org",
+        flashEvalsAllowedEmailDomain: "example.com",
         corsOrigins: [],
-        mosaicLlmProvider: "auto",
+        flashEvalsLlmProvider: "auto",
         openaiApiKey: "env-openai",
         aiGatewayApiKey: "env-gateway",
         sonioxApiKey: "env-soniox",
@@ -44,7 +44,7 @@ function config(): IApiConfig {
         sttCapabilityProbes: {},
         profilingEnabled: false,
         featureFlags: {},
-        mosaicSecretsEncKey: KEY,
+        flashEvalsSecretsEncKey: KEY,
     } as unknown as IApiConfig;
 }
 
@@ -84,10 +84,10 @@ describe("resolveApiKeys", () => {
         await expect(
             resolveApiKeys(
                 dbRows([row("openai", "db-openai")]),
-                { ...config(), mosaicSecretsEncKey: undefined },
+                { ...config(), flashEvalsSecretsEncKey: undefined },
                 TEAM_ID,
             ),
-        ).rejects.toThrow(/MOSAIC_SECRETS_ENC_KEY/);
+        ).rejects.toThrow(/FLASH_EVALS_SECRETS_ENC_KEY/);
     });
 
     it("mixes a database OpenRouter key and URL with other environment keys", async () => {

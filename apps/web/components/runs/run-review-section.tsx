@@ -3,7 +3,7 @@
 import type {
     IRunSetupDatasetOption,
     IRunSetupSttModelOption,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RunSubmitButton } from "./run-submit-button";

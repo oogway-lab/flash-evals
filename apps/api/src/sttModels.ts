@@ -5,12 +5,12 @@ import type {
     SttOutputKind,
     SttProviderId,
     ProviderKeyProvider,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     invalidSttConfigMessagesForModelId,
     sttConfigFieldsForModelId,
     unsupportedSttConfigKeysForFields,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import type { IApiConfig } from "./config.js";
 
 interface ISttModelDefinition {
@@ -133,7 +133,7 @@ const STT_MODELS: ISttModelDefinition[] = [
         runnable: false,
         probeCanEnable: true,
         unavailableWhenConfigured:
-            "Vercel Gateway STT is beta; run a provider smoke and set MOSAIC_STT_CAPABILITY_PROBES before enabling this route.",
+            "Vercel Gateway STT is beta; run a provider smoke and set FLASH_EVALS_STT_CAPABILITY_PROBES before enabling this route.",
     },
     {
         id: "vercel:openai/gpt-4o-mini-transcribe",
@@ -149,7 +149,7 @@ const STT_MODELS: ISttModelDefinition[] = [
         runnable: false,
         probeCanEnable: true,
         unavailableWhenConfigured:
-            "Vercel Gateway STT is beta; run a provider smoke and set MOSAIC_STT_CAPABILITY_PROBES before enabling this route.",
+            "Vercel Gateway STT is beta; run a provider smoke and set FLASH_EVALS_STT_CAPABILITY_PROBES before enabling this route.",
     },
     {
         id: "vercel:openai/whisper-1",
@@ -163,7 +163,7 @@ const STT_MODELS: ISttModelDefinition[] = [
         runnable: false,
         probeCanEnable: true,
         unavailableWhenConfigured:
-            "Vercel Gateway STT is beta; run a provider smoke and set MOSAIC_STT_CAPABILITY_PROBES before enabling this route.",
+            "Vercel Gateway STT is beta; run a provider smoke and set FLASH_EVALS_STT_CAPABILITY_PROBES before enabling this route.",
     },
     {
         id: "soniox:stt-async-v5",

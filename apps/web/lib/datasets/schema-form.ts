@@ -4,7 +4,7 @@ import type {
     ISchemaFieldDescriptor,
     LabelJson,
     SchemaFieldType,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { isRecord } from "@/lib/objects";
 
 export type SchemaParseResult =

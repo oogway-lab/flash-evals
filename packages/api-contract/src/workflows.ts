@@ -79,7 +79,7 @@ export type WorkflowLlmRetryableErrorClass =
 
 export type IWorkflowLlmRetryPolicy =
     | {
-          owner: "mosaic";
+          owner: "flash-evals";
           maxAttempts: number;
           timeoutMs: number;
           retryableErrorClasses: WorkflowLlmRetryableErrorClass[];
@@ -90,7 +90,7 @@ export type IWorkflowLlmRetryPolicy =
       };
 
 export interface IWorkflowLlmCachePolicy {
-    mosaicReuse: "allow" | "force_fresh";
+    flashEvalsReuse: "allow" | "force_fresh";
     /** Provider-managed caching cannot be disabled reliably across transports. */
     providerCaching: "allow";
 }
@@ -212,7 +212,7 @@ export type IWorkflowLlmActualRoute =
 
 export interface IWorkflowLlmAttempt {
     sequence: number;
-    owner: "mosaic" | "gateway";
+    owner: "flash-evals" | "gateway";
     requested: IWorkflowLlmRouteIdentity;
     actual?: IWorkflowLlmActualRoute;
     outcome: "succeeded" | "failed";
@@ -245,7 +245,7 @@ export type IWorkflowLlmCost =
 export type IWorkflowLlmCacheProvenance =
     | { status: "miss" | "disabled" }
     | {
-          status: "mosaic_reuse";
+          status: "flash_evals_reuse";
           fingerprintVersion: typeof WORKFLOW_LLM_FINGERPRINT_VERSION;
           fingerprint: string;
           sourceRunId?: string;

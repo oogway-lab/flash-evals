@@ -36,13 +36,13 @@ const docsToCheck = [
     ...listMarkdownFiles("docs"),
 ].filter((docPath) => existsSync(join(root, docPath)));
 const commandPattern =
-    /\bpnpm\s+(?:--silent\s+)?(?:(--filter)\s+(@mosaic\/[a-z-]+)\s+)?(?:run\s+)?([a-zA-Z0-9:_-]+)/;
+    /\bpnpm\s+(?:--silent\s+)?(?:(--filter)\s+(@flash-evals\/[a-z-]+)\s+)?(?:run\s+)?([a-zA-Z0-9:_-]+)/;
 const packageToDir = new Map([
-    ["@mosaic/web", "apps/web"],
-    ["@mosaic/api", "apps/api"],
-    ["@mosaic/api-contract", "packages/api-contract"],
-    ["@mosaic/llm-core", "packages/llm-core"],
-    ["@mosaic/secrets", "packages/secrets"],
+    ["@flash-evals/web", "apps/web"],
+    ["@flash-evals/api", "apps/api"],
+    ["@flash-evals/api-contract", "packages/api-contract"],
+    ["@flash-evals/llm-core", "packages/llm-core"],
+    ["@flash-evals/secrets", "packages/secrets"],
 ]);
 
 const failures = [];

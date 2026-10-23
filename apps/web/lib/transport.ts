@@ -1,4 +1,4 @@
-import type { ProviderTransport } from "@mosaic/api-contract";
+import type { ProviderTransport } from "@flash-evals/api-contract";
 import { TRANSPORT_LABELS } from "@/lib/labels";
 
 export function transportLabel(transport: ProviderTransport): string {

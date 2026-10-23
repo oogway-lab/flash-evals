@@ -37,7 +37,7 @@ describe("Railway build config", () => {
 
         expect(worker.build.builder).toBe("RAILPACK");
         expect(worker.build.buildCommand).toBe(
-            "pnpm --filter @mosaic/api build",
+            "pnpm --filter @flash-evals/api build",
         );
         expect(worker.deploy.startCommand).toBe(
             "cd apps/web && exec node ../../scripts/node-with-supabase-ca.mjs --import tsx scripts/worker.ts",
@@ -47,7 +47,7 @@ describe("Railway build config", () => {
         // The worker drains for 20 seconds plus a 5-second shutdown buffer.
         expect(worker.deploy.drainingSeconds).toBeGreaterThanOrEqual(25);
         expect(api.deploy.startCommand).toBe(
-            "pnpm --filter @mosaic/api start:railway",
+            "pnpm --filter @flash-evals/api start:railway",
         );
         expect(api.deploy.healthcheckPath).toBe("/health");
     });

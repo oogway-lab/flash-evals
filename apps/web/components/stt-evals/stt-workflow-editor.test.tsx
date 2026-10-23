@@ -5,7 +5,7 @@ import type {
     IPromptWorkflow,
     IRunSetupDatasetOption,
     IRunSetupResponse,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 

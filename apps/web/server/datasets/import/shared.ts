@@ -1,4 +1,4 @@
-import { ALLOWED_AUDIO_TYPES, ALLOWED_IMAGE_TYPES } from "@mosaic/api-contract";
+import { ALLOWED_AUDIO_TYPES, ALLOWED_IMAGE_TYPES } from "@flash-evals/api-contract";
 import type { IParsedSchemaDescriptor, LabelJson } from "../../db/jsonTypes";
 import { formatLabelError, validateLabel } from "../schemaForm";
 import { isRecord } from "../../lib/objects";

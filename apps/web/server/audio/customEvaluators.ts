@@ -1,7 +1,7 @@
-import type { EvalImage, ReasoningEffort } from "@mosaic/llm-core";
+import type { EvalImage, ReasoningEffort } from "@flash-evals/llm-core";
 import { runJudge } from "../scoring/judge";
 import { audioReferenceFromLabel } from "./reference";
-import type { ApiKeys } from "@mosaic/llm-core";
+import type { ApiKeys } from "@flash-evals/llm-core";
 import type { LabelJson } from "../db/jsonTypes";
 
 export interface ITranscriptEvaluatorConfig {

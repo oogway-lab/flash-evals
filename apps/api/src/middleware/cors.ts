@@ -6,7 +6,7 @@ const CORS_METHODS = "GET,POST,PUT,PATCH,DELETE,OPTIONS";
 // `X-Upsert` is sent by the direct-upload client PUT; the local adapter (U8)
 // PUTs cross-origin to this API, so it must be an allowed request header.
 const CORS_HEADERS =
-    "Content-Type,Authorization,X-Mosaic-Internal-Token,X-Request-Id,X-Upsert";
+    "Content-Type,Authorization,X-Flash-Evals-Internal-Token,X-Request-Id,X-Upsert";
 const CORS_EXPOSED_HEADERS = "X-Request-Id";
 
 export function isOriginAllowed(

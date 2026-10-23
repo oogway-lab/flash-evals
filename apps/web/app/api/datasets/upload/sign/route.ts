@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import {
-    MosaicApiError,
+    FlashEvalsApiError,
     type ISignedUploadFileRequest,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { requireActiveProject } from "@/server/projects/activeProject";
 import { authErrorResponse } from "@/server/auth/http";
 import { serverApiClient } from "@/server/api/client";
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
     } catch (err) {
         const authResponse = authErrorResponse(err);
         if (authResponse) return authResponse;
-        if (err instanceof MosaicApiError) {
+        if (err instanceof FlashEvalsApiError) {
             return NextResponse.json(
                 { error: err.message },
                 { status: err.status },

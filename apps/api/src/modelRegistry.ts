@@ -6,8 +6,8 @@ import {
     type ApiKeys,
     type EvalProviderMode,
     type IModelRegistryEntry,
-} from "@mosaic/llm-core";
-import type { IRunSetupModelOption } from "@mosaic/api-contract";
+} from "@flash-evals/llm-core";
+import type { IRunSetupModelOption } from "@flash-evals/api-contract";
 
 export { MODEL_REGISTRY, registryEntryFor, type IModelRegistryEntry };
 

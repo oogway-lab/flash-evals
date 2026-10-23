@@ -43,7 +43,7 @@ const fixtures = {
 const urls = new Map();
 for (const [specifier, source] of Object.entries(fixtures)) {
     const file = join(
-        process.env.MOSAIC_WORKER_TEST_FIXTURES,
+        process.env.FLASH_EVALS_WORKER_TEST_FIXTURES,
         `${specifier.split("/").at(-1)}.cjs`,
     );
     writeFileSync(file, source);

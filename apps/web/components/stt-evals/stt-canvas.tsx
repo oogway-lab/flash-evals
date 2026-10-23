@@ -17,8 +17,8 @@ import type {
     IWorkflowLlmSelection,
     IWorkflowNodeConfig,
     WorkflowNodeType,
-} from "@mosaic/api-contract";
-import { isWorkflowModelBackedNodeType } from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
+import { isWorkflowModelBackedNodeType } from "@flash-evals/api-contract";
 import {
     addEdge,
     Background,

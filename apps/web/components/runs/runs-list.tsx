@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { IRunListRow } from "@mosaic/api-contract";
+import type { IRunListRow } from "@flash-evals/api-contract";
 import { fmtScore, MISSING_VALUE, shortId } from "@/lib/format";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { deleteRunAction } from "@/app/actions";

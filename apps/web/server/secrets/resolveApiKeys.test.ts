@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { encryptSecret } from "@mosaic/secrets";
+import { encryptSecret } from "@flash-evals/secrets";
 import { describe, expect, it, vi } from "vitest";
 
 const KEY = Buffer.alloc(32, 6).toString("base64");
@@ -39,7 +39,7 @@ describe("resolveApiKeys", () => {
             resolveApiKeys(TEAM_ID, {
                 env: { OPENAI_API_KEY: "env-openai" },
             }),
-        ).rejects.toThrow(/MOSAIC_SECRETS_ENC_KEY/);
+        ).rejects.toThrow(/FLASH_EVALS_SECRETS_ENC_KEY/);
     });
 
     it("falls back to environment router URLs when stored rows omit them", async () => {

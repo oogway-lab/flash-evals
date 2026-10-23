@@ -105,8 +105,8 @@ PostgreSQL and saves their results.
 | `packages/llm-core`     | Model-provider transports and cost helpers               |
 | `packages/secrets`      | Provider-credential encryption helpers                   |
 
-The product is called Flash Evals. Existing `@mosaic/*` package names,
-`MOSAIC_*` variables, and `mosaic://` resource URIs remain unchanged for
+The product is called Flash Evals. Existing `@flash-evals/*` package names,
+`FLASH_EVALS_*` variables, and `flash-evals://` resource URIs remain unchanged for
 compatibility. Use those identifiers exactly as documented.
 
 ## Contributing and license

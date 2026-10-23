@@ -19,12 +19,12 @@ export async function timedSpan<T>(
 }
 
 function shouldLogTiming(durationMs: number): boolean {
-    if (process.env.MOSAIC_TIMING_LOGS === "true") return true;
+    if (process.env.FLASH_EVALS_TIMING_LOGS === "true") return true;
     return durationMs >= slowThresholdMs();
 }
 
 function slowThresholdMs(): number {
-    const raw = process.env.MOSAIC_TIMING_SLOW_MS;
+    const raw = process.env.FLASH_EVALS_TIMING_SLOW_MS;
     if (!raw) return DEFAULT_SLOW_MS;
 
     const parsed = Number(raw);
@@ -37,7 +37,7 @@ function formatTimingLog(
     metadata: TimingMetadata,
 ): string {
     const fields = [
-        "mosaic_timing",
+        "flash_evals_timing",
         `span=${sanitizeLogValue(span)}`,
         `duration_ms=${Math.round(durationMs)}`,
     ];

@@ -61,9 +61,9 @@ describe("worker process shutdown", () => {
     beforeEach(() => {
         vi.resetModules();
         vi.useRealTimers();
-        previousDrainTimeout = process.env.MOSAIC_WORKER_DRAIN_TIMEOUT_MS;
+        previousDrainTimeout = process.env.FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS;
         previousExitCode = process.exitCode;
-        process.env.MOSAIC_WORKER_DRAIN_TIMEOUT_MS = "1000";
+        process.env.FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS = "1000";
         mocks.closeDatabasePool.mockReset().mockResolvedValue(undefined);
         mocks.startRunWorker.mockReset().mockResolvedValue(undefined);
         mocks.stopRunWorker
@@ -85,9 +85,9 @@ describe("worker process shutdown", () => {
             process.removeListener(signal, listener);
         }
         if (previousDrainTimeout === undefined) {
-            delete process.env.MOSAIC_WORKER_DRAIN_TIMEOUT_MS;
+            delete process.env.FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS;
         } else {
-            process.env.MOSAIC_WORKER_DRAIN_TIMEOUT_MS = previousDrainTimeout;
+            process.env.FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS = previousDrainTimeout;
         }
         process.exitCode = previousExitCode;
         vi.clearAllTimers();

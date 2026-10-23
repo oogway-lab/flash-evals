@@ -31,7 +31,7 @@ function parseDrainTimeoutMs(value: string | undefined): number {
 }
 
 const drainTimeoutMs = parseDrainTimeoutMs(
-    process.env.MOSAIC_WORKER_DRAIN_TIMEOUT_MS,
+    process.env.FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS,
 );
 
 async function main(): Promise<void> {

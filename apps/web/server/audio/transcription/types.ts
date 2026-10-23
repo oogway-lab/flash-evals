@@ -1,4 +1,4 @@
-import type { ISttModelIdentity } from "@mosaic/api-contract";
+import type { ISttModelIdentity } from "@flash-evals/api-contract";
 import type {
     IAudioTranscriptMetadata,
     ITranscriptSegment,

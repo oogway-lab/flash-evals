@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import type { IWorkflowRunDetailResponse } from "@mosaic/api-contract";
+import type { IWorkflowRunDetailResponse } from "@flash-evals/api-contract";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

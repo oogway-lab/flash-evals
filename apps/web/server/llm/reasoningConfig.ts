@@ -1,4 +1,4 @@
-import type { ReasoningEffort } from "@mosaic/llm-core";
+import type { ReasoningEffort } from "@flash-evals/llm-core";
 import { registryEntryFor } from "./modelRegistry";
 
 export function resolveReasoningEffort(

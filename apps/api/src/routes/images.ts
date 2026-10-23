@@ -1,7 +1,7 @@
 import type { IApiConfig } from "../config.js";
 import type { IDb } from "../db.js";
 import { ApiNotFoundError } from "../errors.js";
-import { getR2Object } from "@mosaic/object-storage";
+import { getR2Object } from "@flash-evals/object-storage";
 import { promises as fs } from "node:fs";
 import { isStorageKey, localMediaPath } from "../mediaPaths.js";
 

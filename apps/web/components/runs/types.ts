@@ -1,5 +1,5 @@
 import { isRecord } from "@/lib/objects";
-import type { IMatrixCellScore } from "@mosaic/api-contract";
+import type { IMatrixCellScore } from "@flash-evals/api-contract";
 import type { IActionState } from "@/app/actions/types";
 import type {
     FieldDiffDetails,

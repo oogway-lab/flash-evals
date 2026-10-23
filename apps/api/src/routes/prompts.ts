@@ -1,4 +1,4 @@
-import type { CompletionResult } from "@mosaic/llm-core";
+import type { CompletionResult } from "@flash-evals/llm-core";
 import { createHash } from "node:crypto";
 import Ajv2020Module from "ajv/dist/2020.js";
 import type { ErrorObject, ValidateFunction } from "ajv";
@@ -31,7 +31,7 @@ import type {
     IJsonSchemaObject,
     ProviderTransport,
     ReasoningEffort,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     completionCostFields,
     getBareModelName,
@@ -41,7 +41,7 @@ import {
     registryEntryForLiveGatewayModel,
     type IEvalCompletionProvider,
     type IModelPricing,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 import type { IApiConfig } from "../config.js";
 import type { IDb } from "../db.js";
 import {
@@ -2200,7 +2200,7 @@ async function evalProvider(
 ): Promise<IEvalCompletionProvider> {
     const resolved = await resolveApiKeys(db, config, teamId);
     return getEvalProvider(resolved.apiKeys, {
-        provider: config.mosaicLlmProvider,
+        provider: config.flashEvalsLlmProvider,
         ...teamBaseUrlProviderOptions(resolved),
         ...(transport ? { transport } : {}),
         ...(exactTransportModelId ? { exactTransportModelId } : {}),

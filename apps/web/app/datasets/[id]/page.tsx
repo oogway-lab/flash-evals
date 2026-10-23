@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 import { requireActiveProject as requirePagePrincipal } from "@/server/projects/activeProject";
 import { serverApiClient } from "@/server/api/client";
 import {
@@ -39,7 +39,7 @@ export default async function DatasetPage({
     const detail = await serverApiClient()
         .getDatasetDetail(p.teamId, p.projectId, id)
         .catch((err: unknown) => {
-            if (err instanceof MosaicApiError && err.status === 404) notFound();
+            if (err instanceof FlashEvalsApiError && err.status === 404) notFound();
             throw err;
         });
 

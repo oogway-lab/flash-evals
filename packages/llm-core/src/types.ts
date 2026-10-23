@@ -90,7 +90,7 @@ export type ICompletionActualRoute =
 
 export interface ICompletionAttempt {
     sequence: number;
-    owner: "mosaic" | "gateway";
+    owner: "flash-evals" | "gateway";
     requested: ICompletionRoute;
     actual?: ICompletionActualRoute;
     outcome: "succeeded" | "failed";
@@ -143,7 +143,7 @@ export interface CompletionRequest {
     reasoningEffort?: ReasoningEffort;
     timeoutMs?: number;
     maxRetries?: number;
-    retryOwner?: "mosaic" | "gateway";
+    retryOwner?: "flash-evals" | "gateway";
     route?: ICompletionRoute;
     cachePolicy?: ICompletionCachePolicy;
     signal?: AbortSignal;

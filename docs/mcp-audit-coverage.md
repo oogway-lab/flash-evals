@@ -2,7 +2,7 @@
 
 ## Catalog under test
 
-The MCP server reports `mosaic-evals` version `0.1.0`. The complete current catalog contains 88 tools, 8 resource templates, and the `create_eval_happy_path` prompt. The original catalog had 78 tools; ten additional tools provide bounded summary and page readers for dataset items, datasets, eval runs, workflow runs, and workflow summaries. The full tool names, descriptions, input schemas, and effect annotations are snapshotted in `apps/api/src/mcp/__snapshots__/registry.test.ts.snap`.
+The MCP server reports `flash-evals-evals` version `0.1.0`. The complete current catalog contains 88 tools, 8 resource templates, and the `create_eval_happy_path` prompt. The original catalog had 78 tools; ten additional tools provide bounded summary and page readers for dataset items, datasets, eval runs, workflow runs, and workflow summaries. The full tool names, descriptions, input schemas, and effect annotations are snapshotted in `apps/api/src/mcp/__snapshots__/registry.test.ts.snap`.
 
 The transport matrix in `apps/api/src/mcp/toolCoverage.test.ts` registers every tool through the production registry and calls it through the MCP SDK's actual stdio and streamable HTTP transports. Domain payloads and paid-provider boundaries are mocked in this broad matrix so destructive calls only touch synthetic fixtures and provider calls never incur charges. It verifies a successful handler result for all 88 tools; malformed arguments are rejected for every tool with an input schema. The three no-input-schema tools (`list_workspaces`, `get_current_user`, `list_provider_keys`) have no meaningful schema-invalid case.
 
@@ -107,14 +107,14 @@ That matrix verifies transport, registration, input decoding, output-schema vali
 
 | Surface                  | HTTP         | stdio        | Evidence                                   |
 | ------------------------ | ------------ | ------------ | ------------------------------------------ |
-| `mosaic-dataset`         | Read success | Read success | Complete legacy detail resource            |
-| `mosaic-prompt`          | Read success | Read success | Complete prompt detail resource            |
-| `mosaic-run`             | Read success | Read success | Complete legacy run matrix resource        |
-| `mosaic-models`          | Read success | Read success | Project model options resource             |
-| `mosaic-dataset-summary` | Read success | Read success | Compact summary with bounded-page link     |
-| `mosaic-dataset-items`   | Read success | Read success | Bounded first page and completion metadata |
-| `mosaic-run-summary`     | Read success | Read success | Compact summary with bounded-page link     |
-| `mosaic-run-cells`       | Read success | Read success | Bounded first page and completion metadata |
+| `flash-evals-dataset`         | Read success | Read success | Complete legacy detail resource            |
+| `flash-evals-prompt`          | Read success | Read success | Complete prompt detail resource            |
+| `flash-evals-run`             | Read success | Read success | Complete legacy run matrix resource        |
+| `flash-evals-models`          | Read success | Read success | Project model options resource             |
+| `flash-evals-dataset-summary` | Read success | Read success | Compact summary with bounded-page link     |
+| `flash-evals-dataset-items`   | Read success | Read success | Bounded first page and completion metadata |
+| `flash-evals-run-summary`     | Read success | Read success | Compact summary with bounded-page link     |
+| `flash-evals-run-cells`       | Read success | Read success | Bounded first page and completion metadata |
 | `create_eval_happy_path` | Get success  | Get success  | Prompt content returned by both transports |
 
 Read-profile calls now positively exercise every independently listed read tool through both HTTP and stdio, alongside direct denials for every restricted tool. Eval-profile coverage checks a successful read and write plus an admin-only denial over both transports. Read-profile resource access is also exercised through stdio. Resource handlers use the authenticated project resolver; HTTP and stdio tests cover cross-tenant reads, protocol errors, and team/project ownership.
@@ -131,7 +131,7 @@ Successful tools retain the complete compact JSON text fallback alongside `struc
 | HTTP auth, compatibility, errors, and protocol            | `apps/api/src/mcp/http.test.ts`, plus the HTTP matrix above                                              | Real streamable HTTP transport; OAuth resolution is stubbed only in the exhaustive fixture matrix                                                                                                                       |
 | stdio registration and protocol                           | `apps/api/src/mcp/stdio.test.ts`, plus the stdio matrix above                                            | Real MCP `StdioServerTransport` and SDK client connected through in-memory byte streams                                                                                                                                 |
 
-The full workspace suite previously passed on the combined implementation and acceptance-test head (`pnpm test`: 174 files passed, 3 skipped; 1,273 passed, 5 skipped). The API Postgres integrations are opt-in and were skipped in that checkout because no `MOSAIC_TEST_DATABASE_URL` was configured. The separate [real-backend acceptance ledger](mcp-real-backend-acceptance.md) records the 10/10 HTTP/Postgres scenarios, reader/idempotency integration results, and the exact distinction between HTTP/Postgres and stdio profile coverage. The final text-fallback compatibility regression has a dedicated >24,000-character test.
+The full workspace suite previously passed on the combined implementation and acceptance-test head (`pnpm test`: 174 files passed, 3 skipped; 1,273 passed, 5 skipped). The API Postgres integrations are opt-in and were skipped in that checkout because no `FLASH_EVALS_TEST_DATABASE_URL` was configured. The separate [real-backend acceptance ledger](mcp-real-backend-acceptance.md) records the 10/10 HTTP/Postgres scenarios, reader/idempotency integration results, and the exact distinction between HTTP/Postgres and stdio profile coverage. The final text-fallback compatibility regression has a dedicated >24,000-character test.
 
 ## Catalog-size note
 

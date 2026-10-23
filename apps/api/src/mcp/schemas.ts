@@ -1,4 +1,4 @@
-import type { IWorkflowNodeInput } from "@mosaic/api-contract";
+import type { IWorkflowNodeInput } from "@flash-evals/api-contract";
 import { z } from "zod";
 import { WorkflowLlmSelection } from "../routes/llmRoutingSchemas.js";
 

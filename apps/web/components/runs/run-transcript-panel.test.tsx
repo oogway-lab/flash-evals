@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, within } from "@testing-library/react";
-import type { IRunAudioTranscriptSummary } from "@mosaic/api-contract";
+import type { IRunAudioTranscriptSummary } from "@flash-evals/api-contract";
 import { fmtDate } from "@/lib/format";
 import { RunTranscriptPanel } from "./run-transcript-panel";
 

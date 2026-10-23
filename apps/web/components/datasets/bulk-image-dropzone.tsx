@@ -3,7 +3,7 @@
 import {
     MAX_IMPORT_FILE_COUNT,
     MAX_IMAGE_IMPORT_BYTES,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     IMAGE_ACCEPT,
     IMAGE_MAX_BYTES,

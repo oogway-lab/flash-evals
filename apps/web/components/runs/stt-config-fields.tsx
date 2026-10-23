@@ -6,7 +6,7 @@ import {
     type IRunSetupSttModelOption,
     type ISttModelConfigField,
     type ISttRunConfig,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {

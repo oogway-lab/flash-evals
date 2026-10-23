@@ -4,7 +4,7 @@ import { MAX_TRANSCRIPT_CHARACTERS } from "./editDistance";
 
 // V8 instrumentation distorts wall-clock measurements; regular unit tests keep
 // enforcing these performance budgets while coverage runs still test results.
-const checkPerformanceBudgets = process.env.MOSAIC_COVERAGE_RUN !== "1";
+const checkPerformanceBudgets = process.env.FLASH_EVALS_COVERAGE_RUN !== "1";
 
 describe("scoreTranscriptMetrics", () => {
     it("computes WER and CER for 25,000-character transcripts within ten seconds", () => {

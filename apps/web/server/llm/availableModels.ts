@@ -5,7 +5,7 @@ import {
     type ApiKeys,
     type IAvailableModelMetadata,
     type IModelRegistryEntry,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 
 export interface IResolvedModel extends IModelRegistryEntry {
     available: boolean;

@@ -8,7 +8,7 @@ import type {
     IRunSetupModelOption,
     IRunSetupVersionOption,
     ReasoningEffort,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

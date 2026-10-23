@@ -9,7 +9,7 @@ export function logApiEvent(
     const payload = {
         level,
         event,
-        service: "mosaic-api",
+        service: "flash-evals-api",
         timestamp: new Date().toISOString(),
         ...sanitizeMetadata(metadata),
     };

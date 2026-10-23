@@ -5,7 +5,7 @@ import {
     type ApiKeys,
     type IModelPricing,
     type EvalProviderTransport,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 import { registryEntryFor } from "./modelRegistry";
 
 export type ModelPricing = IModelPricing;

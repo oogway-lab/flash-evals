@@ -1,4 +1,4 @@
-import { getBareModelName, type ApiKeys } from "@mosaic/llm-core";
+import { getBareModelName, type ApiKeys } from "@flash-evals/llm-core";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db/client";
 import {
@@ -27,7 +27,7 @@ import { scoreTranscriptMetrics } from "../audio/metrics";
 import type {
     ISttRunConfig,
     IWorkflowLlmExecutionProvenance,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import type { ITranscriptArtifact } from "../audio/transcription";
 import type { IWorkflowSttScoreDetails } from "../db/jsonTypes";
 import { executeWorkflowLlmInvocation } from "./llmInvocation";

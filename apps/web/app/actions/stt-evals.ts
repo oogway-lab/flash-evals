@@ -6,8 +6,8 @@ import type {
     IWorkflowEdgeInput,
     IWorkflowNodeInput,
     WorkflowRunTarget,
-} from "@mosaic/api-contract";
-import { createMultiWorkflowSeed, MosaicApiError } from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
+import { createMultiWorkflowSeed, FlashEvalsApiError } from "@flash-evals/api-contract";
 import { serverApiClient } from "@/server/api/client";
 import { clientErrorMessage, UserFacingError } from "@/server/lib/errors";
 import { requireActiveProject } from "@/server/projects/activeProject";
@@ -140,7 +140,7 @@ export async function retryWorkflowRunAction(
 }
 
 function workflowActionError(error: unknown): IActionState {
-    if (error instanceof MosaicApiError && error.path) {
+    if (error instanceof FlashEvalsApiError && error.path) {
         const message = [error.message, error.remediation]
             .filter(Boolean)
             .join(" ");

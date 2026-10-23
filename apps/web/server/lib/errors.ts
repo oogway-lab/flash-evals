@@ -1,4 +1,4 @@
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 
 export const GENERIC_CLIENT_ERROR_MESSAGE =
     "Something went wrong. Please try again.";
@@ -39,7 +39,7 @@ export function clientErrorMessage(err: unknown): string {
 function isUserFacingError(err: unknown): err is Error {
     if (!(err instanceof Error)) return false;
     // The API already returns a generic message for its own internal faults.
-    if (err instanceof MosaicApiError) return true;
+    if (err instanceof FlashEvalsApiError) return true;
     if (err instanceof UserFacingError) return true;
     return USER_FACING_ERROR_NAMES.has(err.name);
 }

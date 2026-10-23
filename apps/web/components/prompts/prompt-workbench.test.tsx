@@ -17,7 +17,7 @@ import type {
     IPromptTestRunActionState,
     IPromptWorkbenchState,
 } from "@/app/actions";
-import type { ReasoningEffort } from "@mosaic/llm-core";
+import type { ReasoningEffort } from "@flash-evals/llm-core";
 
 beforeAll(() => {
     (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver =
@@ -854,7 +854,7 @@ describe("PromptWorkbench test panel", () => {
             optimizationRationale: "Tighter JSON instructions.",
             optimizationGuidanceSource: {
                 title: "Flash Evals generic prompt optimization guidance",
-                url: "internal://mosaic/prompt-optimization",
+                url: "internal://flash-evals/prompt-optimization",
                 retrievedAt: "2026-07-08",
             },
             structuredOutputNotes: ["Return only the JSON object."],

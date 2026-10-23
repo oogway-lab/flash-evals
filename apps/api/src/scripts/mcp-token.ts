@@ -12,8 +12,8 @@ function usage(): never {
     console.error(
         [
             "Usage:",
-            '  pnpm --filter @mosaic/api mcp:token:create -- --email user@example.com --name "Claude Desktop"',
-            "  pnpm --filter @mosaic/api mcp:token:revoke -- --token mcp_... | --token-id uuid",
+            '  pnpm --filter @flash-evals/api mcp:token:create -- --email user@example.com --name "Claude Desktop"',
+            "  pnpm --filter @flash-evals/api mcp:token:revoke -- --token mcp_... | --token-id uuid",
         ].join("\n"),
     );
     process.exit(1);
@@ -44,7 +44,7 @@ async function createToken(): Promise<void> {
 
     const teamId = user.team_id;
     const token = createMcpTokenSecret();
-    const tokenHash = hashMcpToken(token, config.mosaicMcpTokenPepper);
+    const tokenHash = hashMcpToken(token, config.flashEvalsMcpTokenPepper);
     const tokenResult = await db.query<{ id: string }>(
         `insert into mcp_access_tokens (user_id, team_id, name, token_hash, created_by)
         values ($1, $2, $3, $4, $1)
@@ -79,7 +79,7 @@ async function revokeToken(): Promise<void> {
               set revoked_at = now()
               where token_hash = $1 and revoked_at is null
               returning id`,
-              [hashMcpToken(token, config.mosaicMcpTokenPepper)],
+              [hashMcpToken(token, config.flashEvalsMcpTokenPepper)],
           )
         : await db.query<{ id: string }>(
               `update mcp_access_tokens

@@ -8,7 +8,7 @@ import { withMcpIdempotency } from "./idempotency.js";
 
 // Opt in with a disposable migrated PostgreSQL database. All fixtures use a
 // fresh synthetic tenant, and no provider or storage calls are made.
-const databaseUrl = process.env.MOSAIC_TEST_DATABASE_URL;
+const databaseUrl = process.env.FLASH_EVALS_TEST_DATABASE_URL;
 
 describe.skipIf(!databaseUrl)("MCP copy idempotency (PostgreSQL)", () => {
     const pool = new pg.Pool({ connectionString: databaseUrl, max: 5 });

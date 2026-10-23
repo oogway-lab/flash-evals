@@ -3,18 +3,18 @@ services:
         image: postgres:17-alpine
         restart: unless-stopped
         environment:
-            POSTGRES_USER: mosaic
-            POSTGRES_PASSWORD: mosaic
-            POSTGRES_DB: mosaic
+            POSTGRES_USER: flash_evals
+            POSTGRES_PASSWORD: flash_evals
+            POSTGRES_DB: flash_evals
         ports:
             - "127.0.0.1:54322:5432"
         volumes:
-            - mosaic-postgres:/var/lib/postgresql/data
+            - flash-evals-postgres:/var/lib/postgresql/data
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U mosaic -d mosaic"]
+            test: ["CMD-SHELL", "pg_isready -U flash_evals -d flash_evals"]
             interval: 5s
             timeout: 5s
             retries: 10
 
 volumes:
-    mosaic-postgres:
+    flash-evals-postgres:

@@ -14,7 +14,7 @@ test("api health endpoint reports service readiness", async ({ request }) => {
     // internal API token, so the deployment-shape checks run only when it is set.
     const response = await request.get(`${apiBaseUrl}/health`, {
         headers: internalApiToken
-            ? { "x-mosaic-internal-token": internalApiToken }
+            ? { "x-flash-evals-internal-token": internalApiToken }
             : {},
     });
     expect(response.ok()).toBe(true);
@@ -25,7 +25,7 @@ test("api health endpoint reports service readiness", async ({ request }) => {
     }
     expect(payload).toMatchObject({
         status: "ok",
-        service: "mosaic-api",
+        service: "flash-evals-api",
         storage: "supabase",
         database: "supabase-postgres",
         railwayVolumeRequired: false,

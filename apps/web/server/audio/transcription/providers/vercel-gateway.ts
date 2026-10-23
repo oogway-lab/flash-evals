@@ -1,5 +1,5 @@
 import { createGateway } from "@ai-sdk/gateway";
-import { gatewayAttributionHeaders } from "@mosaic/llm-core";
+import { gatewayAttributionHeaders } from "@flash-evals/llm-core";
 import type {
     ITranscriptArtifact,
     ITranscriptionProviderInput,

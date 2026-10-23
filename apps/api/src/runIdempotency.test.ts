@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ICreateRunRequest } from "@mosaic/api-contract";
+import type { ICreateRunRequest } from "@flash-evals/api-contract";
 import type { IDb, ITransactionalDb } from "./db.js";
 import { createRunWithIdempotency } from "./runIdempotency.js";
 

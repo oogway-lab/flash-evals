@@ -4,7 +4,7 @@ import type {
     ILeaderboardRow,
     IRunConfigSnapshot,
     IRunContext,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { RunSummary } from "./run-summary";
 
 vi.mock("next/navigation", () => ({

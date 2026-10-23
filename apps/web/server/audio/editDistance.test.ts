@@ -3,7 +3,7 @@ import { editCounts, type IEditCounts } from "./editDistance";
 
 // V8 instrumentation distorts wall-clock measurements; regular unit tests keep
 // enforcing these performance budgets while coverage runs still test results.
-const checkPerformanceBudgets = process.env.MOSAIC_COVERAGE_RUN !== "1";
+const checkPerformanceBudgets = process.env.FLASH_EVALS_COVERAGE_RUN !== "1";
 
 describe("editCounts", () => {
     it("matches the matrix implementation on deterministic random fixtures", () => {

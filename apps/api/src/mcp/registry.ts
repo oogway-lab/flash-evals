@@ -45,7 +45,7 @@ import {
     encodeMcpPageCursor,
 } from "./pagination.js";
 
-export function registerMosaicMcpCapabilities(
+export function registerFlashEvalsMcpCapabilities(
     server: McpServer,
     context: IMcpContext,
 ): void {
@@ -256,14 +256,14 @@ function registerResources(server: McpServer, context: IMcpContext): void {
     const { runtime, principal } = context;
 
     server.registerResource(
-        "mosaic-dataset",
-        new ResourceTemplate("mosaic://projects/{projectId}/datasets/{id}", {
+        "flash-evals-dataset",
+        new ResourceTemplate("flash-evals://projects/{projectId}/datasets/{id}", {
             list: undefined,
         }),
         {
             title: "Flash Evals dataset",
             description:
-                "Legacy full dataset response from an explicit project. For bounded context use mosaic-dataset-summary and mosaic-dataset-items.",
+                "Legacy full dataset response from an explicit project. For bounded context use flash-evals-dataset-summary and flash-evals-dataset-items.",
             mimeType: "application/json",
         },
         async (uri, variables) =>
@@ -282,8 +282,8 @@ function registerResources(server: McpServer, context: IMcpContext): void {
     );
 
     server.registerResource(
-        "mosaic-prompt",
-        new ResourceTemplate("mosaic://projects/{projectId}/prompts/{id}", {
+        "flash-evals-prompt",
+        new ResourceTemplate("flash-evals://projects/{projectId}/prompts/{id}", {
             list: undefined,
         }),
         {
@@ -308,14 +308,14 @@ function registerResources(server: McpServer, context: IMcpContext): void {
     );
 
     server.registerResource(
-        "mosaic-run",
-        new ResourceTemplate("mosaic://projects/{projectId}/runs/{id}", {
+        "flash-evals-run",
+        new ResourceTemplate("flash-evals://projects/{projectId}/runs/{id}", {
             list: undefined,
         }),
         {
             title: "Flash Evals eval run",
             description:
-                "Legacy full run matrix from an explicit project. For bounded context use mosaic-run-summary and mosaic-run-cells.",
+                "Legacy full run matrix from an explicit project. For bounded context use flash-evals-run-summary and flash-evals-run-cells.",
             mimeType: "application/json",
         },
         async (uri, variables) =>
@@ -334,8 +334,8 @@ function registerResources(server: McpServer, context: IMcpContext): void {
     );
 
     server.registerResource(
-        "mosaic-models",
-        new ResourceTemplate("mosaic://projects/{projectId}/models", {
+        "flash-evals-models",
+        new ResourceTemplate("flash-evals://projects/{projectId}/models", {
             list: undefined,
         }),
         {
@@ -360,9 +360,9 @@ function registerResources(server: McpServer, context: IMcpContext): void {
     );
 
     server.registerResource(
-        "mosaic-dataset-summary",
+        "flash-evals-dataset-summary",
         new ResourceTemplate(
-            "mosaic://projects/{projectId}/datasets/{id}/summary",
+            "flash-evals://projects/{projectId}/datasets/{id}/summary",
             { list: undefined },
         ),
         {
@@ -386,7 +386,7 @@ function registerResources(server: McpServer, context: IMcpContext): void {
             return resourceJson(uri.href, {
                 ...summary,
                 related: {
-                    itemsUri: `mosaic://projects/${projectId}/datasets/${datasetId}/items/50/first`,
+                    itemsUri: `flash-evals://projects/${projectId}/datasets/${datasetId}/items/50/first`,
                     tool: {
                         name: "list_dataset_items",
                         arguments: { projectId, datasetId, limit: 50 },
@@ -397,9 +397,9 @@ function registerResources(server: McpServer, context: IMcpContext): void {
     );
 
     server.registerResource(
-        "mosaic-dataset-items",
+        "flash-evals-dataset-items",
         new ResourceTemplate(
-            "mosaic://projects/{projectId}/datasets/{id}/items/{limit}/{cursor}",
+            "flash-evals://projects/{projectId}/datasets/{id}/items/{limit}/{cursor}",
             { list: undefined },
         ),
         {
@@ -438,7 +438,7 @@ function registerResources(server: McpServer, context: IMcpContext): void {
                 ...(nextCursor
                     ? {
                           nextCursor,
-                          nextPageUri: `mosaic://projects/${projectId}/datasets/${datasetId}/items/${limit}/${nextCursor}`,
+                          nextPageUri: `flash-evals://projects/${projectId}/datasets/${datasetId}/items/${limit}/${nextCursor}`,
                       }
                     : {}),
             };
@@ -447,9 +447,9 @@ function registerResources(server: McpServer, context: IMcpContext): void {
     );
 
     server.registerResource(
-        "mosaic-run-summary",
+        "flash-evals-run-summary",
         new ResourceTemplate(
-            "mosaic://projects/{projectId}/runs/{id}/summary",
+            "flash-evals://projects/{projectId}/runs/{id}/summary",
             { list: undefined },
         ),
         {
@@ -473,7 +473,7 @@ function registerResources(server: McpServer, context: IMcpContext): void {
             return resourceJson(uri.href, {
                 ...summary,
                 related: {
-                    cellsUri: `mosaic://projects/${projectId}/runs/${runId}/cells/50/first`,
+                    cellsUri: `flash-evals://projects/${projectId}/runs/${runId}/cells/50/first`,
                     tool: {
                         name: "list_run_cells",
                         arguments: { projectId, runId, limit: 50 },
@@ -484,9 +484,9 @@ function registerResources(server: McpServer, context: IMcpContext): void {
     );
 
     server.registerResource(
-        "mosaic-run-cells",
+        "flash-evals-run-cells",
         new ResourceTemplate(
-            "mosaic://projects/{projectId}/runs/{id}/cells/{limit}/{cursor}",
+            "flash-evals://projects/{projectId}/runs/{id}/cells/{limit}/{cursor}",
             { list: undefined },
         ),
         {
@@ -525,7 +525,7 @@ function registerResources(server: McpServer, context: IMcpContext): void {
                 ...(nextCursor
                     ? {
                           nextCursor,
-                          nextPageUri: `mosaic://projects/${projectId}/runs/${runId}/cells/${limit}/${nextCursor}`,
+                          nextPageUri: `flash-evals://projects/${projectId}/runs/${runId}/cells/${limit}/${nextCursor}`,
                       }
                     : {}),
             });

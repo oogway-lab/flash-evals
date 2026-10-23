@@ -5,7 +5,7 @@ import { getApiConfig } from "../config.js";
 import { createDb } from "../db.js";
 import { startRunEnqueueReplay } from "../runEnqueue.js";
 import { resolveMcpPrincipalForRawToken } from "./auth.js";
-import { registerMosaicMcpCapabilities } from "./registry.js";
+import { registerFlashEvalsMcpCapabilities } from "./registry.js";
 
 function requiredEnv(name: string): string {
     const value = process.env[name]?.trim();
@@ -13,23 +13,23 @@ function requiredEnv(name: string): string {
     return value;
 }
 
-export async function startMosaicMcpStdio(): Promise<void> {
+export async function startFlashEvalsMcpStdio(): Promise<void> {
     const config = getApiConfig();
-    if (!config.mosaicMcpRawTokenFallbackEnabled) {
+    if (!config.flashEvalsMcpRawTokenFallbackEnabled) {
         throw new Error(
-            "MOSAIC_MCP_RAW_TOKEN_FALLBACK_ENABLED must be true for local stdio MCP.",
+            "FLASH_EVALS_MCP_RAW_TOKEN_FALLBACK_ENABLED must be true for local stdio MCP.",
         );
     }
 
     const db = createDb(config);
-    const token = requiredEnv("MOSAIC_MCP_LOCAL_TOKEN");
+    const token = requiredEnv("FLASH_EVALS_MCP_LOCAL_TOKEN");
     const principal = await resolveMcpPrincipalForRawToken(db, config, token);
 
     const server = new McpServer({
-        name: "mosaic-evals",
+        name: "flash-evals",
         version: "0.1.0",
     });
-    registerMosaicMcpCapabilities(server, {
+    registerFlashEvalsMcpCapabilities(server, {
         runtime: { config, db },
         principal,
     });
@@ -46,7 +46,7 @@ const isEntrypoint =
     import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isEntrypoint) {
-    startMosaicMcpStdio().catch((err) => {
+    startFlashEvalsMcpStdio().catch((err) => {
         console.error(err instanceof Error ? err.message : err);
         process.exit(1);
     });

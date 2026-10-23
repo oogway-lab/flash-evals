@@ -7,11 +7,11 @@ import {
     SttGoldenAnswersImport,
 } from "@/components/datasets/golden-answers-import";
 import type { IActionState } from "@/app/actions";
-import type { IDatasetDetailResponse } from "@mosaic/api-contract";
+import type { IDatasetDetailResponse } from "@flash-evals/api-contract";
 import type {
     IAnswerImportPreview,
     IImportSummary,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 
 export function DatasetDetailJourney({
     detail,

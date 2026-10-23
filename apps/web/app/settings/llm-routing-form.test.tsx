@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
     IProviderKeyMetadata,
     IWorkflowLlmRoute,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 
 vi.mock("@/app/actions/settings", () => ({
     loadWorkflowLlmRouteCandidatesAction: vi.fn(async () => ({
@@ -90,13 +90,13 @@ const routes: IWorkflowLlmRoute[] = [
                 },
                 structuredOutput: { mode: "text" },
                 retry: {
-                    owner: "mosaic",
+                    owner: "flash-evals",
                     maxAttempts: 1,
                     timeoutMs: 60_000,
                     retryableErrorClasses: ["timeout"],
                 },
                 cache: {
-                    mosaicReuse: "force_fresh",
+                    flashEvalsReuse: "force_fresh",
                     providerCaching: "allow",
                 },
             },

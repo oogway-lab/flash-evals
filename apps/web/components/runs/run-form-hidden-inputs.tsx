@@ -5,7 +5,7 @@ import type {
     IPipelineFieldConfig,
     IReasoningConfig,
     ITransportAssignment,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 
 interface IPromptAssignment {
     modelId: string;

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
     listAvailableModelMetadata,
     listAvailableModels,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 
 describe("listAvailableModels", () => {
     it("requires an OpenAI key for direct OpenAI model discovery", async () => {

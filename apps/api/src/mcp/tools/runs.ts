@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { IPipelineFieldConfig } from "@mosaic/api-contract";
+import type { IPipelineFieldConfig } from "@flash-evals/api-contract";
 import {
     createRunFromSelectionPayload,
     deleteRunPayload,

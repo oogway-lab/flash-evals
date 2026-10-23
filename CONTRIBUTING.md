@@ -12,7 +12,7 @@ Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Do not put credentials,
 - `packages/llm-core/` — model provider transports and cost helpers.
 - `packages/secrets/` — credential encryption helpers.
 
-Package names, environment-variable prefixes, and database identifiers currently use the internal `mosaic` name for compatibility.
+Package names, environment-variable prefixes, and database identifiers currently use the internal `flash-evals` name for compatibility.
 
 ## Prerequisites and setup
 
@@ -85,8 +85,8 @@ PostgreSQL database. It exercises overlapping graph and node-selection writes.
 Create a dedicated test database, apply the migrations, then run:
 
 ```bash
-MOSAIC_TEST_DATABASE_URL=postgres://user:password@localhost:5432/flash_evals_test \
-  pnpm --filter @mosaic/api exec vitest run src/routes/workflowEditing.integration.test.ts
+FLASH_EVALS_TEST_DATABASE_URL=postgres://user:password@localhost:5432/flash_evals_test \
+  pnpm --filter @flash-evals/api exec vitest run src/routes/workflowEditing.integration.test.ts
 ```
 
 Replace the URL with your test database. The test is skipped when the variable is

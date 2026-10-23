@@ -10,7 +10,7 @@ import { loadWorkflowLlmRouteCandidatesAction } from "./actions/settings";
 import { actionErrorState } from "./actions/shared";
 import { revalidatePath } from "next/cache";
 import { requireActiveProject } from "@/server/projects/activeProject";
-import type { ReviewVerdict } from "@mosaic/api-contract";
+import type { ReviewVerdict } from "@flash-evals/api-contract";
 import { serverApiClient } from "@/server/api/client";
 import type {
     IActionState,

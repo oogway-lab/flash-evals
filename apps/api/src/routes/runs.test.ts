@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type * as LlmCore from "@mosaic/llm-core";
+import type * as LlmCore from "@flash-evals/llm-core";
 
-vi.mock("@mosaic/llm-core", async (importOriginal) => {
+vi.mock("@flash-evals/llm-core", async (importOriginal) => {
     const actual = await importOriginal<typeof LlmCore>();
     return {
         ...actual,
@@ -47,9 +47,9 @@ import {
 import { ApiNotFoundError } from "../errors.js";
 import type { IDb } from "../db.js";
 import type { IApiConfig } from "../config.js";
-import type { ISttRunConfig } from "@mosaic/api-contract";
+import type { ISttRunConfig } from "@flash-evals/api-contract";
 import { resolveApiFeatureFlags } from "../featureFlags.js";
-import { encryptSecret } from "@mosaic/secrets";
+import { encryptSecret } from "@flash-evals/secrets";
 import { normalizeSttVariants } from "./runs/creation.js";
 
 const TEST_SECRETS_KEY = Buffer.alloc(32, 7).toString("base64");
@@ -676,12 +676,12 @@ function testConfig(overrides: Partial<IApiConfig> = {}): IApiConfig {
         storageAdapter: "supabase",
         supabaseUrl: "https://supabase.example.com",
         supabaseServiceRoleKey: "service-role",
-        supabaseStorageBucket: "mosaic-images",
+        supabaseStorageBucket: "flash-evals-images",
         clerkSecretKey: "clerk-secret",
-        mosaicTenancyMode: "single-org",
-        mosaicAllowedEmailDomain: "example.com",
+        flashEvalsTenancyMode: "single-org",
+        flashEvalsAllowedEmailDomain: "example.com",
         corsOrigins: [],
-        mosaicLlmProvider: "openai",
+        flashEvalsLlmProvider: "openai",
         openaiApiKey: "test-openai",
         sttCapabilityProbes: {},
         profilingEnabled: false,
@@ -1225,7 +1225,7 @@ describe("createRunFromSelectionPayload", () => {
                     createdBy: "user-1",
                 },
                 testConfig({
-                    mosaicLlmProvider: "gateway",
+                    flashEvalsLlmProvider: "gateway",
                     aiGatewayApiKey: "vck-test",
                 }),
             ),
@@ -1646,7 +1646,7 @@ describe("createRunFromSelectionPayload", () => {
                 },
                 testConfig({
                     sonioxApiKey: "",
-                    mosaicSecretsEncKey: TEST_SECRETS_KEY,
+                    flashEvalsSecretsEncKey: TEST_SECRETS_KEY,
                 }),
             ),
         ).resolves.toEqual({
@@ -2086,7 +2086,7 @@ describe("generateJudgeForRunPayload", () => {
     });
 
     it("generates the rubric through the statically imported eval provider", async () => {
-        const { getEvalProvider } = await import("@mosaic/llm-core");
+        const { getEvalProvider } = await import("@flash-evals/llm-core");
         const db = dbWithRows([
             [
                 {

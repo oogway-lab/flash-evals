@@ -50,7 +50,7 @@ if require_file "$API_ENV"; then
     for key in \
         DATABASE_URL \
         CLERK_SECRET_KEY \
-        MOSAIC_ALLOWED_EMAIL_DOMAIN \
+        FLASH_EVALS_ALLOWED_EMAIL_DOMAIN \
         CORS_ORIGINS \
         INTERNAL_API_TOKEN
     do
@@ -102,8 +102,8 @@ const root = read("package.json");
 const api = read("apps/api/package.json");
 const web = read("apps/web/package.json");
 const checks = [
-    [root.scripts?.["api:start:railway"], "@mosaic/api start:railway", "root API start script"],
-    [root.scripts?.worker, "@mosaic/web worker", "root worker start script"],
+    [root.scripts?.["api:start:railway"], "@flash-evals/api start:railway", "root API start script"],
+    [root.scripts?.worker, "@flash-evals/web worker", "root worker start script"],
     [api.scripts?.["start:railway"], "NODE_ENV=production", "API Railway runtime script"],
     [api.scripts?.["start:railway"], "dist/railway.js", "API Railway entrypoint"],
     [web.scripts?.worker, "scripts/worker.ts", "worker entrypoint"],
@@ -134,7 +134,7 @@ fi
 
 if [ "$FAILED" -eq 0 ]; then
     echo "Split deployment readiness check passed."
-    echo "Expected split topology: API uses pnpm run api:start:railway with MOSAIC_API_START_WORKER=false; worker uses pnpm run worker and has no HTTP health check. This check does not inspect Railway service settings."
+    echo "Expected split topology: API uses pnpm run api:start:railway with FLASH_EVALS_API_START_WORKER=false; worker uses pnpm run worker and has no HTTP health check. This check does not inspect Railway service settings."
     echo "This check validates repository launch scripts; it does not treat railway.json as the deployed configuration."
 else
     exit 1

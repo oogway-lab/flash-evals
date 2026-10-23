@@ -28,7 +28,7 @@ import {
     updateDatasetNamePayload,
 } from "../../routes/datasets.js";
 import { DATASET_IMPORT_LIMITS } from "../../routes/datasets/limits.js";
-import type { LabelJson } from "@mosaic/api-contract";
+import type { LabelJson } from "@flash-evals/api-contract";
 import { ok } from "../responses.js";
 import { withMcpIdempotency } from "../idempotency.js";
 import { AudioFile, ImageFile, ProjectId } from "../schemas.js";

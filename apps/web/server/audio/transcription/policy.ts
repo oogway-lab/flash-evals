@@ -1,4 +1,4 @@
-import { OPENROUTER_AUDIO_DEFAULT_MAX_BYTES } from "@mosaic/llm-core";
+import { OPENROUTER_AUDIO_DEFAULT_MAX_BYTES } from "@flash-evals/llm-core";
 import {
     PREPARED_AUDIO_BITRATE_BPS,
     type IAudioPreparationPolicy,

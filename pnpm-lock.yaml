@@ -233,16 +233,16 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
         version: 1.32.1(supports-color@10.2.2)(zod@4.6.5)
-      '@mosaic/api-contract':
+      '@flash-evals/api-contract':
         specifier: workspace:*
         version: link:../../packages/api-contract
-      '@mosaic/llm-core':
+      '@flash-evals/llm-core':
         specifier: workspace:*
         version: link:../../packages/llm-core
-      '@mosaic/object-storage':
+      '@flash-evals/object-storage':
         specifier: workspace:*
         version: link:../../packages/object-storage
-      '@mosaic/secrets':
+      '@flash-evals/secrets':
         specifier: workspace:*
         version: link:../../packages/secrets
       ajv:
@@ -316,16 +316,16 @@ importers:
       '@clerk/nextjs':
         specifier: ^7.9.14
         version: 7.9.14(next@16.3.8(@babel/core@7.29.7(supports-color@10.2.2))(@playwright/test@1.64.0)(@types/node@22.20.5)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@mosaic/api-contract':
+      '@flash-evals/api-contract':
         specifier: workspace:*
         version: link:../../packages/api-contract
-      '@mosaic/llm-core':
+      '@flash-evals/llm-core':
         specifier: workspace:*
         version: link:../../packages/llm-core
-      '@mosaic/object-storage':
+      '@flash-evals/object-storage':
         specifier: workspace:*
         version: link:../../packages/object-storage
-      '@mosaic/secrets':
+      '@flash-evals/secrets':
         specifier: workspace:*
         version: link:../../packages/secrets
       '@xyflow/react':

@@ -39,7 +39,7 @@ Engineers clone the repo, run `pnpm run setup:local`, start PostgreSQL with Dock
 - Review: per-result notes and annotations.
 - Cost figures are estimates; spending limits use recorded usage.
 - Early-stage alpha with breaking changes; not a managed service. No hosted offering exists.
-- Internal identifiers keep the `mosaic` name (`@mosaic/*`, `MOSAIC_*`, `mosaic://`).
+- Internal identifiers use the `flash-evals` name (`@flash-evals/*`, `FLASH_EVALS_*`, `flash-evals://`).
 
 ## Brand Commitments
 

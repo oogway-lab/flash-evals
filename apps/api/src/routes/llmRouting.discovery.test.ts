@@ -2,8 +2,8 @@ import { Buffer } from "node:buffer";
 import type {
     ICreateWorkflowLlmRouteVersionRequest,
     WorkflowLlmTransport,
-} from "@mosaic/api-contract";
-import { encryptSecret } from "@mosaic/secrets";
+} from "@flash-evals/api-contract";
+import { encryptSecret } from "@flash-evals/secrets";
 import { describe, expect, it, vi } from "vitest";
 
 // Stored base URLs are re-resolved before use; keep the test hosts public.
@@ -27,7 +27,7 @@ const ROTATED_ID = "99999999-9999-4999-8999-999999999999";
 const ENC_KEY = Buffer.alloc(32, 9).toString("base64");
 const NOW = new Date("2026-07-27T10:00:00.000Z");
 const context = { teamId: TEAM_ID, actorId: ACTOR_ID };
-const config = { mosaicSecretsEncKey: ENC_KEY } as never;
+const config = { flashEvalsSecretsEncKey: ENC_KEY } as never;
 
 const input: ICreateWorkflowLlmRouteVersionRequest = {
     projectId: PROJECT_ID,
@@ -44,7 +44,7 @@ const input: ICreateWorkflowLlmRouteVersionRequest = {
         structuredOutput: { mode: "text" },
         retry: { owner: "gateway", timeoutMs: 30_000 },
         cache: {
-            mosaicReuse: "allow",
+            flashEvalsReuse: "allow",
             providerCaching: "allow",
         },
     },
@@ -450,7 +450,7 @@ describe("workflow LLM live route discovery", () => {
                 harness.db,
                 {
                     workflowLlmWritesEnabled: false,
-                    mosaicSecretsEncKey: ENC_KEY,
+                    flashEvalsSecretsEncKey: ENC_KEY,
                 } as never,
                 input,
                 context,

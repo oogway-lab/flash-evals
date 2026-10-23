@@ -98,7 +98,7 @@ async function main(): Promise<void> {
         console.info(
             JSON.stringify({
                 timestamp: checkedAt.toISOString(),
-                service: "mosaic-worker-status",
+                service: "flash-evals-worker-status",
                 readiness: "queue_backend_ready",
                 database: "ok",
                 workerProcess: "check through its process supervisor",
@@ -139,7 +139,7 @@ void main().catch((error: unknown) => {
         JSON.stringify({
             timestamp: new Date().toISOString(),
             level: "error",
-            service: "mosaic-worker-status",
+            service: "flash-evals-worker-status",
             event: "status.failed",
             ...safeWorkerError(error),
             readiness: "not_ready",

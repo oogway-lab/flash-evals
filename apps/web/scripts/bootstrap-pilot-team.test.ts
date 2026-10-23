@@ -42,27 +42,27 @@ describe("bootstrapPilotTeam", () => {
             try {
                 const apiEnv = path.join(directory, "api.env");
                 const webEnv = path.join(directory, "web.env");
-                await writeFile(apiEnv, `MOSAIC_DEFAULT_TEAM_ID=${teamId}\n`);
+                await writeFile(apiEnv, `FLASH_EVALS_DEFAULT_TEAM_ID=${teamId}\n`);
                 await writeFile(
                     webEnv,
-                    `MOSAIC_DEFAULT_TEAM_ID=${webTeamId}\n`,
+                    `FLASH_EVALS_DEFAULT_TEAM_ID=${webTeamId}\n`,
                 );
 
                 const childEnv = { ...process.env };
-                delete childEnv.MOSAIC_DEFAULT_TEAM_ID;
+                delete childEnv.FLASH_EVALS_DEFAULT_TEAM_ID;
                 const result = spawnSync(
                     process.execPath,
                     [
                         `--env-file-if-exists=${apiEnv}`,
                         "--input-type=module",
                         "-e",
-                        "process.stdout.write(process.env.MOSAIC_DEFAULT_TEAM_ID ?? '')",
+                        "process.stdout.write(process.env.FLASH_EVALS_DEFAULT_TEAM_ID ?? '')",
                     ],
                     { cwd: process.cwd(), env: childEnv, encoding: "utf8" },
                 );
 
                 expect(await readFile(webEnv, "utf8")).toContain(
-                    `MOSAIC_DEFAULT_TEAM_ID=${webTeamId}`,
+                    `FLASH_EVALS_DEFAULT_TEAM_ID=${webTeamId}`,
                 );
                 expect(result.error).toBeUndefined();
                 expect(result.status).toBe(0);

@@ -7,7 +7,7 @@ import { errorResponse } from "../middleware/errors.js";
 import { requestIdFromHeaders } from "../observability/requestId.js";
 import { logApiEvent } from "../observability/logger.js";
 import { McpAuthenticationError, resolveMcpPrincipal } from "./auth.js";
-import { registerMosaicMcpCapabilities } from "./registry.js";
+import { registerFlashEvalsMcpCapabilities } from "./registry.js";
 
 export const MCP_PATH = "/mcp";
 export const MCP_PROTECTED_RESOURCE_METADATA_PATH =
@@ -26,12 +26,12 @@ export async function handleMcpRequest(
 ): Promise<Response> {
     const requestId = requestIdFromHeaders(request.headers);
     const origin = request.headers.get("origin");
-    const allowedOrigins = runtime.config.mosaicMcpAllowedOrigins ?? [];
+    const allowedOrigins = runtime.config.flashEvalsMcpAllowedOrigins ?? [];
     const headers = mcpCorsHeaders(origin, allowedOrigins);
     headers.set("x-request-id", requestId);
 
     try {
-        if (!runtime.config.mosaicMcpEnabled) {
+        if (!runtime.config.flashEvalsMcpEnabled) {
             throw new ApiNotFoundError("MCP is not enabled.");
         }
         const url = new URL(request.url);
@@ -79,10 +79,10 @@ export async function handleMcpRequest(
             throw err;
         }
         const server = new McpServer({
-            name: "mosaic-evals",
+            name: "flash-evals",
             version: "0.1.0",
         });
-        registerMosaicMcpCapabilities(server, { runtime, principal });
+        registerFlashEvalsMcpCapabilities(server, { runtime, principal });
 
         const transport = new WebStandardStreamableHTTPServerTransport({
             sessionIdGenerator: undefined,

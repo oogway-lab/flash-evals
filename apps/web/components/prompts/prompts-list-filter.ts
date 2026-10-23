@@ -1,4 +1,4 @@
-import type { IPromptListRow } from "@mosaic/api-contract";
+import type { IPromptListRow } from "@flash-evals/api-contract";
 
 export function filterPrompts(
     rows: IPromptListRow[],

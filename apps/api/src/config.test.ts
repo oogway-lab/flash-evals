@@ -5,11 +5,11 @@ const baseEnv = {
     DATABASE_URL: "postgres://user:pass@example.supabase.co:5432/postgres",
     SUPABASE_URL: "https://example.supabase.co",
     SUPABASE_SERVICE_ROLE_KEY: "service-role",
-    SUPABASE_STORAGE_BUCKET: "mosaic-images",
+    SUPABASE_STORAGE_BUCKET: "flash-evals-images",
     CLERK_SECRET_KEY: "sk_test",
     CORS_ORIGINS: "https://web.example.com, http://localhost:3000",
     INTERNAL_API_TOKEN: "internal",
-    MOSAIC_ALLOWED_EMAIL_DOMAIN: "example.com",
+    FLASH_EVALS_ALLOWED_EMAIL_DOMAIN: "example.com",
 };
 
 describe("getApiConfig", () => {
@@ -24,30 +24,30 @@ describe("getApiConfig", () => {
             OPENROUTER_BASE_URL: "https://openrouter.example/api",
             BIFROST_API_KEY: "bifrost-test",
             BIFROST_BASE_URL: "https://bifrost.example/api",
-            MOSAIC_SECRETS_ENC_KEY: "encryption-key",
+            FLASH_EVALS_SECRETS_ENC_KEY: "encryption-key",
         });
 
         expect(config.port).toBe(4123);
         expect(config.databaseUrl).toBe(baseEnv.DATABASE_URL);
         expect(config.storageAdapter).toBe("supabase");
-        expect(config.supabaseStorageBucket).toBe("mosaic-images");
+        expect(config.supabaseStorageBucket).toBe("flash-evals-images");
         expect(config.clerkSecretKey).toBe("sk_test");
-        expect(config.mosaicAllowedEmailDomain).toBe("example.com");
-        expect(config.mosaicLlmProvider).toBe("auto");
+        expect(config.flashEvalsAllowedEmailDomain).toBe("example.com");
+        expect(config.flashEvalsLlmProvider).toBe("auto");
         expect(config.openaiApiKey).toBe("sk-test");
         expect(config.sonioxApiKey).toBe("soniox-test");
         expect(config.openrouterApiKey).toBe("openrouter-test");
         expect(config.openrouterBaseUrl).toBe("https://openrouter.example/api");
         expect(config.bifrostApiKey).toBe("bifrost-test");
         expect(config.bifrostBaseUrl).toBe("https://bifrost.example/api");
-        expect(config.mosaicSecretsEncKey).toBe("encryption-key");
+        expect(config.flashEvalsSecretsEncKey).toBe("encryption-key");
         expect(config.sttCapabilityProbes).toEqual({});
         expect(config.internalApiToken).toBe("internal");
         expect(config.profilingEnabled).toBe(false);
         expect(config.workflowLlmWritesEnabled).toBe(true);
-        expect(config.mosaicMcpEnabled).toBe(false);
-        expect(config.mosaicMcpAllowedOrigins).toEqual([]);
-        expect(config.mosaicMcpRawTokenFallbackEnabled).toBe(false);
+        expect(config.flashEvalsMcpEnabled).toBe(false);
+        expect(config.flashEvalsMcpAllowedOrigins).toEqual([]);
+        expect(config.flashEvalsMcpRawTokenFallbackEnabled).toBe(false);
         expect(config.featureFlags).toMatchObject({
             analyticsEvents: false,
             errorTracking: false,
@@ -62,7 +62,7 @@ describe("getApiConfig", () => {
     it("loads server-only R2 settings when the adapter is selected", () => {
         const config = getApiConfig({
             ...baseEnv,
-            MOSAIC_STORAGE_ADAPTER: "r2",
+            FLASH_EVALS_STORAGE_ADAPTER: "r2",
             R2_ACCOUNT_ID: "synthetic-account",
             R2_ACCESS_KEY_ID: "synthetic-access",
             R2_SECRET_ACCESS_KEY: "synthetic-secret",
@@ -84,7 +84,7 @@ describe("getApiConfig", () => {
 
     it("requires complete R2 credentials and rejects test endpoints in production", () => {
         expect(() =>
-            getApiConfig({ ...baseEnv, MOSAIC_STORAGE_ADAPTER: "r2" }),
+            getApiConfig({ ...baseEnv, FLASH_EVALS_STORAGE_ADAPTER: "r2" }),
         ).toThrow(
             /R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET/,
         );
@@ -93,7 +93,7 @@ describe("getApiConfig", () => {
             getApiConfig({
                 ...baseEnv,
                 NODE_ENV: "production",
-                MOSAIC_STORAGE_ADAPTER: "r2",
+                FLASH_EVALS_STORAGE_ADAPTER: "r2",
                 R2_ACCOUNT_ID: "synthetic-account",
                 R2_ACCESS_KEY_ID: "synthetic-access",
                 R2_SECRET_ACCESS_KEY: "synthetic-secret",
@@ -105,7 +105,7 @@ describe("getApiConfig", () => {
         expect(() =>
             getApiConfig({
                 ...baseEnv,
-                MOSAIC_STORAGE_ADAPTER: "r2",
+                FLASH_EVALS_STORAGE_ADAPTER: "r2",
                 R2_ACCOUNT_ID: "synthetic-account",
                 R2_ACCESS_KEY_ID: "synthetic-access",
                 R2_SECRET_ACCESS_KEY: "synthetic-secret",
@@ -119,7 +119,7 @@ describe("getApiConfig", () => {
         const config = getApiConfig({
             ...baseEnv,
             NODE_ENV: "production",
-            MOSAIC_STORAGE_ADAPTER: "supabase",
+            FLASH_EVALS_STORAGE_ADAPTER: "supabase",
             INTERNAL_API_TOKEN: "internal",
         });
         expect(config.workflowLlmWritesEnabled).toBe(false);
@@ -128,7 +128,7 @@ describe("getApiConfig", () => {
     it("parses STT capability probe overrides", () => {
         const config = getApiConfig({
             ...baseEnv,
-            MOSAIC_STT_CAPABILITY_PROBES: JSON.stringify({
+            FLASH_EVALS_STT_CAPABILITY_PROBES: JSON.stringify({
                 "vercel:openai/whisper-1": {
                     status: "available",
                 },
@@ -152,10 +152,12 @@ describe("getApiConfig", () => {
         expect(() =>
             getApiConfig({
                 ...baseEnv,
-                MOSAIC_STT_CAPABILITY_PROBES: "{",
+                FLASH_EVALS_STT_CAPABILITY_PROBES: "{",
             }),
         ).toThrowError(
-            new ConfigError("MOSAIC_STT_CAPABILITY_PROBES must be valid JSON"),
+            new ConfigError(
+                "FLASH_EVALS_STT_CAPABILITY_PROBES must be valid JSON",
+            ),
         );
     });
 
@@ -163,13 +165,13 @@ describe("getApiConfig", () => {
         expect(() =>
             getApiConfig({
                 ...baseEnv,
-                MOSAIC_STT_CAPABILITY_PROBES: JSON.stringify({
+                FLASH_EVALS_STT_CAPABILITY_PROBES: JSON.stringify({
                     "vercel:openai/whisper-1": { status: "unknown" },
                 }),
             }),
         ).toThrowError(
             new ConfigError(
-                "MOSAIC_STT_CAPABILITY_PROBES.vercel:openai/whisper-1.status is not supported",
+                "FLASH_EVALS_STT_CAPABILITY_PROBES.vercel:openai/whisper-1.status is not supported",
             ),
         );
     });
@@ -177,19 +179,19 @@ describe("getApiConfig", () => {
     it("enables optional observability providers and flags from env", () => {
         const config = getApiConfig({
             ...baseEnv,
-            MOSAIC_ERROR_TRACKING_DSN: "https://errors.example",
-            MOSAIC_ANALYTICS_KEY: "analytics-key",
-            MOSAIC_ALERT_WEBHOOK_URL: "https://alerts.example",
-            MOSAIC_PROFILING_ENABLED: "true",
-            MOSAIC_FLAG_ANALYTICS_EVENTS: "on",
-            MOSAIC_FLAG_ERROR_TRACKING: "true",
-            MOSAIC_FLAG_PROFILING: "yes",
-            MOSAIC_MCP_ENABLED: "true",
-            MOSAIC_MCP_ALLOWED_ORIGINS: "https://claude.example.com",
-            MOSAIC_MCP_RESOURCE_URL: "https://api.example.com/mcp",
-            MOSAIC_MCP_OAUTH_CLIENT_ID: "oauth-client",
-            MOSAIC_MCP_RAW_TOKEN_FALLBACK_ENABLED: "true",
-            MOSAIC_MCP_TOKEN_PEPPER: "pepper",
+            FLASH_EVALS_ERROR_TRACKING_DSN: "https://errors.example",
+            FLASH_EVALS_ANALYTICS_KEY: "analytics-key",
+            FLASH_EVALS_ALERT_WEBHOOK_URL: "https://alerts.example",
+            FLASH_EVALS_PROFILING_ENABLED: "true",
+            FLASH_EVALS_FLAG_ANALYTICS_EVENTS: "on",
+            FLASH_EVALS_FLAG_ERROR_TRACKING: "true",
+            FLASH_EVALS_FLAG_PROFILING: "yes",
+            FLASH_EVALS_MCP_ENABLED: "true",
+            FLASH_EVALS_MCP_ALLOWED_ORIGINS: "https://claude.example.com",
+            FLASH_EVALS_MCP_RESOURCE_URL: "https://api.example.com/mcp",
+            FLASH_EVALS_MCP_OAUTH_CLIENT_ID: "oauth-client",
+            FLASH_EVALS_MCP_RAW_TOKEN_FALLBACK_ENABLED: "true",
+            FLASH_EVALS_MCP_TOKEN_PEPPER: "pepper",
             CLERK_PUBLISHABLE_KEY: "pk_test",
             CLERK_ISSUER: "https://clerk.example.com",
             CLERK_JWT_KEY:
@@ -201,14 +203,16 @@ describe("getApiConfig", () => {
         expect(config.analyticsKey).toBe("analytics-key");
         expect(config.alertWebhookUrl).toBe("https://alerts.example");
         expect(config.profilingEnabled).toBe(true);
-        expect(config.mosaicMcpEnabled).toBe(true);
-        expect(config.mosaicMcpAllowedOrigins).toEqual([
+        expect(config.flashEvalsMcpEnabled).toBe(true);
+        expect(config.flashEvalsMcpAllowedOrigins).toEqual([
             "https://claude.example.com",
         ]);
-        expect(config.mosaicMcpResourceUrl).toBe("https://api.example.com/mcp");
-        expect(config.mosaicMcpOAuthClientId).toBe("oauth-client");
-        expect(config.mosaicMcpRawTokenFallbackEnabled).toBe(true);
-        expect(config.mosaicMcpTokenPepper).toBe("pepper");
+        expect(config.flashEvalsMcpResourceUrl).toBe(
+            "https://api.example.com/mcp",
+        );
+        expect(config.flashEvalsMcpOAuthClientId).toBe("oauth-client");
+        expect(config.flashEvalsMcpRawTokenFallbackEnabled).toBe(true);
+        expect(config.flashEvalsMcpTokenPepper).toBe("pepper");
         expect(config.clerkPublishableKey).toBe("pk_test");
         expect(config.clerkIssuer).toBe("https://clerk.example.com");
         expect(config.clerkJwtKey).toContain("\nkey\n");
@@ -225,10 +229,10 @@ describe("getApiConfig", () => {
     it("normalizes allowed email domain", () => {
         const config = getApiConfig({
             ...baseEnv,
-            MOSAIC_ALLOWED_EMAIL_DOMAIN: "@EXAMPLE.COM ",
+            FLASH_EVALS_ALLOWED_EMAIL_DOMAIN: "@EXAMPLE.COM ",
         });
 
-        expect(config.mosaicAllowedEmailDomain).toBe("example.com");
+        expect(config.flashEvalsAllowedEmailDomain).toBe("example.com");
     });
 
     it("refuses to start without an allowed email domain", () => {
@@ -236,49 +240,51 @@ describe("getApiConfig", () => {
             expect(() =>
                 getApiConfig({
                     ...baseEnv,
-                    MOSAIC_ALLOWED_EMAIL_DOMAIN: domain,
+                    FLASH_EVALS_ALLOWED_EMAIL_DOMAIN: domain,
                 }),
-            ).toThrow("Missing required API env: MOSAIC_ALLOWED_EMAIL_DOMAIN");
+            ).toThrow(
+                "Missing required API env: FLASH_EVALS_ALLOWED_EMAIL_DOMAIN",
+            );
         }
     });
 
     it("allows a missing email domain only with the insecure opt-in", () => {
         const config = getApiConfig({
             ...baseEnv,
-            MOSAIC_ALLOWED_EMAIL_DOMAIN: undefined,
-            MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS: "true",
+            FLASH_EVALS_ALLOWED_EMAIL_DOMAIN: undefined,
+            FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS: "true",
         });
 
-        expect(config.mosaicAllowedEmailDomain).toBe("");
+        expect(config.flashEvalsAllowedEmailDomain).toBe("");
     });
 
     it("defaults to single-org tenancy", () => {
         const config = getApiConfig(baseEnv);
-        expect(config.mosaicTenancyMode).toBe("single-org");
+        expect(config.flashEvalsTenancyMode).toBe("single-org");
     });
 
     it("rejects an unknown tenancy mode", () => {
         expect(() =>
-            getApiConfig({ ...baseEnv, MOSAIC_TENANCY_MODE: "multi-org" }),
-        ).toThrow('Invalid MOSAIC_TENANCY_MODE value "multi-org"');
+            getApiConfig({ ...baseEnv, FLASH_EVALS_TENANCY_MODE: "multi-org" }),
+        ).toThrow('Invalid FLASH_EVALS_TENANCY_MODE value "multi-org"');
     });
 
     it("does not require an allowed email domain in isolated mode", () => {
         const config = getApiConfig({
             ...baseEnv,
-            MOSAIC_TENANCY_MODE: "isolated",
-            MOSAIC_ALLOWED_EMAIL_DOMAIN: undefined,
+            FLASH_EVALS_TENANCY_MODE: "isolated",
+            FLASH_EVALS_ALLOWED_EMAIL_DOMAIN: undefined,
         });
 
-        expect(config.mosaicTenancyMode).toBe("isolated");
-        expect(config.mosaicAllowedEmailDomain).toBe("");
+        expect(config.flashEvalsTenancyMode).toBe("isolated");
+        expect(config.flashEvalsAllowedEmailDomain).toBe("");
     });
 
     it("refuses a public email provider as the single-org allowed domain", () => {
         expect(() =>
             getApiConfig({
                 ...baseEnv,
-                MOSAIC_ALLOWED_EMAIL_DOMAIN: "gmail.com",
+                FLASH_EVALS_ALLOWED_EMAIL_DOMAIN: "gmail.com",
             }),
         ).toThrow(/is a public email/);
     });
@@ -286,21 +292,21 @@ describe("getApiConfig", () => {
     it("allows a public email provider with the explicit override", () => {
         const config = getApiConfig({
             ...baseEnv,
-            MOSAIC_ALLOWED_EMAIL_DOMAIN: "gmail.com",
-            MOSAIC_ALLOW_PUBLIC_EMAIL_DOMAIN: "true",
+            FLASH_EVALS_ALLOWED_EMAIL_DOMAIN: "gmail.com",
+            FLASH_EVALS_ALLOW_PUBLIC_EMAIL_DOMAIN: "true",
         });
 
-        expect(config.mosaicAllowedEmailDomain).toBe("gmail.com");
+        expect(config.flashEvalsAllowedEmailDomain).toBe("gmail.com");
     });
 
     it("ignores the public-domain guard in isolated mode", () => {
         const config = getApiConfig({
             ...baseEnv,
-            MOSAIC_TENANCY_MODE: "isolated",
-            MOSAIC_ALLOWED_EMAIL_DOMAIN: "gmail.com",
+            FLASH_EVALS_TENANCY_MODE: "isolated",
+            FLASH_EVALS_ALLOWED_EMAIL_DOMAIN: "gmail.com",
         });
 
-        expect(config.mosaicTenancyMode).toBe("isolated");
+        expect(config.flashEvalsTenancyMode).toBe("isolated");
     });
 
     it("defaults run limits to a cell cap and no spend cap", () => {
@@ -313,8 +319,8 @@ describe("getApiConfig", () => {
     it("parses run limit overrides", () => {
         const config = getApiConfig({
             ...baseEnv,
-            MOSAIC_MAX_RUN_CELLS: "2500",
-            MOSAIC_TEAM_DAILY_SPEND_CAP_USD: "25.50",
+            FLASH_EVALS_MAX_RUN_CELLS: "2500",
+            FLASH_EVALS_TEAM_DAILY_SPEND_CAP_USD: "25.50",
         });
 
         expect(config.maxRunCells).toBe(2500);
@@ -324,19 +330,19 @@ describe("getApiConfig", () => {
     it("rejects invalid run limits", () => {
         for (const value of ["0", "-1", "1.5", "abc", "16001"]) {
             expect(() =>
-                getApiConfig({ ...baseEnv, MOSAIC_MAX_RUN_CELLS: value }),
+                getApiConfig({ ...baseEnv, FLASH_EVALS_MAX_RUN_CELLS: value }),
             ).toThrow(
-                "MOSAIC_MAX_RUN_CELLS must be an integer between 1 and 16000",
+                "FLASH_EVALS_MAX_RUN_CELLS must be an integer between 1 and 16000",
             );
         }
         for (const value of ["0", "-5", "abc", "Infinity"]) {
             expect(() =>
                 getApiConfig({
                     ...baseEnv,
-                    MOSAIC_TEAM_DAILY_SPEND_CAP_USD: value,
+                    FLASH_EVALS_TEAM_DAILY_SPEND_CAP_USD: value,
                 }),
             ).toThrow(
-                "MOSAIC_TEAM_DAILY_SPEND_CAP_USD must be a positive number",
+                "FLASH_EVALS_TEAM_DAILY_SPEND_CAP_USD must be a positive number",
             );
         }
     });
@@ -349,8 +355,8 @@ describe("getApiConfig", () => {
         expect(
             getApiConfig({
                 ...baseEnv,
-                MOSAIC_RATE_LIMIT_LLM_PER_MINUTE: "5",
-                MOSAIC_RATE_LIMIT_RUNS_PER_MINUTE: "0",
+                FLASH_EVALS_RATE_LIMIT_LLM_PER_MINUTE: "5",
+                FLASH_EVALS_RATE_LIMIT_RUNS_PER_MINUTE: "0",
             }),
         ).toMatchObject({
             rateLimitLlmPerMinute: 5,
@@ -363,10 +369,10 @@ describe("getApiConfig", () => {
             expect(() =>
                 getApiConfig({
                     ...baseEnv,
-                    MOSAIC_RATE_LIMIT_LLM_PER_MINUTE: value,
+                    FLASH_EVALS_RATE_LIMIT_LLM_PER_MINUTE: value,
                 }),
             ).toThrow(
-                "MOSAIC_RATE_LIMIT_LLM_PER_MINUTE must be a non-negative integer (0 disables it)",
+                "FLASH_EVALS_RATE_LIMIT_LLM_PER_MINUTE must be a non-negative integer (0 disables it)",
             );
         }
     });
@@ -374,11 +380,11 @@ describe("getApiConfig", () => {
     it("parses Gateway provider mode", () => {
         const config = getApiConfig({
             ...baseEnv,
-            MOSAIC_LLM_PROVIDER: "gateway",
+            FLASH_EVALS_LLM_PROVIDER: "gateway",
             AI_GATEWAY_API_KEY: "vck-test",
         });
 
-        expect(config.mosaicLlmProvider).toBe("gateway");
+        expect(config.flashEvalsLlmProvider).toBe("gateway");
         expect(config.aiGatewayApiKey).toBe("vck-test");
     });
 
@@ -386,18 +392,18 @@ describe("getApiConfig", () => {
         expect(
             getApiConfig({
                 ...baseEnv,
-                MOSAIC_LLM_PROVIDER: "openrouter",
+                FLASH_EVALS_LLM_PROVIDER: "openrouter",
                 OPENROUTER_API_KEY: "or-test",
-            }).mosaicLlmProvider,
+            }).flashEvalsLlmProvider,
         ).toBe("openrouter");
 
         expect(
             getApiConfig({
                 ...baseEnv,
-                MOSAIC_LLM_PROVIDER: "bifrost",
+                FLASH_EVALS_LLM_PROVIDER: "bifrost",
                 BIFROST_API_KEY: "bf-test",
                 BIFROST_BASE_URL: "https://bifrost.example/v1",
-            }).mosaicLlmProvider,
+            }).flashEvalsLlmProvider,
         ).toBe("bifrost");
     });
 
@@ -414,7 +420,7 @@ describe("getApiConfig", () => {
             getApiConfig({
                 DATABASE_URL: baseEnv.DATABASE_URL,
                 INTERNAL_API_TOKEN: "local-token",
-                MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS: "true",
+                FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS: "true",
             }),
         ).toMatchObject({ storageAdapter: "local", clerkSecretKey: "" });
     });
@@ -458,20 +464,20 @@ describe("getApiConfig", () => {
             DATABASE_URL: baseEnv.DATABASE_URL,
             CLERK_SECRET_KEY: "sk_test",
             INTERNAL_API_TOKEN: "internal",
-            MOSAIC_ALLOWED_EMAIL_DOMAIN: "example.com",
+            FLASH_EVALS_ALLOWED_EMAIL_DOMAIN: "example.com",
         };
 
         expect(
             getApiConfig({
                 ...localEnv,
-                MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS: "true",
+                FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS: "true",
             }),
         ).toMatchObject({ storageAdapter: "local", supabaseUrl: "" });
         expect(() =>
-            getApiConfig({ ...localEnv, MOSAIC_STORAGE_ADAPTER: "local" }),
+            getApiConfig({ ...localEnv, FLASH_EVALS_STORAGE_ADAPTER: "local" }),
         ).toThrowError(
             new ConfigError(
-                "MOSAIC_STORAGE_ADAPTER=local requires MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS=true",
+                "FLASH_EVALS_STORAGE_ADAPTER=local requires FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS=true",
             ),
         );
     });
@@ -481,12 +487,12 @@ describe("getApiConfig", () => {
             getApiConfig({
                 ...baseEnv,
                 NODE_ENV: "production",
-                MOSAIC_STORAGE_ADAPTER: "local",
-                MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS: "true",
+                FLASH_EVALS_STORAGE_ADAPTER: "local",
+                FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS: "true",
             }),
         ).toThrowError(
             new ConfigError(
-                "MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS cannot be enabled when NODE_ENV=production",
+                "FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS cannot be enabled when NODE_ENV=production",
             ),
         );
     });
@@ -511,7 +517,7 @@ describe("getApiConfig", () => {
                     ...baseEnv,
                     NODE_ENV: nodeEnv,
                     INTERNAL_API_TOKEN: "",
-                    MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS: "true",
+                    FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS: "true",
                 }),
             ).toThrowError(
                 new ConfigError("Missing required API env: INTERNAL_API_TOKEN"),
@@ -527,10 +533,10 @@ describe("getApiConfig", () => {
 
     it("rejects invalid provider modes", () => {
         expect(() =>
-            getApiConfig({ ...baseEnv, MOSAIC_LLM_PROVIDER: "other" }),
+            getApiConfig({ ...baseEnv, FLASH_EVALS_LLM_PROVIDER: "other" }),
         ).toThrowError(
             new ConfigError(
-                'Invalid MOSAIC_LLM_PROVIDER value "other". Expected one of: auto, vercel-ai, openai, gateway, openrouter, bifrost.',
+                'Invalid FLASH_EVALS_LLM_PROVIDER value "other". Expected one of: auto, vercel-ai, openai, gateway, openrouter, bifrost.',
             ),
         );
     });
@@ -538,9 +544,9 @@ describe("getApiConfig", () => {
     it("resolves MCP OAuth config only when required env is complete", () => {
         const config = getApiConfig({
             ...baseEnv,
-            MOSAIC_MCP_ENABLED: "true",
-            MOSAIC_MCP_RESOURCE_URL: "http://127.0.0.1:3001/mcp",
-            MOSAIC_MCP_OAUTH_CLIENT_ID: "oauth-client",
+            FLASH_EVALS_MCP_ENABLED: "true",
+            FLASH_EVALS_MCP_RESOURCE_URL: "http://127.0.0.1:3001/mcp",
+            FLASH_EVALS_MCP_OAUTH_CLIENT_ID: "oauth-client",
             CLERK_ISSUER: "https://clerk.example.com",
             CLERK_PUBLISHABLE_KEY: "pk_test",
             CLERK_JWT_KEY: "jwt-key",
@@ -561,8 +567,8 @@ describe("getApiConfig", () => {
         expect(() =>
             getApiConfig({
                 ...baseEnv,
-                MOSAIC_MCP_ENABLED: "true",
-                MOSAIC_MCP_RESOURCE_URL: "https://api.example.com/mcp",
+                FLASH_EVALS_MCP_ENABLED: "true",
+                FLASH_EVALS_MCP_RESOURCE_URL: "https://api.example.com/mcp",
                 CLERK_ISSUER: "https://clerk.example.com",
             }),
         ).toThrowError(/Missing required MCP OAuth env/);
@@ -574,11 +580,11 @@ describe("getApiConfig", () => {
                 ...baseEnv,
                 NODE_ENV: "production",
                 INTERNAL_API_TOKEN: "internal",
-                MOSAIC_MCP_RAW_TOKEN_FALLBACK_ENABLED: "true",
+                FLASH_EVALS_MCP_RAW_TOKEN_FALLBACK_ENABLED: "true",
             }),
         ).toThrowError(
             new ConfigError(
-                "MOSAIC_MCP_RAW_TOKEN_FALLBACK_ENABLED cannot be enabled in production.",
+                "FLASH_EVALS_MCP_RAW_TOKEN_FALLBACK_ENABLED cannot be enabled in production.",
             ),
         );
     });
@@ -589,17 +595,42 @@ describe("getApiConfig", () => {
                 ...baseEnv,
                 NODE_ENV: "production",
                 INTERNAL_API_TOKEN: "internal",
-                MOSAIC_MCP_ENABLED: "true",
-                MOSAIC_MCP_RESOURCE_URL: "http://api.example.com/mcp",
-                MOSAIC_MCP_OAUTH_CLIENT_ID: "oauth-client",
+                FLASH_EVALS_MCP_ENABLED: "true",
+                FLASH_EVALS_MCP_RESOURCE_URL: "http://api.example.com/mcp",
+                FLASH_EVALS_MCP_OAUTH_CLIENT_ID: "oauth-client",
                 CLERK_ISSUER: "https://clerk.example.com",
                 CLERK_PUBLISHABLE_KEY: "pk_live",
                 CLERK_JWT_KEY: "jwt-key",
             }),
         ).toThrowError(
             new ConfigError(
-                "MOSAIC_MCP_RESOURCE_URL must use https in production.",
+                "FLASH_EVALS_MCP_RESOURCE_URL must use https in production.",
             ),
         );
+    });
+});
+
+describe("private development bind address", () => {
+    it("accepts loopback and Tailscale IPv4 listeners", () => {
+        for (const host of ["127.0.0.1", "100.64.0.10"]) {
+            expect(
+                getApiConfig({ ...baseEnv, FLASH_EVALS_API_BIND_HOST: host })
+                    .bindHost,
+            ).toBe(host);
+        }
+    });
+    it("rejects wildcard, public, and non-Tailscale network listeners", () => {
+        for (const host of [
+            "0.0.0.0",
+            "8.8.8.8",
+            "100.63.255.255",
+            "100.128.0.1",
+            "192.168.1.2",
+            "localhost",
+        ]) {
+            expect(() =>
+                getApiConfig({ ...baseEnv, FLASH_EVALS_API_BIND_HOST: host }),
+            ).toThrow("loopback or Tailscale IPv4");
+        }
     });
 });

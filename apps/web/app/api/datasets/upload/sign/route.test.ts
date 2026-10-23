@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 import { UnauthorizedError } from "@/server/auth/session";
 import { uploadFiles } from "@/lib/uploads/direct-upload";
 
@@ -188,9 +188,9 @@ describe("POST /api/datasets/upload/sign", () => {
         expect(mockApiClient.createSignedUpload).not.toHaveBeenCalled();
     });
 
-    it("forwards a MosaicApiError 400 as a 400 with the friendly reason", async () => {
+    it("forwards a FlashEvalsApiError 400 as a 400 with the friendly reason", async () => {
         mockApiClient.createSignedUpload.mockRejectedValue(
-            new MosaicApiError(
+            new FlashEvalsApiError(
                 "Image import exceeds the 24MB batch limit.",
                 400,
             ),

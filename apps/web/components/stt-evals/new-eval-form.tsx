@@ -5,7 +5,7 @@ import type { IActionState } from "@/app/actions/types";
 import type {
     IRunSetupDatasetOption,
     IRunSetupSttModelOption,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { KeepFieldsOnReset } from "@/components/ui/keep-fields-on-reset";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Input } from "@/components/ui/input";

@@ -1,4 +1,4 @@
-import { formatCost } from "@mosaic/llm-core";
+import { formatCost } from "@flash-evals/llm-core";
 
 /** The one way Flash Evals renders a value that is missing or not applicable. */
 export const MISSING_VALUE = "–";

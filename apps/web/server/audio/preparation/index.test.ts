@@ -33,7 +33,7 @@ describe.skipIf(!hasFfmpeg)("prepareAudioForTranscription with FFmpeg", () => {
     let shortWav: Buffer;
 
     beforeAll(() => {
-        dir = mkdtempSync(join(tmpdir(), "mosaic-prep-test-"));
+        dir = mkdtempSync(join(tmpdir(), "flash-evals-prep-test-"));
         // 150 s stereo 44.1 kHz tone (~26 MB) with silences at 55-57 s and 110-112 s.
         execFileSync("ffmpeg", [
             "-loglevel",
@@ -148,7 +148,7 @@ describe.skipIf(!hasFfmpeg)("prepareAudioForTranscription with FFmpeg", () => {
 
 describe("audio workspace limits", () => {
     it("does not hold work back after a temp directory or heavy step fails", async () => {
-        vi.stubEnv("TMPDIR", "/nonexistent/mosaic-tmp");
+        vi.stubEnv("TMPDIR", "/nonexistent/flash-evals-tmp");
         await expect(
             withAudioWorkspace(Buffer.alloc(1), async () => 1),
         ).rejects.toThrow();

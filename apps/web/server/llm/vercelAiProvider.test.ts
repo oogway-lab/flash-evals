@@ -4,7 +4,7 @@ import {
     type LanguageModel,
     type LanguageModelUsage,
 } from "ai";
-import { VercelAIEvalProvider } from "@mosaic/llm-core";
+import { VercelAIEvalProvider } from "@flash-evals/llm-core";
 
 function usage(
     override: Partial<LanguageModelUsage> = {},

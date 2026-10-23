@@ -1,4 +1,4 @@
-// AUTH_DEV skips Clerk and signs every request in as MOSAIC_DEFAULT_USER_ID.
+// AUTH_DEV skips Clerk and signs every request in as FLASH_EVALS_DEFAULT_USER_ID.
 // It needs two explicit opt-ins so a copied env file on a reachable host
 // cannot turn it on by accident, and it never runs with NODE_ENV=production.
 // Env vars are read by literal name so they also resolve in edge middleware.
@@ -21,7 +21,7 @@ export function devAuthBanner(): string | undefined {
         case "on":
             return [
                 "!!! AUTHENTICATION IS DISABLED (AUTH_DEV=true, AUTH_DEV_ALLOW_INSECURE=1) !!!",
-                "Every request is signed in as MOSAIC_DEFAULT_USER_ID without Clerk.",
+                "Every request is signed in as FLASH_EVALS_DEFAULT_USER_ID without Clerk.",
                 "Use this only on localhost. Never expose this server to a network.",
             ].join("\n");
         case "missing_opt_in":

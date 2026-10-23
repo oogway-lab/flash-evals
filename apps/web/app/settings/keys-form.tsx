@@ -7,7 +7,7 @@ import type {
     ISttRouteProbeModel,
     ProviderKeyProvider,
     SttRouteProbeStatus,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { KeepFieldsOnReset } from "@/components/ui/keep-fields-on-reset";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";

@@ -1,11 +1,11 @@
 import { createHash } from "crypto";
-import { OPENROUTER_AUDIO_ADAPTER_VERSION } from "@mosaic/llm-core";
+import { OPENROUTER_AUDIO_ADAPTER_VERSION } from "@flash-evals/llm-core";
 import {
     canonicalJsonObject,
     canonicalJsonString,
     sttCostUsdForDuration,
     sttModelIdentityForId,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { and, eq } from "drizzle-orm";
 import { errorMessage } from "../../lib/errors";
 import { db } from "../../db/client";

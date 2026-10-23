@@ -1,5 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
-import type { WorkflowNodeType } from "@mosaic/api-contract";
+import type { WorkflowNodeType } from "@flash-evals/api-contract";
 
 export interface ISttGraphNodeData extends Record<string, unknown> {
     nodeKey: string;

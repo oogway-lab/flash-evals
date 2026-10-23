@@ -2,12 +2,12 @@ import { Buffer } from "node:buffer";
 import type {
     ICreateWorkflowLlmRouteVersionRequest,
     IWorkflowLlmCapabilitySnapshot,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     WORKFLOW_JUDGE_SCHEMA_DIGEST,
     WORKFLOW_JUDGE_SCHEMA_NAME,
-} from "@mosaic/api-contract";
-import { encryptSecret } from "@mosaic/secrets";
+} from "@flash-evals/api-contract";
+import { encryptSecret } from "@flash-evals/secrets";
 import { describe, expect, it, vi } from "vitest";
 
 // Stored base URLs are re-resolved before use; keep the test hosts public.
@@ -71,7 +71,7 @@ const createInput: ICreateWorkflowLlmRouteVersionRequest = {
         structuredOutput: { mode: "text" },
         retry: { owner: "gateway", timeoutMs: 30_000 },
         cache: {
-            mosaicReuse: "allow",
+            flashEvalsReuse: "allow",
             providerCaching: "allow",
         },
     },
@@ -206,7 +206,7 @@ describe("workflow LLM routing service", () => {
         await expect(
             createWorkflowLlmRouteVersionPayload(
                 db,
-                { mosaicSecretsEncKey: ENC_KEY } as never,
+                { flashEvalsSecretsEncKey: ENC_KEY } as never,
                 createInput,
                 { teamId: TEAM_ID, actorId: ACTOR_ID },
             ),
@@ -318,7 +318,7 @@ describe("workflow LLM routing service", () => {
 
         const result = await refreshWorkflowLlmCapabilitiesPayload(
             db,
-            { mosaicSecretsEncKey: ENC_KEY } as never,
+            { flashEvalsSecretsEncKey: ENC_KEY } as never,
             {
                 teamId: TEAM_ID,
                 projectId: PROJECT_ID,

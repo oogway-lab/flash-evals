@@ -1,11 +1,11 @@
 import type {
     IPrincipalResponse,
     IResolvePrincipalRequest,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     isEmailAllowedForDomain,
     normalizeEmailAddress,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import type { IApiConfig } from "../config.js";
 import { isTransactionalDb, type IDb, withTransaction } from "../db.js";
 import { ApiConflictError, ApiForbiddenError } from "../errors.js";
@@ -48,21 +48,21 @@ export async function resolvePrincipalPayload(
     };
 
     if (
-        (config.mosaicTenancyMode === "single-org" ||
-            config.mosaicAllowedEmailDomain !== "") &&
+        (config.flashEvalsTenancyMode === "single-org" ||
+            config.flashEvalsAllowedEmailDomain !== "") &&
         !isEmailAllowedForDomain(
             principalInput.email,
-            config.mosaicAllowedEmailDomain,
+            config.flashEvalsAllowedEmailDomain,
         )
     ) {
         throw new ApiForbiddenError(
-            config.mosaicAllowedEmailDomain
-                ? `Only ${config.mosaicAllowedEmailDomain} email addresses can access this Flash Evals instance.`
-                : "Sign-in is disabled until MOSAIC_ALLOWED_EMAIL_DOMAIN is configured.",
+            config.flashEvalsAllowedEmailDomain
+                ? `Only ${config.flashEvalsAllowedEmailDomain} email addresses can access this Flash Evals instance.`
+                : "Sign-in is disabled until FLASH_EVALS_ALLOWED_EMAIL_DOMAIN is configured.",
         );
     }
 
-    if (config.mosaicTenancyMode === "isolated") {
+    if (config.flashEvalsTenancyMode === "isolated") {
         // Each new identity gets its own private team. A configured email
         // domain has already been enforced above.
         return resolveOrProvisionPrincipal(
@@ -73,7 +73,7 @@ export async function resolvePrincipalPayload(
         );
     }
 
-    if (!config.mosaicDefaultTeamId) {
+    if (!config.flashEvalsDefaultTeamId) {
         throw new ApiConflictError(
             "Flash Evals tenant configuration is missing.",
         );
@@ -280,7 +280,7 @@ async function provisionTenantWorkspace(
     config: IApiConfig,
     input: PrincipalInput,
 ): Promise<IUserRow> {
-    const teamId = config.mosaicDefaultTeamId!;
+    const teamId = config.flashEvalsDefaultTeamId!;
     const ensureWorkspace: WorkspaceEnsurer = (d, user, inp) =>
         ensureDefaultWorkspace(d, config, user, inp);
 
@@ -366,7 +366,7 @@ async function ensureDefaultWorkspace(
     user: IUserRow,
     input: { email: string; name: string | undefined },
 ): Promise<IUserRow> {
-    const teamId = config.mosaicDefaultTeamId!;
+    const teamId = config.flashEvalsDefaultTeamId!;
     if (user.team_id !== teamId) {
         throw new ApiConflictError(
             "This Flash Evals account is not a member of the configured tenant.",

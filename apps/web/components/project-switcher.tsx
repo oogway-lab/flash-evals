@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronsUpDown } from "lucide-react";
-import type { IProject, IWorkspace } from "@mosaic/api-contract";
+import type { IProject, IWorkspace } from "@flash-evals/api-contract";
 import {
     createProjectAction,
     switchProjectAction,

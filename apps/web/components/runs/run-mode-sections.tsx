@@ -6,7 +6,7 @@ import type {
     IRunSetupJudgePromptOption,
     IRunSetupModelOption,
     IRunSetupVersionOption,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import type { IActionState } from "@/app/actions";
 import { AudioRunModeSelector } from "./audio-run-mode-selector";
 import { AudioTranscriptionSection } from "./audio-transcription-section";

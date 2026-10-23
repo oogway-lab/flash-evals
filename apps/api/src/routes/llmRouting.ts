@@ -20,19 +20,19 @@ import type {
     IWorkflowNodeInput,
     WorkflowLlmGenerationControl,
     WorkflowLlmTransport,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     isWorkflowModelBackedNodeType,
     WORKFLOW_LLM_EXECUTION_CONTRACT_VERSION,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     listAvailableModelMetadata,
     MODEL_REGISTRY,
     registryEntryFor,
     transportCapabilityForModel,
     type ApiKeys,
-} from "@mosaic/llm-core";
-import { decryptSecret } from "@mosaic/secrets";
+} from "@flash-evals/llm-core";
+import { decryptSecret } from "@flash-evals/secrets";
 import { ConfigError, type IApiConfig } from "../config.js";
 import { type IDb, withTransaction } from "../db.js";
 import {
@@ -748,15 +748,15 @@ async function discoverLiveProviderCapabilities(
             "Bifrost needs a base URL. Save the public HTTPS URL of your Bifrost OpenAI-compatible endpoint in Settings, then try again.",
         );
     }
-    if (!config.mosaicSecretsEncKey) {
+    if (!config.flashEvalsSecretsEncKey) {
         throw new ConfigError(
-            "Missing required API env: MOSAIC_SECRETS_ENC_KEY",
+            "Missing required API env: FLASH_EVALS_SECRETS_ENC_KEY",
         );
     }
     const key = decryptSecret(
         keyRow,
         { teamId: context.teamId, provider: transport },
-        config.mosaicSecretsEncKey,
+        config.flashEvalsSecretsEncKey,
     );
     const baseUrl = keyRow.baseUrl
         ? await assertStoredProviderBaseUrl(keyRow.baseUrl, deps.resolveHost)

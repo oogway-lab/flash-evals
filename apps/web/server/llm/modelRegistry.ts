@@ -5,4 +5,4 @@ export {
     type IModelRegistryEntry,
     type IReasoningEffortCapability,
     type ModelProvider,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";

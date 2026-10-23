@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 import { authErrorResponse } from "@/server/auth/http";
 import { serverApiClient } from "@/server/api/client";
 import { requireActiveProject } from "@/server/projects/activeProject";
@@ -22,7 +22,7 @@ export async function GET(
     } catch (error) {
         const authResponse = authErrorResponse(error);
         if (authResponse) return authResponse;
-        if (error instanceof MosaicApiError && error.status === 404)
+        if (error instanceof FlashEvalsApiError && error.status === 404)
             return NextResponse.json({ error: "Not found" }, { status: 404 });
         throw error;
     }

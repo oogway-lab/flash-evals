@@ -50,13 +50,13 @@ function withResolvedExecutions(snapshot: any) {
                         generation: { maxOutputTokens: 4096 },
                         structuredOutput: { mode: "text" },
                         retry: {
-                            owner: "mosaic",
+                            owner: "flash-evals",
                             maxAttempts: 1,
                             timeoutMs: 30_000,
                             retryableErrorClasses: [],
                         },
                         cache: {
-                            mosaicReuse: "force_fresh",
+                            flashEvalsReuse: "force_fresh",
                             providerCaching: "allow",
                         },
                     },
@@ -605,7 +605,7 @@ describe("executeWorkflowRun", () => {
         for (const [line] of consoleError.mock.calls) {
             const payload = JSON.parse(String(line)) as Record<string, unknown>;
             expect(payload).toMatchObject({
-                service: "mosaic-worker",
+                service: "flash-evals-worker",
                 event: "workflow_cell.scoring_failed",
                 errorName: "Error",
             });

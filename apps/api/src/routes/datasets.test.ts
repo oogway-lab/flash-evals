@@ -45,11 +45,11 @@ const config: IApiConfig = {
     storageAdapter: "supabase",
     supabaseUrl: "https://example.supabase.co",
     supabaseServiceRoleKey: "service-role",
-    supabaseStorageBucket: "mosaic-images",
+    supabaseStorageBucket: "flash-evals-images",
     clerkSecretKey: "sk_test",
-    mosaicTenancyMode: "single-org",
-    mosaicAllowedEmailDomain: "example.com",
-    mosaicLlmProvider: "openai",
+    flashEvalsTenancyMode: "single-org",
+    flashEvalsAllowedEmailDomain: "example.com",
+    flashEvalsLlmProvider: "openai",
     corsOrigins: [],
     sttCapabilityProbes: {},
     profilingEnabled: false,
@@ -681,7 +681,7 @@ describe("dataset item mutations", () => {
         ).resolves.toEqual({ datasetId: "dataset-1" });
 
         expect(fetchMock).toHaveBeenCalledWith(
-            expect.stringContaining("/storage/v1/object/mosaic-images/"),
+            expect.stringContaining("/storage/v1/object/flash-evals-images/"),
             expect.objectContaining({ method: "POST" }),
         );
         expect(vi.mocked(db.query).mock.calls[3]?.[1]).toEqual([
@@ -787,7 +787,7 @@ describe("dataset item mutations", () => {
         ).resolves.toEqual({ importedCount: 1, failures: [] });
 
         expect(fetchMock).toHaveBeenCalledWith(
-            expect.stringContaining("/storage/v1/object/mosaic-images/"),
+            expect.stringContaining("/storage/v1/object/flash-evals-images/"),
             expect.objectContaining({ method: "POST" }),
         );
         expect(vi.mocked(db.query).mock.calls[3]?.[1]).toEqual([
@@ -860,7 +860,7 @@ describe("dataset item mutations", () => {
         ).resolves.toEqual({ importedCount: 1, failures: [] });
 
         expect(fetchMock).toHaveBeenCalledWith(
-            expect.stringContaining("/storage/v1/object/mosaic-images/"),
+            expect.stringContaining("/storage/v1/object/flash-evals-images/"),
             expect.objectContaining({ method: "POST" }),
         );
         expect(vi.mocked(db.query).mock.calls[3]?.[1]).toEqual([
@@ -1180,7 +1180,7 @@ describe("signUploadPayload", () => {
                 /^datasets\/dataset-1\/[a-f0-9-]{36}\.(png|jpg)$/,
             );
             expect(target.signedUrl).toContain(
-                "/storage/v1/object/upload/sign/mosaic-images/datasets/dataset-1/",
+                "/storage/v1/object/upload/sign/flash-evals-images/datasets/dataset-1/",
             );
             expect(target.signedUrl).toContain("?token=signed-token");
         }
@@ -1409,7 +1409,7 @@ describe("local storage adapter direct upload (U8)", () => {
     beforeAll(async () => {
         priorUploadDir = process.env.UPLOAD_DIR;
         uploadDir = await fs.mkdtemp(
-            path.join(os.tmpdir(), "mosaic-local-upload-"),
+            path.join(os.tmpdir(), "flash-evals-local-upload-"),
         );
         process.env.UPLOAD_DIR = uploadDir;
     });
@@ -1672,7 +1672,7 @@ describe("storageKey verify import (U6)", () => {
         // A HEAD verify was issued, and no POST upload happened.
         expect(fetchMock).toHaveBeenCalledWith(
             expect.stringContaining(
-                "/storage/v1/object/mosaic-images/datasets/dataset-1/",
+                "/storage/v1/object/flash-evals-images/datasets/dataset-1/",
             ),
             expect.objectContaining({ method: "HEAD" }),
         );
@@ -1727,7 +1727,7 @@ describe("storageKey verify import (U6)", () => {
         });
         // The ranged read asked for just the leading bytes.
         expect(fetchMock).toHaveBeenCalledWith(
-            expect.stringContaining("/storage/v1/object/mosaic-images/"),
+            expect.stringContaining("/storage/v1/object/flash-evals-images/"),
             expect.objectContaining({
                 method: "GET",
                 headers: expect.objectContaining({ Range: "bytes=0-15" }),
@@ -1873,7 +1873,7 @@ describe("storageKey verify import (U6)", () => {
 
         // Orphan cleanup issued a DELETE for the client-uploaded object (R7).
         expect(fetchMock).toHaveBeenCalledWith(
-            expect.stringContaining("/storage/v1/object/mosaic-images"),
+            expect.stringContaining("/storage/v1/object/flash-evals-images"),
             expect.objectContaining({ method: "DELETE" }),
         );
         fetchMock.mockRestore();

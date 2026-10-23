@@ -1,4 +1,4 @@
-import { getBareModelName, type ApiKeys } from "@mosaic/llm-core";
+import { getBareModelName, type ApiKeys } from "@flash-evals/llm-core";
 import { runJudge, type JudgeInput, type JudgeOutcome } from "./judge";
 import { isRecord } from "../lib/objects";
 import { mapPool } from "../lib/concurrency";
@@ -10,7 +10,7 @@ import type {
     LabelJson,
     OutputJson,
 } from "../db/jsonTypes";
-import type { ReasoningEffort } from "@mosaic/llm-core";
+import type { ReasoningEffort } from "@flash-evals/llm-core";
 
 export type JudgeFn = (input: JudgeInput) => Promise<JudgeOutcome>;
 

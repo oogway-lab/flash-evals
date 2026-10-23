@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type * as LlmCore from "@mosaic/llm-core";
+import type * as LlmCore from "@flash-evals/llm-core";
 import {
-    MosaicApiClient,
+    FlashEvalsApiClient,
     type ICreateWorkflowLlmRouteVersionRequest,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 
-vi.mock("@mosaic/llm-core", async (importOriginal) => {
+vi.mock("@flash-evals/llm-core", async (importOriginal) => {
     const actual = await importOriginal<typeof LlmCore>();
     return {
         ...actual,
@@ -44,18 +44,18 @@ const config: IApiConfig = {
     storageAdapter: "supabase",
     supabaseUrl: "https://example.supabase.co",
     supabaseServiceRoleKey: "service-role",
-    supabaseStorageBucket: "mosaic-images",
+    supabaseStorageBucket: "flash-evals-images",
     clerkSecretKey: "sk_test",
-    mosaicTenancyMode: "single-org",
-    mosaicAllowedEmailDomain: "example.com",
+    flashEvalsTenancyMode: "single-org",
+    flashEvalsAllowedEmailDomain: "example.com",
     corsOrigins: ["https://web.example.com"],
-    mosaicLlmProvider: "openai",
+    flashEvalsLlmProvider: "openai",
     openaiApiKey: "test-openai",
     internalApiToken: "internal-secret",
     sttCapabilityProbes: {},
     profilingEnabled: false,
-    mosaicMcpEnabled: false,
-    mosaicMcpAllowedOrigins: [],
+    flashEvalsMcpEnabled: false,
+    flashEvalsMcpAllowedOrigins: [],
     featureFlags: resolveApiFeatureFlags({}),
 };
 
@@ -79,7 +79,7 @@ function semanticRouteBody(): ICreateWorkflowLlmRouteVersionRequest {
             structuredOutput: { mode: "text" },
             retry: { owner: "gateway", timeoutMs: 30_000 },
             cache: {
-                mosaicReuse: "allow",
+                flashEvalsReuse: "allow",
                 providerCaching: "allow",
             },
         },
@@ -116,7 +116,7 @@ describe("handleRequest", () => {
                     createdAt: "2026-07-27T00:00:00.000Z",
                 }),
         );
-        const client = new MosaicApiClient({
+        const client = new FlashEvalsApiClient({
             baseUrl: "https://api.example.com",
             internalToken: "internal-secret",
             fetcher: fetcher as typeof fetch,
@@ -132,9 +132,9 @@ describe("handleRequest", () => {
         expect(JSON.parse(String(init?.body))).toEqual(body);
         expect(JSON.parse(String(init?.body))).not.toHaveProperty("teamId");
         expect(init?.headers).toMatchObject({
-            "X-Mosaic-Internal-Token": "internal-secret",
-            "X-Mosaic-Team-Id": ROUTING_TEAM_ID,
-            "X-Mosaic-Actor-Id": ROUTING_ACTOR_ID,
+            "X-Flash-Evals-Internal-Token": "internal-secret",
+            "X-Flash-Evals-Team-Id": ROUTING_TEAM_ID,
+            "X-Flash-Evals-Actor-Id": ROUTING_ACTOR_ID,
         });
     });
 
@@ -150,7 +150,7 @@ describe("handleRequest", () => {
             new Request("https://api.example.com/api/prompts/optimize", {
                 method: "POST",
                 headers: {
-                    "x-mosaic-internal-token": "internal-secret",
+                    "x-flash-evals-internal-token": "internal-secret",
                     "content-type": "application/json",
                 },
                 body: JSON.stringify({
@@ -183,7 +183,7 @@ describe("handleRequest", () => {
                     : { rows: [] },
             ),
         } as unknown as IDb;
-        const client = new MosaicApiClient({
+        const client = new FlashEvalsApiClient({
             baseUrl: "https://api.example.com",
             internalToken: "internal-secret",
             fetcher: (async (input: RequestInfo | URL, init?: RequestInit) =>
@@ -203,7 +203,7 @@ describe("handleRequest", () => {
         );
 
         await expect(rejection).rejects.toMatchObject({
-            name: "MosaicApiError",
+            name: "FlashEvalsApiError",
             status: 429,
             code: "rate_limited",
             retryAfterSeconds: 7,
@@ -236,7 +236,7 @@ describe("handleRequest", () => {
             new Request("https://api.example.com/api/llm-routing/routes", {
                 method: "POST",
                 headers: {
-                    "x-mosaic-internal-token": "internal-secret",
+                    "x-flash-evals-internal-token": "internal-secret",
                     "content-type": "application/json",
                 },
                 body: JSON.stringify(semanticRouteBody()),
@@ -258,9 +258,9 @@ describe("handleRequest", () => {
             new Request("https://api.example.com/api/llm-routing/routes", {
                 method: "POST",
                 headers: {
-                    "x-mosaic-internal-token": "internal-secret",
-                    "x-mosaic-team-id": ROUTING_TEAM_ID,
-                    "x-mosaic-actor-id": ROUTING_ACTOR_ID,
+                    "x-flash-evals-internal-token": "internal-secret",
+                    "x-flash-evals-team-id": ROUTING_TEAM_ID,
+                    "x-flash-evals-actor-id": ROUTING_ACTOR_ID,
                     "content-type": "application/json",
                 },
                 body: JSON.stringify(semanticRouteBody()),
@@ -281,9 +281,9 @@ describe("handleRequest", () => {
             new Request("https://api.example.com/api/llm-routing/routes", {
                 method: "POST",
                 headers: {
-                    "x-mosaic-internal-token": "internal-secret",
-                    "x-mosaic-team-id": ROUTING_TEAM_ID,
-                    "x-mosaic-actor-id": ROUTING_ACTOR_ID,
+                    "x-flash-evals-internal-token": "internal-secret",
+                    "x-flash-evals-team-id": ROUTING_TEAM_ID,
+                    "x-flash-evals-actor-id": ROUTING_ACTOR_ID,
                     "content-type": "application/json",
                 },
                 body: JSON.stringify(semanticRouteBody()),
@@ -308,7 +308,7 @@ describe("handleRequest", () => {
                 `https://api.example.com/api/llm-routing/route-candidates?projectId=${ROUTING_PROJECT_ID}&transport=openrouter`,
                 {
                     headers: {
-                        "x-mosaic-internal-token": "internal-secret",
+                        "x-flash-evals-internal-token": "internal-secret",
                     },
                 },
             ),
@@ -326,9 +326,9 @@ describe("handleRequest", () => {
             new Request("https://api.example.com/api/llm-routing/routes", {
                 method: "POST",
                 headers: {
-                    "x-mosaic-internal-token": "internal-secret",
-                    "x-mosaic-team-id": ROUTING_TEAM_ID,
-                    "x-mosaic-actor-id": ROUTING_ACTOR_ID,
+                    "x-flash-evals-internal-token": "internal-secret",
+                    "x-flash-evals-team-id": ROUTING_TEAM_ID,
+                    "x-flash-evals-actor-id": ROUTING_ACTOR_ID,
                     "content-type": "application/json",
                 },
                 body: JSON.stringify({
@@ -351,7 +351,7 @@ describe("handleRequest", () => {
                         structuredOutput: { mode: "text" },
                         retry: { owner: "gateway", timeoutMs: 30_000 },
                         cache: {
-                            mosaicReuse: "allow",
+                            flashEvalsReuse: "allow",
                             providerCaching: "allow",
                         },
                     },
@@ -382,7 +382,7 @@ describe("handleRequest", () => {
                 "https://api.example.com/api/workflows?teamId=team-1&projectId=project-1&kind=multi",
                 {
                     headers: {
-                        "x-mosaic-internal-token": "internal-secret",
+                        "x-flash-evals-internal-token": "internal-secret",
                     },
                 },
             ),
@@ -402,7 +402,7 @@ describe("handleRequest", () => {
             new Request("https://api.example.com/api/workflows/workflow-a", {
                 method: "PUT",
                 headers: {
-                    "x-mosaic-internal-token": "internal-secret",
+                    "x-flash-evals-internal-token": "internal-secret",
                     "content-type": "application/json",
                 },
                 body: JSON.stringify({ workflowId: "workflow-b" }),
@@ -425,7 +425,7 @@ describe("handleRequest", () => {
                 {
                     method: "POST",
                     headers: {
-                        "x-mosaic-internal-token": "internal-secret",
+                        "x-flash-evals-internal-token": "internal-secret",
                         "content-type": "application/json",
                     },
                     body: JSON.stringify({ workflowId: "workflow-b" }),
@@ -450,7 +450,7 @@ describe("handleRequest", () => {
             new Request("https://api.example.com/health", {
                 headers: {
                     origin: "https://web.example.com",
-                    "x-mosaic-internal-token": "wrong-token",
+                    "x-flash-evals-internal-token": "wrong-token",
                 },
             }),
             { config, db: dbWithRows() },
@@ -483,7 +483,7 @@ describe("handleRequest", () => {
             new Request("https://api.example.com/health", {
                 headers: {
                     origin: "https://web.example.com",
-                    "x-mosaic-internal-token": "internal-secret",
+                    "x-flash-evals-internal-token": "internal-secret",
                 },
             }),
             { config, db: dbWithRows() },
@@ -495,7 +495,7 @@ describe("handleRequest", () => {
         );
         await expect(response.json()).resolves.toMatchObject({
             status: "ok",
-            service: "mosaic-api",
+            service: "flash-evals-api",
             storage: "supabase",
             database: "supabase-postgres",
             checks: { database: "ok", storage: "ok" },
@@ -531,7 +531,7 @@ describe("handleRequest", () => {
         );
         const response = await handleRequest(
             new Request("https://api.example.com/health", {
-                headers: { "x-mosaic-internal-token": "internal-secret" },
+                headers: { "x-flash-evals-internal-token": "internal-secret" },
             }),
             {
                 config: {
@@ -606,7 +606,7 @@ describe("handleRequest", () => {
                 {
                     headers: {
                         origin: "https://web.example.com",
-                        "x-mosaic-internal-token": "internal-secret",
+                        "x-flash-evals-internal-token": "internal-secret",
                     },
                 },
             ),
@@ -679,7 +679,7 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/dashboard?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-mosaic-internal-token": "internal-secret" },
+                    headers: { "x-flash-evals-internal-token": "internal-secret" },
                 },
             ),
             {
@@ -713,7 +713,7 @@ describe("handleRequest", () => {
             new Request(
                 `https://api.example.com/api/images/${key}?teamId=team-1&projectId=project-1`,
                 {
-                    headers: { "x-mosaic-internal-token": "internal-secret" },
+                    headers: { "x-flash-evals-internal-token": "internal-secret" },
                 },
             ),
             {
@@ -734,7 +734,7 @@ describe("handleRequest", () => {
         expect(response.headers.get("content-type")).toBe("image/png");
         await expect(response.text()).resolves.toBe("image-bytes");
         expect(fetch).toHaveBeenCalledWith(
-            `https://example.supabase.co/storage/v1/object/mosaic-images/${key}`,
+            `https://example.supabase.co/storage/v1/object/flash-evals-images/${key}`,
             expect.objectContaining({
                 method: "GET",
                 headers: {
@@ -766,7 +766,7 @@ describe("handleRequest", () => {
                 `https://api.example.com/api/images/${key}?teamId=team-1&projectId=project-1`,
                 {
                     headers: {
-                        "x-mosaic-internal-token": "internal-secret",
+                        "x-flash-evals-internal-token": "internal-secret",
                         Range: "bytes=2-5",
                     },
                 },
@@ -800,7 +800,7 @@ describe("handleRequest", () => {
         const response = await handleRequest(
             new Request(
                 `https://api.example.com/api/images/${key}?teamId=team-1&projectId=project-2`,
-                { headers: { "x-mosaic-internal-token": "internal-secret" } },
+                { headers: { "x-flash-evals-internal-token": "internal-secret" } },
             ),
             {
                 config,
@@ -824,7 +824,7 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/runs/run-1/progress?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-mosaic-internal-token": "internal-secret" },
+                    headers: { "x-flash-evals-internal-token": "internal-secret" },
                 },
             ),
             {
@@ -851,7 +851,7 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/runs?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-mosaic-internal-token": "internal-secret" },
+                    headers: { "x-flash-evals-internal-token": "internal-secret" },
                 },
             ),
             {
@@ -899,7 +899,7 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/runs/setup?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-mosaic-internal-token": "internal-secret" },
+                    headers: { "x-flash-evals-internal-token": "internal-secret" },
                 },
             ),
             {
@@ -924,7 +924,7 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/datasets?teamId=team-1&projectId=project-1&includeArchived=true",
                 {
-                    headers: { "x-mosaic-internal-token": "internal-secret" },
+                    headers: { "x-flash-evals-internal-token": "internal-secret" },
                 },
             ),
             {
@@ -967,7 +967,7 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/datasets/dataset-1?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-mosaic-internal-token": "internal-secret" },
+                    headers: { "x-flash-evals-internal-token": "internal-secret" },
                 },
             ),
             {
@@ -1015,7 +1015,7 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/prompts?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-mosaic-internal-token": "internal-secret" },
+                    headers: { "x-flash-evals-internal-token": "internal-secret" },
                 },
             ),
             {
@@ -1061,7 +1061,7 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/prompts/prompt-1?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-mosaic-internal-token": "internal-secret" },
+                    headers: { "x-flash-evals-internal-token": "internal-secret" },
                 },
             ),
             {

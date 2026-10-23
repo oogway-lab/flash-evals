@@ -3366,7 +3366,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
             "cache": {
               "additionalProperties": false,
               "properties": {
-                "mosaicReuse": {
+                "flashEvalsReuse": {
                   "enum": [
                     "allow",
                     "force_fresh",
@@ -3379,7 +3379,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                 },
               },
               "required": [
-                "mosaicReuse",
+                "flashEvalsReuse",
                 "providerCaching",
               ],
               "type": "object",
@@ -3439,7 +3439,7 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
                       "type": "integer",
                     },
                     "owner": {
-                      "const": "mosaic",
+                      "const": "flash-evals",
                       "type": "string",
                     },
                     "retryableErrorClasses": {
@@ -3751,6 +3751,13 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "flashEvalsReuse": {
+          "enum": [
+            "allow",
+            "force_fresh",
+          ],
+          "type": "string",
+        },
         "generation": {
           "additionalProperties": false,
           "properties": {
@@ -3798,13 +3805,6 @@ exports[`MCP prompt tools > snapshots the complete tool catalog and input schema
         },
         "modelId": {
           "minLength": 1,
-          "type": "string",
-        },
-        "mosaicReuse": {
-          "enum": [
-            "allow",
-            "force_fresh",
-          ],
           "type": "string",
         },
         "name": {

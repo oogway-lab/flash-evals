@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { EvalImage } from "@mosaic/llm-core";
+import type { EvalImage } from "@flash-evals/llm-core";
 import { and, eq, sql } from "drizzle-orm";
 import type { ITranscriptArtifact } from "../audio/transcription";
 import { getOrCreateAudioTranscriptArtifactWithProvenance } from "../audio/transcription";

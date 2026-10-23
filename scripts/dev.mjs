@@ -11,7 +11,7 @@ const hostArgs = optionValue(webArgs, ["-H", "--hostname"])
 const webPort =
     optionValue(webArgs, ["-p", "--port"]) || process.env.PORT || "3000";
 // Not PORT: next dev reads PORT for web, so sharing it would collide.
-const apiPort = process.env.MOSAIC_DEV_API_PORT || "3001";
+const apiPort = process.env.FLASH_EVALS_DEV_API_PORT || "3001";
 const webOrigin = `http://localhost:${webPort}`;
 const apiOrigin = `http://localhost:${apiPort}`;
 const seedTeamId = "f3b1a534-d8ef-4146-aead-96301d99d496";
@@ -21,39 +21,39 @@ const commands = [
     {
         name: "api",
         command: "pnpm",
-        args: ["--filter", "@mosaic/api", "dev"],
+        args: ["--filter", "@flash-evals/api", "dev"],
         env: {
             CORS_ORIGINS: process.env.CORS_ORIGINS || webOrigin,
             PORT: apiPort,
-            MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS: "true",
+            FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS: "true",
         },
     },
     {
         name: "web",
         command: "pnpm",
-        args: ["--filter", "@mosaic/web", "dev", ...hostArgs, ...webArgs],
+        args: ["--filter", "@flash-evals/web", "dev", ...hostArgs, ...webArgs],
         env: {
             API_BASE_URL: apiOrigin,
             NEXT_PUBLIC_API_BASE_URL: apiOrigin,
             AUTH_DEV: "true",
             AUTH_DEV_ALLOW_INSECURE: "1",
-            MOSAIC_DEFAULT_TEAM_ID:
-                process.env.MOSAIC_DEFAULT_TEAM_ID || seedTeamId,
-            MOSAIC_DEFAULT_USER_ID:
-                process.env.MOSAIC_DEFAULT_USER_ID || seedUserId,
+            FLASH_EVALS_DEFAULT_TEAM_ID:
+                process.env.FLASH_EVALS_DEFAULT_TEAM_ID || seedTeamId,
+            FLASH_EVALS_DEFAULT_USER_ID:
+                process.env.FLASH_EVALS_DEFAULT_USER_ID || seedUserId,
         },
     },
     {
         name: "worker",
         command: "pnpm",
-        args: ["--filter", "@mosaic/web", "worker"],
+        args: ["--filter", "@flash-evals/web", "worker"],
         env: {
             AUTH_DEV: "true",
             AUTH_DEV_ALLOW_INSECURE: "1",
-            MOSAIC_DEFAULT_TEAM_ID:
-                process.env.MOSAIC_DEFAULT_TEAM_ID || seedTeamId,
-            MOSAIC_DEFAULT_USER_ID:
-                process.env.MOSAIC_DEFAULT_USER_ID || seedUserId,
+            FLASH_EVALS_DEFAULT_TEAM_ID:
+                process.env.FLASH_EVALS_DEFAULT_TEAM_ID || seedTeamId,
+            FLASH_EVALS_DEFAULT_USER_ID:
+                process.env.FLASH_EVALS_DEFAULT_USER_ID || seedUserId,
         },
     },
 ];
@@ -77,7 +77,7 @@ let shuttingDown = false;
 for (const entry of commands) {
     const child = spawn(entry.command, entry.args, {
         cwd: process.cwd(),
-        env: { ...process.env, MOSAIC_PACKAGES_BUILT: "1", ...entry.env },
+        env: { ...process.env, FLASH_EVALS_PACKAGES_BUILT: "1", ...entry.env },
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,
     });

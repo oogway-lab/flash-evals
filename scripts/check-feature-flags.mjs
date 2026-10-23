@@ -12,7 +12,7 @@ const MANIFEST_FILES = [
     { path: "apps/web/lib/analytics.ts", constName: "WEB_FEATURE_FLAGS" },
 ];
 
-const FLAG_ENV_PATTERN = /\b(?:NEXT_PUBLIC_)?MOSAIC_FLAG_[A-Z0-9_]+\b/g;
+const FLAG_ENV_PATTERN = /\b(?:NEXT_PUBLIC_)?FLASH_EVALS_FLAG_[A-Z0-9_]+\b/g;
 const STALE_AFTER_DAYS = 120;
 
 const sourceExtensions = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs"]);

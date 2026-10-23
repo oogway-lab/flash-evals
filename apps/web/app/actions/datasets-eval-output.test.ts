@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 
 const mockApiClient = vi.hoisted(() => ({
     listWorkspaces: vi.fn(),
@@ -147,7 +147,7 @@ describe("editItemAction expected-output handling", () => {
         getItem.mockResolvedValue({ id: "item-1", datasetId: "ds-eval" });
         getDataset.mockResolvedValue(evalDataset);
         mockApiClient.updateDatasetItemFromForm.mockRejectedValue(
-            new MosaicApiError("Invalid JSON in golden answer.", 400),
+            new FlashEvalsApiError("Invalid JSON in golden answer.", 400),
         );
 
         const result = await editItemAction(

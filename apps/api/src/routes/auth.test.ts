@@ -12,12 +12,12 @@ const config: IApiConfig = {
     storageAdapter: "supabase",
     supabaseUrl: "https://example.supabase.co",
     supabaseServiceRoleKey: "service-role",
-    supabaseStorageBucket: "mosaic-images",
+    supabaseStorageBucket: "flash-evals-images",
     clerkSecretKey: "sk_test",
-    mosaicTenancyMode: "single-org",
-    mosaicAllowedEmailDomain: "example.com",
-    mosaicDefaultTeamId: "11111111-1111-4111-8111-111111111111",
-    mosaicLlmProvider: "openai",
+    flashEvalsTenancyMode: "single-org",
+    flashEvalsAllowedEmailDomain: "example.com",
+    flashEvalsDefaultTeamId: "11111111-1111-4111-8111-111111111111",
+    flashEvalsLlmProvider: "openai",
     corsOrigins: [],
     sttCapabilityProbes: {},
     profilingEnabled: false,
@@ -41,7 +41,7 @@ describe("resolvePrincipalPayload", () => {
                 {
                     id: "user-1",
                     clerk_user_id: "clerk-1",
-                    team_id: config.mosaicDefaultTeamId,
+                    team_id: config.flashEvalsDefaultTeamId,
                     email: "alice@example.com",
                     name: "Alice",
                 },
@@ -62,20 +62,20 @@ describe("resolvePrincipalPayload", () => {
             }),
         ).resolves.toEqual({
             userId: "user-1",
-            teamId: config.mosaicDefaultTeamId,
+            teamId: config.flashEvalsDefaultTeamId,
             defaultWorkspaceId: "workspace-1",
         });
         expect(db.query).toHaveBeenCalledWith(
             expect.stringContaining("insert into workspaces"),
             [
-                config.mosaicDefaultTeamId,
+                config.flashEvalsDefaultTeamId,
                 "Alice's workspace (user-1)",
                 "user-1",
             ],
         );
         expect(db.query).toHaveBeenCalledWith(
             expect.stringContaining("insert into projects"),
-            [config.mosaicDefaultTeamId, "workspace-1", "user-1"],
+            [config.flashEvalsDefaultTeamId, "workspace-1", "user-1"],
         );
     });
 
@@ -106,14 +106,14 @@ describe("resolvePrincipalPayload", () => {
     it("normalizes the pilot domain and rejects malformed or changed identities", async () => {
         const pilotConfig = {
             ...config,
-            mosaicAllowedEmailDomain: "oogwaylabs.com",
+            flashEvalsAllowedEmailDomain: "oogwaylabs.com",
         };
         const existingDb = dbWithRows([
             [
                 {
                     id: "user-existing",
                     clerk_user_id: "clerk-1",
-                    team_id: config.mosaicDefaultTeamId,
+                    team_id: config.flashEvalsDefaultTeamId,
                     email: "alice@oogwaylabs.com",
                     name: "Alice",
                     default_workspace_id: "workspace-existing",
@@ -174,8 +174,8 @@ describe("resolvePrincipalPayload", () => {
                 db,
                 {
                     ...config,
-                    mosaicTenancyMode: "isolated",
-                    mosaicAllowedEmailDomain: "oogwaylabs.com",
+                    flashEvalsTenancyMode: "isolated",
+                    flashEvalsAllowedEmailDomain: "oogwaylabs.com",
                 },
                 {
                     identity: {
@@ -195,7 +195,7 @@ describe("resolvePrincipalPayload", () => {
         await expect(
             resolvePrincipalPayload(
                 db,
-                { ...config, mosaicAllowedEmailDomain: "" },
+                { ...config, flashEvalsAllowedEmailDomain: "" },
                 {
                     identity: {
                         clerkUserId: "clerk-1",
@@ -205,12 +205,12 @@ describe("resolvePrincipalPayload", () => {
                 },
             ),
         ).rejects.toThrow(
-            "Sign-in is disabled until MOSAIC_ALLOWED_EMAIL_DOMAIN is configured.",
+            "Sign-in is disabled until FLASH_EVALS_ALLOWED_EMAIL_DOMAIN is configured.",
         );
         expect(db.query).not.toHaveBeenCalled();
     });
 
-    it("requires MOSAIC_DEFAULT_TEAM_ID for new users", async () => {
+    it("requires FLASH_EVALS_DEFAULT_TEAM_ID for new users", async () => {
         const db = dbWithRows([
             [],
             [],
@@ -233,7 +233,7 @@ describe("resolvePrincipalPayload", () => {
         await expect(
             resolvePrincipalPayload(
                 db,
-                { ...config, mosaicDefaultTeamId: undefined },
+                { ...config, flashEvalsDefaultTeamId: undefined },
                 {
                     identity: {
                         clerkUserId: "clerk-1",
@@ -251,7 +251,7 @@ describe("resolvePrincipalPayload", () => {
                 {
                     id: "user-existing",
                     clerk_user_id: "clerk-1",
-                    team_id: config.mosaicDefaultTeamId,
+                    team_id: config.flashEvalsDefaultTeamId,
                     email: "alice@example.com",
                     name: "Alice",
                     default_workspace_id: "workspace-existing",
@@ -269,7 +269,7 @@ describe("resolvePrincipalPayload", () => {
             }),
         ).resolves.toEqual({
             userId: "user-existing",
-            teamId: config.mosaicDefaultTeamId,
+            teamId: config.flashEvalsDefaultTeamId,
             defaultWorkspaceId: "workspace-existing",
         });
         expect(db.query).toHaveBeenCalledTimes(1);
@@ -279,7 +279,7 @@ describe("resolvePrincipalPayload", () => {
         const existing = {
             id: "user-existing",
             clerk_user_id: null,
-            team_id: config.mosaicDefaultTeamId,
+            team_id: config.flashEvalsDefaultTeamId,
             email: "alice@example.com",
             name: "Alice",
             default_workspace_id: "workspace-existing",
@@ -302,7 +302,7 @@ describe("resolvePrincipalPayload", () => {
             }),
         ).resolves.toEqual({
             userId: "user-existing",
-            teamId: config.mosaicDefaultTeamId,
+            teamId: config.flashEvalsDefaultTeamId,
             defaultWorkspaceId: "workspace-existing",
         });
         expect(db.query).toHaveBeenCalledTimes(4);
@@ -382,12 +382,12 @@ describe("resolvePrincipalPayload", () => {
         expect(principals).toEqual([
             {
                 userId: "user-1",
-                teamId: config.mosaicDefaultTeamId,
+                teamId: config.flashEvalsDefaultTeamId,
                 defaultWorkspaceId: "workspace-1",
             },
             {
                 userId: "user-1",
-                teamId: config.mosaicDefaultTeamId,
+                teamId: config.flashEvalsDefaultTeamId,
                 defaultWorkspaceId: "workspace-1",
             },
         ]);
@@ -399,9 +399,9 @@ describe("resolvePrincipalPayload", () => {
 describe("resolvePrincipalPayload in isolated tenancy mode", () => {
     const isolatedConfig: IApiConfig = {
         ...config,
-        mosaicTenancyMode: "isolated",
-        mosaicAllowedEmailDomain: "",
-        mosaicDefaultTeamId: undefined,
+        flashEvalsTenancyMode: "isolated",
+        flashEvalsAllowedEmailDomain: "",
+        flashEvalsDefaultTeamId: undefined,
     };
 
     it("gives a brand-new signup its own team, regardless of email domain", async () => {

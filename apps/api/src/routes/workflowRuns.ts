@@ -26,14 +26,14 @@ import type {
     RunStatus,
     WorkflowRunTarget,
     WorkflowLlmTransport,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import {
     WORKFLOW_JUDGE_SCHEMA_DIGEST,
     WORKFLOW_JUDGE_SCHEMA_NAME,
     WORKFLOW_LLM_EXECUTION_CONTRACT_VERSION,
     canonicalJsonString,
     isWorkflowModelBackedNodeType,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import type { IApiConfig } from "../config.js";
 import { assertRunCellLimit, assertTeamSpendUnderCap } from "../runLimits.js";
 import type { IDb } from "../db.js";
@@ -1082,12 +1082,12 @@ function simpleWorkflowRoute(
             transport === "gateway"
                 ? { owner: "gateway", timeoutMs }
                 : {
-                      owner: "mosaic",
+                      owner: "flash-evals",
                       maxAttempts: 1,
                       timeoutMs,
                       retryableErrorClasses: [],
                   },
-        cache: { mosaicReuse: "force_fresh", providerCaching: "allow" },
+        cache: { flashEvalsReuse: "force_fresh", providerCaching: "allow" },
     };
 }
 

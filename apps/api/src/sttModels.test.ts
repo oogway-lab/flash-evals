@@ -6,7 +6,7 @@ import {
     sttConfigFieldsForModelId,
     sttMetricsModelId,
     sttModelIdentityForId,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import type { IApiConfig } from "./config.js";
 import {
     invalidSttConfigMessages,
@@ -25,10 +25,10 @@ function config(overrides: Partial<IApiConfig> = {}): IApiConfig {
         supabaseServiceRoleKey: "",
         supabaseStorageBucket: "",
         clerkSecretKey: "clerk-secret",
-        mosaicTenancyMode: "single-org",
-        mosaicAllowedEmailDomain: "example.com",
+        flashEvalsTenancyMode: "single-org",
+        flashEvalsAllowedEmailDomain: "example.com",
         corsOrigins: [],
-        mosaicLlmProvider: "auto",
+        flashEvalsLlmProvider: "auto",
         sttCapabilityProbes: {},
         profilingEnabled: false,
         featureFlags: resolveApiFeatureFlags({}),

@@ -1,4 +1,4 @@
-import { REASONING_EFFORT_LEVELS } from "@mosaic/llm-core";
+import { REASONING_EFFORT_LEVELS } from "@flash-evals/llm-core";
 import { describe, expect, it } from "vitest";
 import {
     MODEL_REGISTRY,

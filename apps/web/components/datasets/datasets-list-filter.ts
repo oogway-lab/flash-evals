@@ -1,4 +1,4 @@
-import type { IDatasetListRow } from "@mosaic/api-contract";
+import type { IDatasetListRow } from "@flash-evals/api-contract";
 
 export function filterDatasets(
     rows: IDatasetListRow[],

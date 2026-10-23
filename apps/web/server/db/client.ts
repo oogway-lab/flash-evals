@@ -53,14 +53,14 @@ function getPool(): Pool {
         // DB. Gate strictly on NEXT_PHASE so a runtime process with a missing
         // DATABASE_URL still fails loudly instead of dialing a placeholder.
         const url =
-            process.env.MOSAIC_WEB_DATABASE_URL ??
+            process.env.FLASH_EVALS_WEB_DATABASE_URL ??
             process.env.DATABASE_URL ??
             (process.env.NEXT_PHASE === "phase-production-build"
                 ? "postgres://build:build@127.0.0.1:1/build"
                 : undefined);
         if (!url) {
             throw new Error(
-                "MOSAIC_WEB_DATABASE_URL or DATABASE_URL is not set",
+                "FLASH_EVALS_WEB_DATABASE_URL or DATABASE_URL is not set",
             );
         }
         pool = new Pool({

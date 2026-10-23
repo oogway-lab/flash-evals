@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 
 const mocks = vi.hoisted(() => ({
     getWorkflow: vi.fn(),
@@ -80,7 +80,7 @@ describe("Pipeline canvas page", () => {
 
     it("shows not found when the API reports a missing workflow", async () => {
         mocks.getWorkflow.mockRejectedValue(
-            new MosaicApiError("Not found", 404),
+            new FlashEvalsApiError("Not found", 404),
         );
 
         await expect(renderPage()).rejects.toThrow("NEXT_NOT_FOUND");
@@ -95,7 +95,7 @@ describe("Pipeline canvas page", () => {
 
     it("keeps the canvas usable when LLM routing fails to load", async () => {
         mocks.listWorkflowLlmRoutes.mockRejectedValue(
-            new MosaicApiError("Unavailable", 503),
+            new FlashEvalsApiError("Unavailable", 503),
         );
 
         render(await renderPage());

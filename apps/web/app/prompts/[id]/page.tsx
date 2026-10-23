@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil } from "lucide-react";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 import { requireActiveProject as requirePagePrincipal } from "@/server/projects/activeProject";
 import { serverApiClient } from "@/server/api/client";
 import { Page } from "@/components/layout/page";
@@ -33,7 +33,7 @@ export default async function PromptViewPage({
     const detail = await serverApiClient()
         .getPromptDetail(p.teamId, p.projectId, id)
         .catch((err: unknown) => {
-            if (err instanceof MosaicApiError && err.status === 404) notFound();
+            if (err instanceof FlashEvalsApiError && err.status === 404) notFound();
             throw err;
         });
     const { prompt, latestVersion: version, schemaVersion, versions } = detail;

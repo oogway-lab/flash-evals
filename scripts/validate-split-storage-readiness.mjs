@@ -54,13 +54,13 @@ if (mode === "local") {
             requireValues(env, "API environment", [
                 "DATABASE_URL",
                 "CLERK_SECRET_KEY",
-                "MOSAIC_ALLOWED_EMAIL_DOMAIN",
+                "FLASH_EVALS_ALLOWED_EMAIL_DOMAIN",
                 "CORS_ORIGINS",
                 "INTERNAL_API_TOKEN",
             ]);
-            if (env.MOSAIC_API_START_WORKER !== "false") {
+            if (env.FLASH_EVALS_API_START_WORKER !== "false") {
                 errors.push(
-                    "API environment must set MOSAIC_API_START_WORKER=false when the worker is a separate service.",
+                    "API environment must set FLASH_EVALS_API_START_WORKER=false when the worker is a separate service.",
                 );
             }
             rejectLegacyVolumes(env, "API environment");
@@ -97,9 +97,9 @@ if (mode === "local") {
             "CORS_ORIGINS",
             "INTERNAL_API_TOKEN",
         ]);
-        if (api.MOSAIC_API_START_WORKER !== "false") {
+        if (api.FLASH_EVALS_API_START_WORKER !== "false") {
             errors.push(
-                "Railway API service must set MOSAIC_API_START_WORKER=false for the separate worker service.",
+                "Railway API service must set FLASH_EVALS_API_START_WORKER=false for the separate worker service.",
             );
         }
         rejectLegacyVolumes(api, "Railway API service");

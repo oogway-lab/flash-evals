@@ -7,8 +7,8 @@ import type {
     IWorkflowLlmRoute,
     IWorkflowLlmRouteCandidate,
     IWorkflowNodeConfig,
-} from "@mosaic/api-contract";
-import { isWorkflowModelBackedNodeType } from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
+import { isWorkflowModelBackedNodeType } from "@flash-evals/api-contract";
 import Link from "next/link";
 import { Copy, Trash2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -494,7 +494,7 @@ function LlmRouteFields({
         };
         timeoutMs?: number;
         maxAttempts?: number;
-        mosaicReuse?: "allow" | "force_fresh";
+        flashEvalsReuse?: "allow" | "force_fresh";
     }) => Promise<{ route?: IWorkflowLlmRoute; error?: string }>;
     onLoadLlmModels?: (
         transport: "openai" | "gateway" | "openrouter" | "bifrost",
@@ -571,7 +571,7 @@ function LlmRouteFields({
     );
     const [maxAttempts, setMaxAttempts] = useState(
         String(
-            version?.config.retry.owner === "mosaic"
+            version?.config.retry.owner === "flash-evals"
                 ? version.config.retry.maxAttempts
                 : 1,
         ),
@@ -759,7 +759,7 @@ function LlmRouteFields({
             ...(selectedTransport === "gateway"
                 ? {}
                 : { maxAttempts: positiveNumber(maxAttempts, 1) }),
-            mosaicReuse: "force_fresh",
+            flashEvalsReuse: "force_fresh",
         });
         setCreating(false);
         if (!result.route?.latestVersion) {
@@ -1295,7 +1295,7 @@ function routeSettingsSummary(
         .filter(Boolean)
         .join(" · ");
     const reuse =
-        config.cache.mosaicReuse === "force_fresh"
+        config.cache.flashEvalsReuse === "force_fresh"
             ? "always call provider"
             : "exact reuse allowed";
     return `${generation} · ${reuse}`;

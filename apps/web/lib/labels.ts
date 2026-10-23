@@ -11,7 +11,7 @@ import type {
     RunStatus,
     WorkflowLlmTransport,
     WorkflowNodeType,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 
 // Display labels for enum values. Every raw enum a user can see goes through
 // here, so the same value reads the same way everywhere (sentence case, per
@@ -76,8 +76,8 @@ export const UPSTREAM_MODE_LABELS: Record<UpstreamMode, string> = {
     exact: "Exact providers",
 };
 
-export const MOSAIC_REUSE_LABELS: Record<
-    IWorkflowLlmCachePolicy["mosaicReuse"],
+export const FLASH_EVALS_REUSE_LABELS: Record<
+    IWorkflowLlmCachePolicy["flashEvalsReuse"],
     string
 > = {
     allow: "Allowed",
@@ -88,7 +88,7 @@ export const RETRY_OWNER_LABELS: Record<
     IWorkflowLlmRetryPolicy["owner"],
     string
 > = {
-    mosaic: "Flash Evals",
+    "flash-evals": "Flash Evals",
     gateway: "Gateway",
 };
 

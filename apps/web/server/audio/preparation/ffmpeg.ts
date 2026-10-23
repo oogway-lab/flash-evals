@@ -62,7 +62,7 @@ export async function withAudioWorkspace<T>(
 ): Promise<T> {
     let dir: string | undefined;
     try {
-        dir = await mkdtemp(join(tmpdir(), "mosaic-audio-"));
+        dir = await mkdtemp(join(tmpdir(), "flash-evals-audio-"));
         const inputPath = join(dir, "source");
         await writeFile(inputPath, bytes);
         return await fn({ dir, inputPath });

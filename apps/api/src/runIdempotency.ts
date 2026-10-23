@@ -4,7 +4,7 @@ import {
     type ICreateRunRequest,
     type ICreateRunFromSelectionRequest,
     type ICreateRunResponse,
-} from "@mosaic/api-contract";
+} from "@flash-evals/api-contract";
 import { withTransaction, type IDb } from "./db.js";
 import { ApiConflictError, ApiFieldValidationError } from "./errors.js";
 

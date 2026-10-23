@@ -2,7 +2,7 @@ import { AlertTriangle, Check, CircleAlert, CircleDashed } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ReviewVerdict } from "@/components/runs/types";
-import type { IModelComparison } from "@mosaic/api-contract";
+import type { IModelComparison } from "@flash-evals/api-contract";
 import { Hint } from "@/components/ui/hint";
 import { MISSING_VALUE } from "@/lib/format";
 import {

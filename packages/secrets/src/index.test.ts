@@ -1,3 +1,4 @@
+import { createCipheriv } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { decryptSecret, encryptSecret, maskHint } from "./index.js";
 
@@ -5,6 +6,46 @@ const VALID_KEY = Buffer.alloc(32, 7).toString("base64");
 const CONTEXT = { teamId: "team-1", provider: "openai" };
 
 describe("secret encryption", () => {
+    it("decrypts credentials saved before the product rename", () => {
+        const iv = Buffer.alloc(12, 3);
+        const cipher = createCipheriv(
+            "aes-256-gcm",
+            Buffer.from(VALID_KEY, "base64"),
+            iv,
+        );
+        cipher.setAAD(
+            Buffer.from(
+                `mosaic-provider-key:v1\0${CONTEXT.teamId}\0${CONTEXT.provider}`,
+            ),
+        );
+        const ciphertext = Buffer.concat([
+            cipher.update("existing-provider-key", "utf8"),
+            cipher.final(),
+        ]);
+        expect(
+            decryptSecret(
+                {
+                    ciphertext: ciphertext.toString("base64"),
+                    iv: iv.toString("base64"),
+                    authTag: cipher.getAuthTag().toString("base64"),
+                },
+                CONTEXT,
+                VALID_KEY,
+            ),
+        ).toBe("existing-provider-key");
+        expect(() =>
+            decryptSecret(
+                {
+                    ciphertext: ciphertext.toString("base64"),
+                    iv: iv.toString("base64"),
+                    authTag: cipher.getAuthTag().toString("base64"),
+                },
+                { ...CONTEXT, teamId: "another-team" },
+                VALID_KEY,
+            ),
+        ).toThrow("Unable to decrypt secret");
+    });
+
     it("round-trips a secret without storing plaintext", () => {
         const encrypted = encryptSecret(
             "sk-super-secret-1234",
@@ -73,10 +114,10 @@ describe("secret encryption", () => {
 
     it("rejects missing, malformed, and wrong-length encryption keys", () => {
         expect(() => encryptSecret("secret", CONTEXT, undefined)).toThrow(
-            /MOSAIC_SECRETS_ENC_KEY.*required/i,
+            /FLASH_EVALS_SECRETS_ENC_KEY.*required/i,
         );
         expect(() => encryptSecret("secret", CONTEXT, "not base64!")).toThrow(
-            /MOSAIC_SECRETS_ENC_KEY.*base64/i,
+            /FLASH_EVALS_SECRETS_ENC_KEY.*base64/i,
         );
         expect(() =>
             encryptSecret(
@@ -84,7 +125,7 @@ describe("secret encryption", () => {
                 CONTEXT,
                 Buffer.alloc(31).toString("base64"),
             ),
-        ).toThrow(/MOSAIC_SECRETS_ENC_KEY.*32 bytes/i);
+        ).toThrow(/FLASH_EVALS_SECRETS_ENC_KEY.*32 bytes/i);
     });
 
     it("rejects a secret under a different team or provider context", () => {

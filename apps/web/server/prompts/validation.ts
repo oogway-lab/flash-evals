@@ -4,7 +4,7 @@ import type {
     ISchemaCompatibilityIssue,
     JsonSchemaObject,
 } from "../db/jsonTypes";
-import type { ReasoningEffort } from "@mosaic/llm-core";
+import type { ReasoningEffort } from "@flash-evals/llm-core";
 import { errorMessage } from "../lib/errors";
 import {
     validateDataAgainstSchema,

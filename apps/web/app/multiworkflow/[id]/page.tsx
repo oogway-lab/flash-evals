@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { MosaicApiError } from "@mosaic/api-contract";
+import { FlashEvalsApiError } from "@flash-evals/api-contract";
 import {
     createSttEvalRunAction,
     createWorkflowLlmRouteForNode,
@@ -39,7 +39,7 @@ export default async function SttEvalCanvasPage({
             id,
         ),
     ]).catch((err: unknown) => {
-        if (err instanceof MosaicApiError && err.status === 404) notFound();
+        if (err instanceof FlashEvalsApiError && err.status === 404) notFound();
         throw err;
     });
     if (workflow.kind !== "stt" && workflow.kind !== "multi") notFound();

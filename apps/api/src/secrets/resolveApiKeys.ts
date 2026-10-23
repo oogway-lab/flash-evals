@@ -2,8 +2,8 @@ import {
     OpenAIEvalProvider,
     type ApiKeys,
     type IEvalProviderOptions,
-} from "@mosaic/llm-core";
-import { decryptSecret } from "@mosaic/secrets";
+} from "@flash-evals/llm-core";
+import { decryptSecret } from "@flash-evals/secrets";
 import { ConfigError, type IApiConfig } from "../config.js";
 import type { IDb } from "../db.js";
 import {
@@ -57,10 +57,10 @@ export async function resolveApiKeys(
     );
     if (result.rows.length === 0) return resolvedKeys(new Map(), config);
 
-    const encryptionKey = config.mosaicSecretsEncKey;
+    const encryptionKey = config.flashEvalsSecretsEncKey;
     if (!encryptionKey) {
         throw new ConfigError(
-            "Missing required API env: MOSAIC_SECRETS_ENC_KEY",
+            "Missing required API env: FLASH_EVALS_SECRETS_ENC_KEY",
         );
     }
     const stored = new Map(

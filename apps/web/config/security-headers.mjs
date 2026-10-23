@@ -9,7 +9,7 @@
 //   https://clerk.com/docs/security/clerk-csp.
 // - Storage: dataset uploads PUT straight to a signed URL. With the local
 //   adapter that is the API; with cloud storage it is Supabase or the R2 bucket
-//   endpoint configured through MOSAIC_CSP_STORAGE_ORIGIN.
+//   endpoint configured through FLASH_EVALS_CSP_STORAGE_ORIGIN.
 //
 // script-src keeps 'unsafe-inline' because the App Router emits inline
 // bootstrap scripts, and nonces would force every page to render dynamically.
@@ -54,7 +54,7 @@ export function contentSecurityPolicy(env = process.env) {
     );
     const apiOrigin = originOf(env.NEXT_PUBLIC_API_BASE_URL);
     const storageOrigin =
-        env.MOSAIC_CSP_STORAGE_ORIGIN?.trim() || DEFAULT_STORAGE_ORIGIN;
+        env.FLASH_EVALS_CSP_STORAGE_ORIGIN?.trim() || DEFAULT_STORAGE_ORIGIN;
     const turnstile = "https://challenges.cloudflare.com";
 
     const directives = {

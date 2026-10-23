@@ -109,7 +109,7 @@ The code supports the existing Supabase adapter and R2 using the same storage
 keys, but this change does not run a live migration. For a later approved
 cutover, freeze writes, copy every object key referenced by the database into
 the same R2 key namespace, compare object counts and sizes, and verify synthetic
-image/audio reads before setting MOSAIC_STORAGE_ADAPTER=r2 in the API, web
+image/audio reads before setting FLASH_EVALS_STORAGE_ADAPTER=r2 in the API, web
 server, and Railway worker environments. Keep the private Supabase source and
 a paired database/object backup available for rollback until the cutover is
 accepted. Do not expose source objects through a public bucket or return raw

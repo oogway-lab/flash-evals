@@ -134,14 +134,14 @@ export function validateSplitStorage(services, { requireCspOrigin = true } = {})
     if (web) {
         const expectedOrigin = storageOrigin(web);
         if (expectedOrigin && requireCspOrigin) {
-            const configuredOrigin = web.env.MOSAIC_CSP_STORAGE_ORIGIN?.trim();
+            const configuredOrigin = web.env.FLASH_EVALS_CSP_STORAGE_ORIGIN?.trim();
             if (!configuredOrigin) {
                 errors.push(
-                    `${web.label} is missing MOSAIC_CSP_STORAGE_ORIGIN for the Cloudflare build CSP.`,
+                    `${web.label} is missing FLASH_EVALS_CSP_STORAGE_ORIGIN for the Cloudflare build CSP.`,
                 );
             } else if (!isOrigin(configuredOrigin) || configuredOrigin !== expectedOrigin) {
                 errors.push(
-                    `${web.label} MOSAIC_CSP_STORAGE_ORIGIN does not match the selected storage endpoint.`,
+                    `${web.label} FLASH_EVALS_CSP_STORAGE_ORIGIN does not match the selected storage endpoint.`,
                 );
             } else {
                 const connectSrc = contentSecurityPolicy(web.env)
@@ -166,8 +166,8 @@ function validateServiceStorage(service, errors) {
     if (env.NODE_ENV?.trim() && env.NODE_ENV.trim() !== "production") {
         errors.push(`${label} NODE_ENV must be production for split deployment.`);
     }
-    if (isTruthy(env.MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS)) {
-        errors.push(`${label} must not enable MOSAIC_ALLOW_INSECURE_DEV_DEFAULTS.`);
+    if (isTruthy(env.FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS)) {
+        errors.push(`${label} must not enable FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS.`);
     }
     if (kind === "web" && (isTruthy(env.AUTH_DEV) || isTruthy(env.AUTH_DEV_ALLOW_INSECURE))) {
         errors.push(`${label} must not enable local AUTH_DEV bypass settings.`);
@@ -177,20 +177,20 @@ function validateServiceStorage(service, errors) {
     }
 
     const requestedValue =
-        env.MOSAIC_STORAGE_ADAPTER ?? env.MOSAIC_IMAGE_STORAGE_ADAPTER ?? "";
+        env.FLASH_EVALS_STORAGE_ADAPTER ?? env.FLASH_EVALS_IMAGE_STORAGE_ADAPTER ?? "";
     const requested = requestedValue.trim().toLowerCase();
     const hasR2Settings = R2_KEYS.some((key) => nonEmpty(env[key]));
     let adapter = requested;
     if (!adapter) {
         if (hasR2Settings) {
             errors.push(
-                `${label} has R2 settings but no explicit MOSAIC_STORAGE_ADAPTER=r2.`,
+                `${label} has R2 settings but no explicit FLASH_EVALS_STORAGE_ADAPTER=r2.`,
             );
             return undefined;
         }
         if (kind === "worker" && env.NODE_ENV?.trim() !== "production") {
             errors.push(
-                `${label} must set MOSAIC_STORAGE_ADAPTER explicitly or set NODE_ENV=production to avoid the local storage default.`,
+                `${label} must set FLASH_EVALS_STORAGE_ADAPTER explicitly or set NODE_ENV=production to avoid the local storage default.`,
             );
             return undefined;
         }
@@ -204,7 +204,7 @@ function validateServiceStorage(service, errors) {
         return { ...service, adapter };
     }
     if (adapter !== "r2" && adapter !== "supabase") {
-        errors.push(`${label} has an unsupported MOSAIC_STORAGE_ADAPTER value.`);
+        errors.push(`${label} has an unsupported FLASH_EVALS_STORAGE_ADAPTER value.`);
         return undefined;
     }
 

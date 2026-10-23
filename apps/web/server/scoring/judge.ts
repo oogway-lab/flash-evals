@@ -6,9 +6,9 @@ import {
     type CompletionResult,
     type CompletionRequest,
     type ReasoningEffort,
-} from "@mosaic/llm-core";
+} from "@flash-evals/llm-core";
 import type { IJudgeCriterion, JudgeDeclaredInput } from "../db/jsonTypes";
-import { WORKFLOW_JUDGE_SCHEMA_NAME } from "@mosaic/api-contract";
+import { WORKFLOW_JUDGE_SCHEMA_NAME } from "@flash-evals/api-contract";
 import { errorMessage } from "../lib/errors";
 
 // The criteria breakdown makes the verdict far longer than a bare score —

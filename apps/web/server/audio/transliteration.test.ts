@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type * as LlmCore from "@mosaic/llm-core";
-import { getEvalProvider } from "@mosaic/llm-core";
+import type * as LlmCore from "@flash-evals/llm-core";
+import { getEvalProvider } from "@flash-evals/llm-core";
 
 const mocks = vi.hoisted(() => ({
     cachedRows: [] as Array<{ transcript: string }>,
@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
     insertValues: vi.fn(),
 }));
 
-vi.mock("@mosaic/llm-core", async (importActual) => {
+vi.mock("@flash-evals/llm-core", async (importActual) => {
     const actual = await importActual<typeof LlmCore>();
     return {
         ...actual,

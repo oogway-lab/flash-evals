@@ -51,7 +51,7 @@ describe("startRailwayBackend", () => {
     });
 
     it("does not start the worker when disabled", async () => {
-        vi.stubEnv("MOSAIC_API_START_WORKER", "false");
+        vi.stubEnv("FLASH_EVALS_API_START_WORKER", "false");
         const { startRailwayBackend } = await import("./railway.js");
 
         startRailwayBackend();

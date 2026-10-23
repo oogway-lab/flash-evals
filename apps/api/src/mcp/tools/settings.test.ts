@@ -150,7 +150,7 @@ describe("MCP provider-key tools", () => {
         const routingTeamId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
         const routingUserId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
         const { tools, runtime } = createToolHarness(registerSettingsTools, {
-            config: { mosaicSecretsEncKey: "test-encryption-key" },
+            config: { flashEvalsSecretsEncKey: "test-encryption-key" },
             teamId: routingTeamId,
             userId: routingUserId,
         });
@@ -180,7 +180,7 @@ describe("MCP provider-key tools", () => {
                     timeoutMs: 30_000,
                 },
                 cache: {
-                    mosaicReuse: "allow" as const,
+                    flashEvalsReuse: "allow" as const,
                     providerCaching: "allow" as const,
                 },
             },
@@ -240,7 +240,7 @@ describe("MCP provider-key tools", () => {
                 },
                 timeoutMs: 45_000,
                 maxAttempts: 2,
-                mosaicReuse: "force_fresh",
+                flashEvalsReuse: "force_fresh",
             });
 
         expect(
@@ -268,7 +268,7 @@ describe("MCP provider-key tools", () => {
                     structuredOutput: { mode: "text" },
                     retry: { owner: "gateway", timeoutMs: 45_000 },
                     cache: {
-                        mosaicReuse: "force_fresh",
+                        flashEvalsReuse: "force_fresh",
                         providerCaching: "allow",
                     },
                 },
@@ -366,7 +366,7 @@ describe("MCP provider-key tools", () => {
         const routingTeamId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
         const routingUserId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
         const { tools } = createToolHarness(registerSettingsTools, {
-            config: { mosaicSecretsEncKey: "test-encryption-key" },
+            config: { flashEvalsSecretsEncKey: "test-encryption-key" },
             teamId: routingTeamId,
             userId: routingUserId,
         });
@@ -437,7 +437,7 @@ describe("MCP provider-key tools", () => {
                     structuredOutput: { mode: "text" },
                     retry: { owner: "gateway", timeoutMs: 1 },
                     cache: {
-                        mosaicReuse: "allow",
+                        flashEvalsReuse: "allow",
                         providerCaching: "allow",
                     },
                 },
@@ -454,7 +454,7 @@ describe("MCP provider-key tools", () => {
 
 function registerTools() {
     return createToolHarness(registerSettingsTools, {
-        config: { mosaicSecretsEncKey: "test-encryption-key" },
+        config: { flashEvalsSecretsEncKey: "test-encryption-key" },
         teamId: TEST_TEAM_ID,
     });
 }

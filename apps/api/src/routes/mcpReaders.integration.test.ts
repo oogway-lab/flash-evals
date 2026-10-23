@@ -23,7 +23,7 @@ import {
 import { dashboardPayload } from "./dashboard.js";
 
 // Opt in with a disposable migrated database. The large fixture is synthetic.
-const databaseUrl = process.env.MOSAIC_TEST_DATABASE_URL;
+const databaseUrl = process.env.FLASH_EVALS_TEST_DATABASE_URL;
 type PageCursor = { createdAt: string; id: string };
 
 async function collectPageIds(

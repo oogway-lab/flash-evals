@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
     isProviderKeyProvider,
-    MosaicApiError,
+    FlashEvalsApiError,
     type IWorkflowLlmRouteCandidatesResponse,
     type IWorkflowLlmRouteConfig,
     type IWorkflowLlmRoute,
@@ -11,8 +11,8 @@ import {
     type ProviderKeyProvider,
     type ReasoningEffort,
     type WorkflowLlmTransport,
-} from "@mosaic/api-contract";
-import { REASONING_EFFORT_LEVELS } from "@mosaic/llm-core";
+} from "@flash-evals/api-contract";
+import { REASONING_EFFORT_LEVELS } from "@flash-evals/llm-core";
 import { serverApiClient } from "@/server/api/client";
 import { requirePrincipal } from "@/server/auth/session";
 import { requireActiveProject } from "@/server/projects/activeProject";
@@ -50,7 +50,7 @@ export interface ICreateWorkflowLlmRouteForNodeInput {
     };
     timeoutMs?: number;
     maxAttempts?: number;
-    mosaicReuse?: "allow" | "force_fresh";
+    flashEvalsReuse?: "allow" | "force_fresh";
     reasoningEffort?: ReasoningEffort;
 }
 
@@ -359,7 +359,7 @@ function routeConfigForNode(
             input.transport === "gateway"
                 ? { owner: "gateway", timeoutMs: input.timeoutMs ?? 60_000 }
                 : {
-                      owner: "mosaic",
+                      owner: "flash-evals",
                       maxAttempts: input.maxAttempts ?? 1,
                       timeoutMs: input.timeoutMs ?? 60_000,
                       retryableErrorClasses: [
@@ -370,7 +370,7 @@ function routeConfigForNode(
                       ],
                   },
         cache: {
-            mosaicReuse: input.mosaicReuse ?? "force_fresh",
+            flashEvalsReuse: input.flashEvalsReuse ?? "force_fresh",
             providerCaching: "allow",
         },
     };
@@ -396,7 +396,7 @@ function routeConfigFrom(formData: FormData): IWorkflowLlmRouteConfig {
             transport === "gateway"
                 ? { owner: "gateway", timeoutMs }
                 : {
-                      owner: "mosaic",
+                      owner: "flash-evals",
                       maxAttempts: positiveInteger(formData, "maxAttempts", 1),
                       timeoutMs,
                       retryableErrorClasses: [
@@ -407,8 +407,8 @@ function routeConfigFrom(formData: FormData): IWorkflowLlmRouteConfig {
                       ],
                   },
         cache: {
-            mosaicReuse:
-                formData.get("mosaicReuse") === "allow"
+            flashEvalsReuse:
+                formData.get("flashEvalsReuse") === "allow"
                     ? "allow"
                     : "force_fresh",
             providerCaching: "allow",
@@ -533,7 +533,7 @@ function reasoningEffort(formData: FormData): {
 function routingError(error: unknown): IWorkflowLlmRoutingActionState {
     return {
         error: clientErrorMessage(error),
-        ...(error instanceof MosaicApiError && error.remediation
+        ...(error instanceof FlashEvalsApiError && error.remediation
             ? { remediation: error.remediation }
             : {}),
     };
