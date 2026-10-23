@@ -4,7 +4,22 @@ import {
     securityHeaders,
 } from "./config/security-headers.mjs";
 
+const devWebOrigin = process.env.FLASH_EVALS_DEV_WEB_ORIGIN;
+const devWebUrl = devWebOrigin ? new URL(devWebOrigin) : undefined;
+const playwrightMode = process.env.FLASH_EVALS_PLAYWRIGHT;
+if (playwrightMode && !["app", "marketing"].includes(playwrightMode)) {
+    throw new Error("FLASH_EVALS_PLAYWRIGHT must be app or marketing");
+}
+
 const nextConfig: NextConfig = {
+    // Each browser suite can run alongside the normal development server.
+    distDir: playwrightMode ? `.next/playwright-${playwrightMode}` : ".next",
+    typescript: {
+        tsconfigPath: playwrightMode
+            ? "tsconfig.playwright.json"
+            : "tsconfig.json",
+    },
+    allowedDevOrigins: devWebUrl ? [devWebUrl.hostname] : [],
     // Compiles components with the React Compiler (auto-memoization).
     reactCompiler: true,
     // Statically typed `href` / `router.push` route strings.
@@ -26,6 +41,7 @@ const nextConfig: NextConfig = {
         // lowering this back down.
         serverActions: {
             bodySizeLimit: "22mb",
+            allowedOrigins: devWebUrl ? [devWebUrl.host] : [],
         },
     },
     async headers() {

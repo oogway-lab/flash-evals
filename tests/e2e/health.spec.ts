@@ -82,7 +82,7 @@ test.beforeAll(async () => {
         fakeApiServer?.once("error", reject);
         fakeApiServer?.listen(
             Number(process.env.PLAYWRIGHT_FAKE_API_PORT ?? "3101"),
-            "127.0.0.1",
+            process.env.PLAYWRIGHT_FAKE_API_HOST ?? "127.0.0.1",
             resolve,
         );
     });

@@ -1,6 +1,6 @@
 {
     "name": "flash-evals-workspace",
-    "description": "Compare LLM models on image, text, and audio datasets — structured output, latency, cost, field-level diff against labels, and LLM-as-judge scoring.",
+    "description": "Compare LLM models on image, text, and audio datasets \u2014 structured output, latency, cost, field-level diff against labels, and LLM-as-judge scoring.",
     "license": "AGPL-3.0-only",
     "private": true,
     "author": "Oogway Labs and Flash Evals contributors",
@@ -16,6 +16,13 @@
     "scripts": {
         "prepare": "husky",
         "dev": "node scripts/dev.mjs",
+        "dev:install": "node scripts/install-dev-service.mjs",
+        "dev:restart": "systemctl --user restart flash-evals-dev",
+        "dev:stop": "systemctl --user stop flash-evals-dev",
+        "dev:status": "systemctl --user status flash-evals-dev --no-pager && pnpm run worker:status",
+        "dev:logs": "journalctl --user -u flash-evals-dev -f",
+        "dev:backup": "bash scripts/backup-dev.sh",
+        "test:dev": "node --test scripts/dev.test.mjs scripts/setup-local.test.mjs",
         "setup:local": "node scripts/setup-local.mjs",
         "build": "pnpm --filter @flash-evals/api-contract build && pnpm --filter @flash-evals/secrets build && pnpm --filter @flash-evals/api build && pnpm --filter @flash-evals/web build",
         "web:build:cloudflare": "pnpm --filter @flash-evals/web build:cloudflare",
@@ -57,7 +64,8 @@
         "smoke:stt": "node scripts/node-with-supabase-ca.mjs --env-file-if-exists=apps/api/.env scripts/smoke-stt-capabilities.mjs",
         "seed": "pnpm --filter @flash-evals/web seed",
         "db:migrate": "pnpm --filter @flash-evals/web db:migrate",
-        "marketing:build": "node scripts/build-marketing.mjs"
+        "marketing:build": "node scripts/build-marketing.mjs",
+        "smoke:mcp": "pnpm --filter @flash-evals/api mcp:smoke"
     },
     "engines": {
         "node": "^22.12.0 || ^24.0.0 || >=26.0.0"

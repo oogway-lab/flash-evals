@@ -14,7 +14,8 @@
         "mcp:token:revoke": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=.env --import tsx src/scripts/mcp-token.ts revoke",
         "typecheck": "tsc --noEmit -p tsconfig.json",
         "test": "pnpm --filter @flash-evals/object-storage build && pnpm --filter @flash-evals/api-contract build && pnpm --filter @flash-evals/llm-core build && pnpm --filter @flash-evals/secrets build && vitest run",
-        "test:coverage": "pnpm --filter @flash-evals/object-storage build && pnpm --filter @flash-evals/api-contract build && pnpm --filter @flash-evals/llm-core build && pnpm --filter @flash-evals/secrets build && vitest run --coverage"
+        "test:coverage": "pnpm --filter @flash-evals/object-storage build && pnpm --filter @flash-evals/api-contract build && pnpm --filter @flash-evals/llm-core build && pnpm --filter @flash-evals/secrets build && vitest run --coverage",
+        "mcp:smoke": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=.env --import tsx src/scripts/smoke-mcp.ts"
     },
     "dependencies": {
         "@ai-sdk/gateway": "^4.0.110",

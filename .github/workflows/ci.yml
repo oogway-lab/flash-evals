@@ -109,6 +109,9 @@ jobs:
       - name: Set up workspace
         uses: ./.github/actions/setup-workspace
 
+      - name: Development setup and launcher regression tests
+        run: pnpm run test:dev
+
       # Runs the `test` script of every package under apps/ and packages/
       # except web (its own job), API, and site, whose tests run with coverage
       # in the two steps below.

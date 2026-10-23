@@ -29,7 +29,15 @@ publish local bearer tokens or put them in checked-in client configuration.
 ## Local setup
 
 First complete [Getting started](getting-started.md), including migrations and
-the synthetic seed. Keep the API, web app, and worker running with `pnpm run dev`.
+the synthetic examples. If your development data already exists, keep it: do
+not reseed to enable MCP. Keep the API, web app, and worker running with
+`pnpm run dev` (or the installed development service).
+
+Fresh `setup:local` selects `FLASH_EVALS_TENANCY_MODE=isolated` in both env files.
+For an older local setup, check this mode and leave the allowed-email-domain
+restriction unset so the synthetic `dev@local` account can use MCP. This does not
+move its existing team/data. The web auth bypass alone does not establish this
+MCP admission configuration.
 
 ### Enable and create a development token
 
@@ -76,9 +84,24 @@ node docs/examples/mcp-read-only.mjs
 
 The [example source](examples/mcp-read-only.mjs) negotiates the protocol, lists
 tools, resource templates, and prompts, and reads your user, workspaces, and
-projects. It does not create datasets or run evaluations. It reports **84 tools,
-8 resource templates, and 1 prompt** on this revision. It also gives you the
-workspace and project IDs needed for subsequent calls.
+projects. It does not create datasets or run evaluations. It reports the current tool/resource/prompt inventory and gives you the
+workspace and project IDs needed for subsequent calls. Inventory counts can
+change as tools are added.
+
+For the built-in HTTP and stdio smoke checks, save the token privately as
+`FLASH_EVALS_MCP_LOCAL_TOKEN` in `apps/api/.env` and run:
+
+```bash
+pnpm run smoke:mcp
+pnpm run smoke:mcp -- --stdio
+```
+
+These read existing workspace/project/dataset records and check missing/invalid
+HTTP token rejection without calling providers. They require existing example
+data and never seed it. The HTTP endpoint follows `FLASH_EVALS_API_PUBLIC_URL`;
+`FLASH_EVALS_MCP_TEST_URL` can override it. For a remote client, use the configured
+private API address or forward the API port as described in the
+[VM access guide](remote-development.md).
 
 An optional first argument selects another local API address:
 
@@ -349,8 +372,8 @@ Poll `get_workflow_run_progress` with the project, workflow, and workflow-run ID
 Discover the eight **resource templates** with `resources/templates/list`.
 `resources/list` is not the inventory of these parameterized resources.
 
-| Resource          | URI template                                          |
-| ----------------- | ----------------------------------------------------- |
+| Resource          | URI template                                               |
+| ----------------- | ---------------------------------------------------------- |
 | Dataset           | `flash-evals://projects/{projectId}/datasets/{id}`         |
 | Prompt            | `flash-evals://projects/{projectId}/prompts/{id}`          |
 | Eval run          | `flash-evals://projects/{projectId}/runs/{id}`             |
@@ -463,7 +486,7 @@ in, call `get_current_user` and verify it returns the intended account.
 
 | Symptom                                                | Likely next check                                                                                        |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| 404 or “MCP is not enabled”                            | Enable `FLASH_EVALS_MCP_ENABLED` and restart the API; use its port, not the web port.                         |
+| 404 or “MCP is not enabled”                            | Enable `FLASH_EVALS_MCP_ENABLED` and restart the API; use its port, not the web port.                    |
 | “Missing MCP bearer token”                             | Supply authorization on every request. Web development sign-in does not apply.                           |
 | “MCP OAuth is not configured”                          | Configure OAuth, or explicitly enable the local raw-token fallback.                                      |
 | “Invalid MCP bearer token”                             | Verify the token exists in this database, is not revoked, and uses the same pepper.                      |

@@ -3,7 +3,13 @@
 [Documentation home](../README.md#documentation) · [Getting started](getting-started.md) · [Deployment guide](deployment.md)
 
 For a fresh local instance, use `pnpm run setup:local`. It creates a small,
-working configuration without Clerk or Supabase. For other environments, use the
+working configuration without Clerk or Supabase. It binds to loopback, selects
+`isolated` tenancy for the synthetic account, and sets development guardrails of
+50 cells per run and $2 in recorded daily team spend. It never changes existing
+env files or initializes a database. `pnpm run setup:local -- --host <Tailscale IPv4>`
+generates matching private remote URLs on a fresh checkout. Follow
+[Getting started](getting-started.md) or [VM/remote access](remote-development.md).
+For other environments, use the
 commented reference files to understand the available settings:
 
 - [`apps/api/.env.example`](../apps/api/.env.example): API, worker, database,
@@ -18,14 +24,14 @@ built deployment can require a web rebuild. Never put secrets in those variables
 
 ## How environment files are loaded
 
-| Command                                    | Environment files                                                                 |
-| ------------------------------------------ | --------------------------------------------------------------------------------- |
-| `pnpm run api:dev` or `pnpm run api:start` | `apps/api/.env`                                                                   |
-| `pnpm --filter @flash-evals/web dev`            | Next.js environment loading from `apps/web`                                       |
-| `pnpm run worker`                          | `apps/api/.env`, then `apps/web/.env`                                             |
-| `pnpm run db:migrate` or `pnpm run seed`   | `apps/api/.env`, then `apps/web/.env`                                             |
-| `pnpm run db:bootstrap-pilot-team`         | `apps/api/.env` only                                                              |
-| `pnpm run dev`                             | The files above, plus explicit local overrides                                    |
+| Command                                    | Environment files                                                                      |
+| ------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `pnpm run api:dev` or `pnpm run api:start` | `apps/api/.env`                                                                        |
+| `pnpm --filter @flash-evals/web dev`       | Next.js environment loading from `apps/web`                                            |
+| `pnpm run worker`                          | `apps/api/.env`, then `apps/web/.env`                                                  |
+| `pnpm run db:migrate` or `pnpm run seed`   | `apps/api/.env`, then `apps/web/.env`                                                  |
+| `pnpm run db:bootstrap-pilot-team`         | `apps/api/.env` only                                                                   |
+| `pnpm run dev`                             | The files above, plus explicit local overrides                                         |
 | `pnpm run api:start:railway`               | Process environment; starts API and worker unless `FLASH_EVALS_API_START_WORKER=false` |
 
 Existing process environment variables override values read from files. For the
@@ -47,17 +53,17 @@ command for the local walkthrough.
 
 ## Database and service URLs
 
-| Setting                    | Where              | Purpose                                                                                                                                                      |
-| -------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`             | API and worker     | PostgreSQL connection. The bundled local service uses host port 54322.                                                                                       |
+| Setting                         | Where              | Purpose                                                                                                                                                      |
+| ------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                  | API and worker     | PostgreSQL connection. The bundled local service uses host port 54322.                                                                                       |
 | `FLASH_EVALS_WEB_DATABASE_URL`  | Local web server   | PostgreSQL connection for local Next.js development; may use the same local URL as `DATABASE_URL`. Deployed Cloudflare Workers use the `HYPERDRIVE` binding. |
 | `FLASH_EVALS_DEFAULT_TEAM_ID`   | Pilot bootstrap    | UUID for the single pilot team created by `pnpm run db:bootstrap-pilot-team`.                                                                                |
 | `FLASH_EVALS_DEFAULT_TEAM_NAME` | Pilot bootstrap    | Name for that team; optional, defaults to `Oogway Labs`.                                                                                                     |
-| `INTERNAL_API_TOKEN`       | API and web server | Shared secret for privileged web-to-API requests. Values must match.                                                                                         |
-| `API_BASE_URL`             | Web server         | Server-side API origin.                                                                                                                                      |
-| `NEXT_PUBLIC_API_BASE_URL` | Web                | Browser-facing API origin; not a secret.                                                                                                                     |
+| `INTERNAL_API_TOKEN`            | API and web server | Shared secret for privileged web-to-API requests. Values must match.                                                                                         |
+| `API_BASE_URL`                  | Web server         | Server-side API origin.                                                                                                                                      |
+| `NEXT_PUBLIC_API_BASE_URL`      | Web                | Browser-facing API origin; not a secret.                                                                                                                     |
 | `FLASH_EVALS_API_PUBLIC_URL`    | API                | Public API origin used for absolute local-upload URLs.                                                                                                       |
-| `CORS_ORIGINS`             | API                | Comma-separated permitted web origins. MCP has a separate allowlist.                                                                                         |
+| `CORS_ORIGINS`                  | API                | Comma-separated permitted web origins. MCP has a separate allowlist.                                                                                         |
 
 The worker needs database and provider access. It does not execute jobs through
 the web server. An API health response alone does not verify that a worker is
@@ -199,8 +205,8 @@ for current configuration options.
 The local setup selects `FLASH_EVALS_LLM_PROVIDER=openrouter` and leaves its key blank.
 Add a real key only when you are ready to send inputs to that provider:
 
-| Transport         | Main settings                                                                          |
-| ----------------- | -------------------------------------------------------------------------------------- |
+| Transport         | Main settings                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------------- |
 | OpenRouter        | `FLASH_EVALS_LLM_PROVIDER=openrouter`, `OPENROUTER_API_KEY`; optional `OPENROUTER_BASE_URL` |
 | OpenAI            | `FLASH_EVALS_LLM_PROVIDER=openai`, `OPENAI_API_KEY`                                         |
 | Vercel AI Gateway | `FLASH_EVALS_LLM_PROVIDER=gateway`, `AI_GATEWAY_API_KEY`                                    |
@@ -337,23 +343,23 @@ local tokens, production OAuth, and `FLASH_EVALS_MCP_ALLOWED_ORIGINS`.
 
 ## Limits and worker settings
 
-| Variable                            | Default                          | Meaning                                                                                                                                                                         |
-| ----------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Variable                                 | Default                          | Meaning                                                                                                                                                                         |
+| ---------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `FLASH_EVALS_MAX_RUN_CELLS`              | 10000; maximum 16000             | Caps items × models, or items × workflow nodes, for a run.                                                                                                                      |
 | `FLASH_EVALS_TEAM_DAILY_SPEND_CAP_USD`   | Off                              | Refuses new runs after recorded spend for runs started in the last 24 hours reaches the limit.                                                                                  |
 | `FLASH_EVALS_RATE_LIMIT_LLM_PER_MINUTE`  | 20                               | Per-user limit for cost-bearing setup tools such as prompt tests, validation, and probes.                                                                                       |
 | `FLASH_EVALS_RATE_LIMIT_RUNS_PER_MINUTE` | 10                               | Per-user limit for run creation and retries, including matching MCP tools.                                                                                                      |
-| `EVAL_CONCURRENCY`                  | 5 for eval runs; 4 for workflows | Parallel cells within a run; minimum 1.                                                                                                                                         |
-| `RUN_STALE_CLAIM_MS`                | 900000                           | Reclaim timeout for interrupted eval cells; minimum 60000.                                                                                                                      |
-| `WORKFLOW_STALE_CLAIM_MS`           | 900000                           | Reclaim timeout for interrupted workflow cells; minimum 60000.                                                                                                                  |
-| `STT_REQUEST_TIMEOUT_MS`            | 180000                           | Per-request timeout for OpenRouter transcription; 10000–600000. Other STT providers keep their defaults.                                                                        |
-| `STT_MAX_ATTEMPTS`                  | 3                                | Attempts per OpenRouter transcription request (or chunk) for timeouts, rate limits, and 5xx errors; 1–5. Permanent errors fail at once.                                         |
-| `STT_OPENROUTER_AUDIO_MAX_BYTES`    | 14680064                         | Largest raw audio payload sent to Gemini on OpenRouter. Larger recordings are compressed and, if needed, split.                                                                 |
-| `STT_AUDIO_MAX_CHUNK_MS`            | 600000                           | Longest audio per Gemini-on-OpenRouter request; longer recordings are split near silences; 60000–3600000. Also capped so a 48 kbps chunk fits `STT_OPENROUTER_AUDIO_MAX_BYTES`. |
-| `STT_AUDIO_PREP_TIMEOUT_MS`         | 120000                           | Time limit for each FFmpeg/FFprobe step that prepares audio; minimum 5000.                                                                                                      |
-| `STT_AUDIO_PREP_CONCURRENCY`        | 1                                | Silence detection and encoding jobs run at once per worker process, bounding CPU. Measuring a recording is not limited, so small files do not wait behind a long conversion.    |
-| `FFMPEG_PATH`                       | `ffmpeg`                         | FFmpeg binary used for audio preparation.                                                                                                                                       |
-| `FFPROBE_PATH`                      | `ffprobe`                        | FFprobe binary used to measure recordings.                                                                                                                                      |
+| `EVAL_CONCURRENCY`                       | 5 for eval runs; 4 for workflows | Parallel cells within a run; minimum 1.                                                                                                                                         |
+| `RUN_STALE_CLAIM_MS`                     | 900000                           | Reclaim timeout for interrupted eval cells; minimum 60000.                                                                                                                      |
+| `WORKFLOW_STALE_CLAIM_MS`                | 900000                           | Reclaim timeout for interrupted workflow cells; minimum 60000.                                                                                                                  |
+| `STT_REQUEST_TIMEOUT_MS`                 | 180000                           | Per-request timeout for OpenRouter transcription; 10000–600000. Other STT providers keep their defaults.                                                                        |
+| `STT_MAX_ATTEMPTS`                       | 3                                | Attempts per OpenRouter transcription request (or chunk) for timeouts, rate limits, and 5xx errors; 1–5. Permanent errors fail at once.                                         |
+| `STT_OPENROUTER_AUDIO_MAX_BYTES`         | 14680064                         | Largest raw audio payload sent to Gemini on OpenRouter. Larger recordings are compressed and, if needed, split.                                                                 |
+| `STT_AUDIO_MAX_CHUNK_MS`                 | 600000                           | Longest audio per Gemini-on-OpenRouter request; longer recordings are split near silences; 60000–3600000. Also capped so a 48 kbps chunk fits `STT_OPENROUTER_AUDIO_MAX_BYTES`. |
+| `STT_AUDIO_PREP_TIMEOUT_MS`              | 120000                           | Time limit for each FFmpeg/FFprobe step that prepares audio; minimum 5000.                                                                                                      |
+| `STT_AUDIO_PREP_CONCURRENCY`             | 1                                | Silence detection and encoding jobs run at once per worker process, bounding CPU. Measuring a recording is not limited, so small files do not wait behind a long conversion.    |
+| `FFMPEG_PATH`                            | `ffmpeg`                         | FFmpeg binary used for audio preparation.                                                                                                                                       |
+| `FFPROBE_PATH`                           | `ffprobe`                        | FFprobe binary used to measure recordings.                                                                                                                                      |
 | `FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS`    | 20000                            | Bounded SIGTERM/SIGINT drain window in ms; minimum 1000, maximum 300000.                                                                                                        |
 
 Set a rate limit to `0` only when you intentionally want it disabled. Spend
@@ -385,25 +391,29 @@ encryption key together. Read the [security policy](../SECURITY.md).
 
 ## Development, test, and script variables
 
-| Variable                                  | Read by                                       | Purpose                                                                                                                                                                                     |
-| ----------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `FLASH_EVALS_DEV_API_PORT`                     | `scripts/dev.mjs`                             | API port for `pnpm run dev` (default `3001`). `PORT` is not used, because `next dev` reads it for web.                                                                                      |
+| Variable                                       | Read by                                       | Purpose                                                                                                                                                                                     |
+| ---------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FLASH_EVALS_DEV_API_PORT`                     | `scripts/dev.mjs`                             | API port override for `pnpm run dev`; otherwise API `.env` `PORT`, then `3001`. Exported shell `PORT` controls the web port.                                                                |
 | `FLASH_EVALS_PACKAGES_BUILT`                   | `scripts/build-packages.mjs`                  | Set to `1` by `pnpm run dev` after it builds the shared packages once, so the API, web and worker it starts skip rebuilding them.                                                           |
-| `NODE_EXTRA_CA_CERTS`                     | `scripts/node-with-supabase-ca.mjs`           | Extra CA bundle for Node. Defaults to the bundled Supabase root CA (`apps/web/config/supabase-root-2021-ca.pem`).                                                                           |
+| `NODE_EXTRA_CA_CERTS`                          | `scripts/node-with-supabase-ca.mjs`           | Extra CA bundle for Node. Defaults to the bundled Supabase root CA (`apps/web/config/supabase-root-2021-ca.pem`).                                                                           |
 | `FLASH_EVALS_WORKER_TEST_FIXTURES`             | `scripts/fixtures/railway-worker-preload.mjs` | Temporary stub-module directory set and cleaned up by the Railway worker launch regression test. Test-only; do not configure it on deployed services.                                       |
-| `FLASH_EVALS_IMAGE_STORAGE_ADAPTER`            | API config, web storage                       | Legacy alias for `FLASH_EVALS_STORAGE_ADAPTER`, used only when the new name is unset.                                                                                                            |
-| `R2_ENDPOINT`                             | shared object-storage package                 | Local S3-compatible test endpoint only; rejected when `NODE_ENV=production`.                                                                                                                |
-| `UPLOAD_DIR`                              | API, web storage, worker                      | Directory for the `local` storage adapter (default `.uploads` at the repo root). Local development only: the split-deploy check (`pnpm run deploy:check`) rejects it in deployed env files. |
-| `STT_SMOKE_AUDIO_PATH`                    | `scripts/smoke-stt-capabilities.mjs`          | Audio file for `pnpm run smoke:stt` (default `/tmp/flash-evals-stt-smoke.wav`).                                                                                                             |
-| `STT_SMOKE_PROVIDERS`                     | `scripts/smoke-stt-capabilities.mjs`          | Comma-separated providers to probe (default `openai,gateway,soniox`).                                                                                                                       |
-| `STT_SMOKE_OPENAI_MODEL`                  | `scripts/smoke-stt-capabilities.mjs`          | OpenAI transcription model (default `gpt-4o-mini-transcribe`).                                                                                                                              |
-| `STT_SMOKE_GATEWAY_MODELS`                | `scripts/smoke-stt-capabilities.mjs`          | Gateway models to probe (default `openai/whisper-1,openai/gpt-4o-transcribe,openai/gpt-4o-mini-transcribe`).                                                                                |
-| `STT_SMOKE_SONIOX_MODEL`                  | `scripts/smoke-stt-capabilities.mjs`          | Soniox model (default `stt-async-v5`).                                                                                                                                                      |
+| `FLASH_EVALS_IMAGE_STORAGE_ADAPTER`            | API config, web storage                       | Legacy alias for `FLASH_EVALS_STORAGE_ADAPTER`, used only when the new name is unset.                                                                                                       |
+| `R2_ENDPOINT`                                  | shared object-storage package                 | Local S3-compatible test endpoint only; rejected when `NODE_ENV=production`.                                                                                                                |
+| `UPLOAD_DIR`                                   | API, web storage, worker                      | Directory for the `local` storage adapter (default `.uploads` at the repo root). Local development only: the split-deploy check (`pnpm run deploy:check`) rejects it in deployed env files. |
+| `STT_SMOKE_AUDIO_PATH`                         | `scripts/smoke-stt-capabilities.mjs`          | Audio file for `pnpm run smoke:stt` (default `/tmp/flash-evals-stt-smoke.wav`).                                                                                                             |
+| `STT_SMOKE_PROVIDERS`                          | `scripts/smoke-stt-capabilities.mjs`          | Comma-separated providers to probe (default `openai,gateway,soniox`).                                                                                                                       |
+| `STT_SMOKE_OPENAI_MODEL`                       | `scripts/smoke-stt-capabilities.mjs`          | OpenAI transcription model (default `gpt-4o-mini-transcribe`).                                                                                                                              |
+| `STT_SMOKE_GATEWAY_MODELS`                     | `scripts/smoke-stt-capabilities.mjs`          | Gateway models to probe (default `openai/whisper-1,openai/gpt-4o-transcribe,openai/gpt-4o-mini-transcribe`).                                                                                |
+| `STT_SMOKE_SONIOX_MODEL`                       | `scripts/smoke-stt-capabilities.mjs`          | Soniox model (default `stt-async-v5`).                                                                                                                                                      |
 | `FLASH_EVALS_ROUTING_INTEGRATION_DATABASE_URL` | `routing.persistence.integration.test.ts`     | Postgres URL for the routing concurrency integration test; the test is skipped when unset. It creates and drops its own schema.                                                             |
-| `PLAYWRIGHT_WEB_BASE_URL`                 | `playwright.config.ts`                        | Run the e2e suite against an existing web server instead of starting one.                                                                                                                   |
-| `PLAYWRIGHT_WEB_PORT`                     | `playwright.config.ts`                        | Port for the web server Playwright starts (default `3000`).                                                                                                                                 |
-| `PLAYWRIGHT_FAKE_API_PORT`                | `playwright.config.ts`                        | Port for the fake API used by the e2e fixtures (default `3101`).                                                                                                                            |
-| `PLAYWRIGHT_API_BASE_URL`                 | `tests/e2e/api-health.spec.ts`                | API base URL for the API health smoke test; the test is skipped when unset. Set `INTERNAL_API_TOKEN` too to check the detailed `/health` payload; without it the test checks status only.   |
+| `FLASH_EVALS_DEV_BIND_HOST`                    | Development launcher, browser tests           | Private interface for development UIs and synthetic test API; loopback when unset.                                                                                                          |
+| `FLASH_EVALS_DEV_WEB_ORIGIN`                   | Next.js and development launcher              | Browser origin used for development CORS and allowed origins. Browser tests supply their own origin.                                                                                        |
+| `FLASH_EVALS_PLAYWRIGHT`                       | Next.js config                                | Set by browser suites to `app` or `marketing` to isolate development caches and TypeScript configuration.                                                                                   |
+| `PLAYWRIGHT_FAKE_API_HOST`                     | Browser-test fixture                          | Set automatically from the development host by the Playwright config.                                                                                                                       |
+| `PLAYWRIGHT_WEB_BASE_URL`                      | `playwright.config.ts`                        | Run the e2e suite against an existing web server instead of starting one.                                                                                                                   |
+| `PLAYWRIGHT_WEB_PORT`                          | `playwright.config.ts`                        | Port for the web server Playwright starts (default `3100`, separate from interactive development).                                                                                          |
+| `PLAYWRIGHT_FAKE_API_PORT`                     | `playwright.config.ts`                        | Port for the fake API used by the e2e fixtures (default `3101`).                                                                                                                            |
+| `PLAYWRIGHT_API_BASE_URL`                      | `tests/e2e/api-health.spec.ts`                | API base URL for the API health smoke test; the test is skipped when unset. Set `INTERNAL_API_TOKEN` too to check the detailed `/health` payload; without it the test checks status only.   |
 
 `FLASH_EVALS_TEST_DATABASE_URL` enables the real-PostgreSQL workflow-editing integration
 test. Use only a disposable, migrated database: the test leaves immutable

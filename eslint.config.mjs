@@ -7,6 +7,7 @@ import tseslint from "typescript-eslint";
 export default [
     {
         ignores: [
+            ".dev.local/**",
             "**/node_modules/**",
             "**/dist/**",
             "**/.next/**",
@@ -108,12 +109,19 @@ export default [
         },
     },
     {
-        files: ["*.config.*", "scripts/**/*.mjs", "scripts/**/*.js", "*.cjs"],
+        files: [
+            "*.config.*",
+            "scripts/**/*.mjs",
+            "scripts/**/*.js",
+            "scripts/**/*.cjs",
+            "*.cjs",
+        ],
         languageOptions: {
             sourceType: "commonjs",
             globals: {
                 module: "readonly",
                 require: "readonly",
+                exports: "readonly",
                 process: "readonly",
                 console: "readonly",
                 setTimeout: "readonly",

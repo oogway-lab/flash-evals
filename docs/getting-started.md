@@ -1,170 +1,218 @@
 # Getting started
 
-[Documentation home](../README.md#documentation)
+[Documentation home](../README.md#documentation) · [Development](development.md) · [VM / remote access](remote-development.md)
 
-This guide starts a local Flash Evals instance with synthetic examples. It uses
-PostgreSQL and local disk storage. You do not need a sign-in service, cloud storage,
-or a model-provider key until you want to make real model calls.
+This is the first-time setup for contributors and people exploring Flash Evals.
+It runs web, API, and worker on your development machine, PostgreSQL in Docker,
+and media on local disk. Synthetic examples work without cloud accounts or paid
+model calls. Hosted deployment has [separate instructions](deployment.md).
 
-## 1. Check the prerequisites
+## Choose where to run
 
-Install Git, Node.js 24.21.0, pnpm 12.6.0, and Docker Compose v2 with `--wait`
-support. The Node version is pinned in [`.nvmrc`](../.nvmrc); pnpm is pinned in
-[`package.json`](../package.json). Verify your terminal is using them:
+| Environment                     | Use this guide with…                                                                                                               |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| macOS or Linux laptop           | A local terminal and loopback browser URLs.                                                                                        |
+| Windows                         | A WSL2 Linux terminal; keep the checkout and Node/pnpm inside that environment.                                                    |
+| Linux VM or remote server       | The same setup, plus [private browser access](remote-development.md) before starting a UI.                                         |
+| Existing installation with data | [Update an existing checkout](development.md#update-an-existing-checkout); keep its environment, keys, data and migration history. |
+
+A new clone can still find an old Docker volume. Check the database before
+initializing examples; cloning does not make an existing database disposable.
+
+## 1. Install the tools
+
+| Tool             | Version / purpose                                       | Installation reference                                                                      |
+| ---------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Git              | Clone and contribute                                    | Your operating system's Git package.                                                        |
+| Node.js          | **24.21.0**, pinned in [`.nvmrc`](../.nvmrc) and CI     | [Node downloads](https://nodejs.org/en/download); an existing Node version manager is fine. |
+| pnpm             | **12.6.0**, pinned in [`package.json`](../package.json) | [pnpm installation](https://pnpm.io/installation).                                          |
+| Docker + Compose | Running Engine and Compose v2 with `--wait` support     | [Docker installation options](https://docs.docker.com/compose/install/).                    |
+
+Docker Desktop includes Engine and Compose on macOS/Windows. Linux can use
+Docker Engine plus the Compose plugin. On Windows, enable
+[Docker Desktop's WSL2 integration](https://docs.docker.com/desktop/features/wsl/)
+for your distribution. Native PowerShell/cmd instructions are not provided: the
+repository's development scripts use a Unix shell.
+
+Clone first so a Node version manager can read the repository pin:
+
+```bash
+git clone https://github.com/oogway-lab/flash-evals.git
+cd flash-evals
+# With nvm already installed:
+nvm install
+nvm use
+```
+
+If you use another Node manager or the official installer, select the version
+from `.nvmrc` and skip the two `nvm` commands. The package engine range permits
+other versions, but the pin gives the closest match to CI.
+
+If pnpm is absent, the official POSIX installer supports a pinned version:
+
+```bash
+curl -fsSL https://get.pnpm.io/install.sh | env PNPM_VERSION=12.6.0 sh -
+```
+
+Follow its shell/PATH instructions and reopen your terminal if requested. An
+existing Corepack-managed pnpm installation is also fine; check the version in
+the same terminal you will use for development:
 
 ```bash
 node --version
 pnpm --version
 docker compose version
+docker info
 ```
 
-The first two commands should print `v24.21.0` and `12.6.0`. The instructions use
-a Unix-like shell; on Windows, use a compatible Linux development environment.
-Ports 3000 (web), 3001 (API), and 54322 (database) must be available.
+Expect the Node/pnpm pins above and a reachable Docker daemon. Start Docker
+Desktop or the Linux Docker service if `docker info` cannot connect. FFmpeg and
+Playwright Chromium are optional until you need audio or browser tests; see
+[development tools](development.md#optional-tools).
 
-## 2. Create the local configuration
+## 2. Install dependencies and create configuration
+
+Run all following commands from the repository root:
 
 ```bash
-git clone https://github.com/oogway-lab/flash-evals.git
-cd flash-evals
 pnpm install --frozen-lockfile
 pnpm run setup:local
 ```
 
-Run the remaining commands from this repository root. `--frozen-lockfile`
-installs the dependency versions recorded in the repository without rewriting
-the lockfile. If it reports a mismatch, check that you have a complete, current
-checkout rather than deleting the lockfile.
+The setup command only creates `apps/api/.env` and `apps/web/.env`. It does not
+start services or touch a database. It generates matching internal API tokens,
+a provider-key encryption key, loopback URLs, local storage, isolated tenancy
+for the synthetic user, and modest cost guardrails. Files have private permissions
+and are ignored by Git. MCP and paid providers remain optional.
 
-The setup command creates `apps/api/.env` and `apps/web/.env`. It generates the
-shared internal API token and provider-key encryption key, chooses local storage,
-and points to the bundled PostgreSQL service. It refuses to change anything if
-either environment file already exists. Keep those files private and out of Git.
+If either file exists, setup refuses to overwrite either file. Keep those files
+and follow the [existing-installation instructions](development.md#update-an-existing-checkout).
+Do not replace them with `.env.example`: the example files also contain hosted
+service settings and placeholders. Preserve encryption keys whenever you preserve
+data. Exported shell variables and Next.js `.env.local` files can override `.env`;
+see [configuration loading](configuration.md#how-environment-files-are-loaded).
 
-Do not copy the complete `.env.example` files over this local setup: those files
-also describe deployment settings and contain placeholders for external services.
+For direct private access on a remote host, use the
+[remote setup option](remote-development.md#direct-access-over-tailscale) **instead
+of** generating loopback configuration and guessing browser URLs.
 
-## 3. Prepare a disposable database
+## 3. Initialize a new development database once
 
-**Check `DATABASE_URL` in `apps/api/.env` before seeding.** The default is
-`postgres://flash_evals:flash_evals@localhost:54322/flash_evals`. The seed script truncates
-application tables and cascading references, then inserts synthetic data. Never
-point it at a database you need to preserve.
+Start the bundled database:
 
 ```bash
 docker compose up -d --wait postgres
+docker compose ps postgres
+docker compose exec -T postgres psql -U flash_evals -d flash_evals -c '\dt'
+```
+
+A new database reports no relations. If it already has application tables or
+valuable data, stop here and use the update instructions. Verify both database
+settings point at the intended instance:
+
+| File            | Setting                        | Generated value                                                  |
+| --------------- | ------------------------------ | ---------------------------------------------------------------- |
+| `apps/api/.env` | `DATABASE_URL`                 | `postgres://flash_evals:flash_evals@127.0.0.1:54322/flash_evals` |
+| `apps/web/.env` | `FLASH_EVALS_WEB_DATABASE_URL` | The exact same URL.                                              |
+
+Compose publishes PostgreSQL on loopback port **54322**, not its container port 5432. Data persists in the `flash-evals-postgres` named volume, scoped by the
+Compose project. Keep ports 3000 (web), 3001 (API), and 54322 free.
+
+For this confirmed new, disposable database:
+
+```bash
 node scripts/build-packages.mjs
 pnpm run db:migrate
+# First initialization ONLY: resets application tables and cascading references.
 pnpm run seed
 ```
 
-Compose binds the PostgreSQL port to loopback and preserves its data in a named
-volume. `db:migrate` creates or updates the schema. `seed` adds a development user,
-a workspace, example datasets, prompts, and precomputed results; it makes no
-model-provider calls.
+Migrations create the schema; seed creates the synthetic `dev@local` user, team,
+workspace, dataset, prompts, and completed results. It makes no provider calls.
+Historical migration 0037 truncates team-owned tables: it is acceptable on a new
+empty database, but must not be replayed on an existing installation. Never
+reseed as a troubleshooting step for data you need to keep.
 
-### Already have PostgreSQL?
+### Use your own PostgreSQL instead
 
-Use a dedicated, empty PostgreSQL database and a user allowed to create its
-schema and queue tables. PostgreSQL 17 is the bundled local version. Change
-`DATABASE_URL` in `apps/api/.env`, skip the Docker command, and run the remaining
-build, migration, and seed commands above. The API and worker must use the same
-database. An exported `DATABASE_URL` in your shell takes precedence over the file.
+PostgreSQL **17** is the bundled/tested development version. Create a dedicated,
+empty database with a role allowed to create application schemas and pg-boss
+queue tables. Set **both** database URLs in the table above to the same database,
+skip Compose, then run the build/migration/seed steps only for that new database.
+No Supabase project is needed. If you change Docker's published port, update both
+URLs too. The optional Linux service/backup helpers assume the standard Compose
+database and storage paths; use foreground development for a custom database.
 
-## 4. Start the app
+## 4. Start and verify
 
 ```bash
 pnpm run dev
 ```
 
-This command builds shared packages and starts three processes:
+| Process | Address                        | Expected behavior                                              |
+| ------- | ------------------------------ | -------------------------------------------------------------- |
+| Web     | <http://127.0.0.1:3000>        | Signs in as the synthetic user through the development bypass. |
+| API     | <http://127.0.0.1:3001/health> | Returns `{"status":"ok"}` when its checks pass.                |
+| Worker  | No HTTP port                   | Logs `worker.ready` and consumes evaluation queues.            |
 
-| Process | What it does                                               | Local address           |
-| ------- | ---------------------------------------------------------- | ----------------------- |
-| Web     | Pages, forms, and result review                            | <http://localhost:3000> |
-| API     | Data access, uploads, provider calls, and MCP when enabled | <http://localhost:3001> |
-| Worker  | Executes queued model and evaluation steps                 | No browser page         |
-
-Open the web address. You should be signed into the development account and see
-the seeded examples. Explore a dataset, a prompt, and a completed run. The receipt
-images are flat placeholder images and the saved outputs are synthetic; use real,
-consented samples before drawing conclusions about a model.
-
-If port 3000 is occupied, choose another port:
+Open the web URL, then inspect **Datasets**, **Prompts**, and a completed **Run**.
+The sample receipt images are placeholders and the saved outputs are fixtures,
+not a benchmark. In another terminal:
 
 ```bash
-pnpm run dev --port 3100
+curl --fail http://127.0.0.1:3000/api/health
+curl --fail http://127.0.0.1:3001/health
+pnpm run worker:status
 ```
 
-Open <http://localhost:3100>. The launcher updates the web/API connection and
-allowed browser origin together. The local web and disk-storage API listeners
-bind to loopback by default.
+The web health endpoint checks that Next responds; the API checks its backend.
+The worker-status command checks the database/queues, so also confirm the running
+worker's `worker.ready` log. None of these establish provider authentication or
+paid execution. For remote access, substitute your configured private URLs.
 
-For a basic process check, in a second terminal run:
+`pnpm run dev` supplies the sign-in bypass and seeded identity, builds shared
+packages, and starts all three processes. Starting Next directly does not supply
+those settings. Never expose this development account or local-upload bypass on
+a public interface.
 
-```bash
-curl --fail http://localhost:3000/api/health
-curl --fail http://localhost:3001/health
-```
+## 5. Stop and come back tomorrow
 
-A healthy web endpoint returns `{"status":"ok"}`. Health responses confirm that
-the services answer requests; they do not prove that a worker completed an
-evaluation or that provider credentials are valid.
-
-## 5. Try a small evaluation
-
-Real provider requests may cost money. Start with one or two non-sensitive text
-examples and one model.
-
-1. Add `OPENROUTER_API_KEY` to `apps/api/.env`, then stop and restart `pnpm run dev`.
-   The local setup selects OpenRouter. See [provider configuration](configuration.md#model-providers)
-   if you want another transport.
-2. Create a text dataset. Choose **golden** when you have reference answers to
-   score against, or **evaluation** when you want to inspect outputs without them.
-3. Add a few inputs. For structured comparisons, supply reference labels matching
-   the fields your prompt will return.
-4. Create a prompt, define its output schema, and test it on a sample. Validate
-   it before saving a runnable version. Validation itself makes model calls.
-5. Create a run using that dataset, prompt version, and a compatible model.
-   Choose the scoring fields or judge appropriate to your task.
-6. Wait for the worker to finish, then inspect individual cells as well as the
-   aggregate results. A cell is one dataset item evaluated with one model
-   configuration. Add notes or annotations where the scores need human context.
-
-A model judge is another model call that grades an output against a rubric. Treat
-its score as evidence to review, not ground truth. For multi-step tasks, move on
-to a workflow after the basic dataset and prompt work as intended.
-
-## Stop, restart, and update
-
-Press Ctrl+C in the development terminal to stop the API, web app, and worker.
-The database stays running. Stop it without removing its data with:
+Press **Ctrl+C** to stop web, API, and worker gracefully. PostgreSQL keeps running.
+You can stop it without deleting data:
 
 ```bash
 docker compose stop postgres
 ```
 
-Next time, run `docker compose up -d --wait postgres` and `pnpm run dev`.
-**Do not reseed on every start.** Seeding is a reset, not an incremental update.
-After pulling code that changes dependencies or the schema, run
-`pnpm install --frozen-lockfile` and `pnpm run db:migrate` before starting again.
-Back up anything valuable before an alpha upgrade.
+On subsequent starts:
+
+```bash
+docker compose up -d --wait postgres
+pnpm run dev
+```
+
+There is no need to rerun setup, migrations, or seed for an ordinary restart.
+For code changes, tests, provider calls, MCP, or updates, continue with the
+[development guide](development.md).
 
 ## Troubleshooting
 
-| Symptom                                           | Check                                                                                                                                 |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Install rejects the Node version                  | Check `node --version` in this terminal, then use the pinned version.                                                                 |
-| Setup says environment files exist                | Keep and inspect the existing files. The setup command does not merge or overwrite them.                                              |
-| Migration cannot connect                          | Confirm Docker is running, `docker compose ps postgres` is healthy, and `DATABASE_URL` uses host port 54322.                          |
-| Database connection goes somewhere unexpected     | Check exported shell variables. They override values loaded from `.env`.                                                              |
-| App asks for Clerk sign-in locally                | Start with the root `pnpm run dev`; separate process commands do not apply its development overrides.                                 |
-| Seeded user or workspace is missing               | Check that the API and seed command used the same disposable database. Do not reseed a valuable database to investigate.              |
-| Run stays pending                                 | Look for `[worker]` output in the development terminal and check worker/database errors. A running web app alone cannot execute jobs. |
-| Provider says unauthorized, or no models work     | Check the key for the selected transport in the API environment, then restart all three processes.                                    |
-| Upload fails locally                              | Keep the API public URL and browser-facing API URL consistent; review [local storage settings](configuration.md#storage).             |
-| MCP returns an auth error while the web app works | MCP has separate authentication. Follow the [local MCP setup](mcp-eval-server.md#local-setup).                                        |
+| Symptom                                | What to check                                                                                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node/pnpm missing or wrong version     | Use the same shell/environment as your checkout; activate `.nvmrc` and pnpm 12.6.0. Reopen the shell after installing tools.                |
+| Dependency installation fails          | Keep the lockfile; use `--frozen-lockfile`, check network access and the pinned tools. Avoid running installation as root.                  |
+| Docker daemon or socket inaccessible   | Start Docker; on Linux configure Docker access for your user and reconnect. In WSL2 enable integration for that distribution.               |
+| Compose does not recognize `--wait`    | Install/update the Compose v2 plugin; the command is `docker compose`, not legacy `docker-compose`.                                         |
+| Configuration already exists           | Preserve it. Setup never merges or overwrites environment files.                                                                            |
+| Database connection fails              | Check the Compose health, loopback host port 54322, both database URLs, and shell/`.env.local` overrides.                                   |
+| `EADDRINUSE` / port occupied           | Stop another copy or choose [different ports](development.md#ports-and-browser-urls). Do not delete database volumes.                       |
+| UI asks for Clerk or has no workspace  | Use the root launcher and confirm seed, API, web, and worker use the same intended database. Preserve existing data while investigating.    |
+| API cannot be reached from the browser | Browser `localhost` means the browser's machine. Follow the [VM access guide](remote-development.md).                                       |
+| Changes do not take effect             | Web uses fast refresh; restart the root launcher after API, worker, shared-package, or environment edits.                                   |
+| Run stays pending                      | Confirm the worker process/log, then run `pnpm run worker:status`. Health alone does not prove execution.                                   |
+| Audio preparation fails                | Install FFmpeg/FFprobe where the worker runs.                                                                                               |
+| MCP rejects a working UI's user        | MCP needs its own token/configuration; fresh development tenancy should be `isolated`. See the [MCP guide](mcp-eval-server.md#local-setup). |
 
-If you report a bug, include the commit, tool versions, exact steps, and redacted
-logs. Never post `.env` contents, bearer tokens, provider keys, or private datasets.
-See the [security policy](../SECURITY.md) for security-sensitive reports.
+When reporting a setup issue, include OS/architecture, Node/pnpm/Compose versions,
+the failing command, and redacted error output. Omit `.env` contents, tokens,
+provider keys, private data, and database dumps.
