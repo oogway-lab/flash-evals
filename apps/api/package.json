@@ -18,8 +18,8 @@
         "mcp:smoke": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=.env --import tsx src/scripts/smoke-mcp.ts"
     },
     "dependencies": {
-        "@ai-sdk/gateway": "^4.0.110",
-        "@clerk/backend": "^3.23.2",
+        "@ai-sdk/gateway": "^4.0.120",
+        "@clerk/backend": "^3.26.0",
         "@modelcontextprotocol/sdk": "^1.32.1",
         "@flash-evals/api-contract": "workspace:*",
         "@flash-evals/object-storage": "workspace:*",
@@ -30,7 +30,7 @@
         "papaparse": "^5.7.0",
         "pg": "^8.23.1",
         "pg-boss": "^12.38.0",
-        "zod": "^4.6.5"
+        "zod": "^4.6.7"
     },
     "devDependencies": {
         "@types/node": "^22.20.5",
