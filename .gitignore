@@ -75,3 +75,7 @@ apps/web/scripts/current-db-data.sql
 # Astro output bundled by the Next/OpenNext build
 apps/web/generated/
 apps/web/public/marketing/
+.agents/skills/brag
+.claude/skills/brag
+brag-output
+skills-lock.json
