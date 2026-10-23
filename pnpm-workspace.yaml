@@ -5,7 +5,9 @@ overrides:
     # Fix production audit advisories in the Next/PostCSS dependency tree.
     source-map-js: 1.2.2
     "next>sharp": 0.35.5
-    undici: 7.29.1
+    # Pre-8 undici consumers (miniflare, AI SDK, dotenvx) stay on
+    # the patched 7.29.1 line; llm-core depends on undici 8 directly.
+    "undici@<8": 7.29.1
     # Patch the new Astro dependency tree; leave the web runtime baseline alone.
     "@astrojs/internal-helpers>js-yaml": 4.3.2
     "@astrojs/internal-helpers>smol-toml": 1.9.1

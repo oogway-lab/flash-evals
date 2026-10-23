@@ -165,7 +165,7 @@ settings:
 overrides:
   source-map-js: 1.2.2
   next>sharp: 0.35.5
-  undici: 7.29.1
+  undici@<8: 7.29.1
   '@astrojs/internal-helpers>js-yaml': 4.3.2
   '@astrojs/internal-helpers>smol-toml': 1.9.1
 
@@ -460,10 +460,10 @@ importers:
         version: 7.0.149(zod@4.6.7)
       openai:
         specifier: ^7.39.0
-        version: 7.42.0(@aws-sdk/credential-provider-node@3.972.62)(@smithy/hash-node@4.4.6)(@smithy/signature-v4@5.6.2)(undici@7.29.1)(ws@8.21.0)(zod@4.6.7)
+        version: 7.42.0(@aws-sdk/credential-provider-node@3.972.62)(@smithy/hash-node@4.4.6)(@smithy/signature-v4@5.6.2)(undici@8.12.2)(ws@8.21.0)(zod@4.6.7)
       undici:
-        specifier: 7.29.1
-        version: 7.29.1
+        specifier: 8.12.2
+        version: 8.12.2
     devDependencies:
       typescript:
         specifier: ^5.8.3
@@ -6073,6 +6073,10 @@ packages:
     resolution: {integrity: sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q==}
     engines: {node: '>=20.18.1'}
 
+  undici@8.12.2:
+    resolution: {integrity: sha512-XtuDWVdqTLr3NAxm2ly9/hU6kUsJOgGh1RASzMBbsw6aWCOaQzHdW+QQDfdERjfJ2V5vL5pRPa4RetO9UfivDg==}
+    engines: {node: '>=22.19.0'}
+
   unenv@2.0.0-rc.24:
     resolution: {integrity: sha512-i7qRCmY42zmCwnYlh9H2SvLEypEFGye5iRmEMKjcGi7zk9UquigRjFtTLz0TYqr0ZGLZhaMHl/foy1bZR+Cwlw==}
 
@@ -11143,7 +11147,7 @@ snapshots:
       parse5: 8.0.1
       saxes: 6.0.0
       tough-cookie: 6.0.2
-      undici: 7.29.1
+      undici: 8.12.2
       w3c-xmlserializer: 6.0.0
       webidl-conversions: 8.0.1
       whatwg-mimetype: 5.0.0
@@ -11639,12 +11643,12 @@ snapshots:
       regex: 6.1.0
       regex-recursion: 6.0.2
 
-  openai@7.42.0(@aws-sdk/credential-provider-node@3.972.62)(@smithy/hash-node@4.4.6)(@smithy/signature-v4@5.6.2)(undici@7.29.1)(ws@8.21.0)(zod@4.6.7):
+  openai@7.42.0(@aws-sdk/credential-provider-node@3.972.62)(@smithy/hash-node@4.4.6)(@smithy/signature-v4@5.6.2)(undici@8.12.2)(ws@8.21.0)(zod@4.6.7):
     optionalDependencies:
       '@aws-sdk/credential-provider-node': 3.972.62
       '@smithy/hash-node': 4.4.6
       '@smithy/signature-v4': 5.6.2
-      undici: 7.29.1
+      undici: 8.12.2
       ws: 8.21.0
       zod: 4.6.7
 
@@ -12682,6 +12686,8 @@ snapshots:
 
   undici@7.29.1: {}
 
+  undici@8.12.2: {}
+
   unenv@2.0.0-rc.24:
     dependencies:
       pathe: 2.0.3
@@ -12701,7 +12707,7 @@ snapshots:
       css-tree: 3.2.1
       fnv1a-64: 0.1.2
       std-env: 4.3.0
-      undici: 7.29.1
+      undici: 8.12.2
 
   unist-util-is@6.0.1:
     dependencies:
