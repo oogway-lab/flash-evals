@@ -4,8 +4,8 @@
         "next-env.d.ts",
         "**/*.ts",
         "**/*.tsx",
-        ".next/playwright-app/dev/types/**/*.ts",
-        ".next/playwright-marketing/dev/types/**/*.ts"
+        ".next-playwright/app/dev/types/**/*.ts",
+        ".next-playwright/marketing/dev/types/**/*.ts"
     ],
-    "exclude": ["node_modules", ".next"]
+    "exclude": ["node_modules", ".next", ".next-playwright"]
 }

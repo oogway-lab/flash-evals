@@ -1,6 +1,6 @@
 {
     "name": "flash-evals-workspace",
-    "description": "Compare LLM models on image, text, and audio datasets \u2014 structured output, latency, cost, field-level diff against labels, and LLM-as-judge scoring.",
+    "description": "Compare LLM models on image, text, and audio datasets — structured output, latency, cost, field-level diff against labels, and LLM-as-judge scoring.",
     "license": "AGPL-3.0-only",
     "private": true,
     "author": "Oogway Labs and Flash Evals contributors",
@@ -72,7 +72,7 @@
     },
     "devDependencies": {
         "@eslint/js": "^9.39.5",
-        "@next/eslint-plugin-next": "^16.3.8",
+        "@next/eslint-plugin-next": "^16.4.1",
         "@playwright/test": "^1.64.0",
         "@vitest/coverage-v8": "5.0.3",
         "dependency-cruiser": "^18.5.0",

@@ -11,6 +11,7 @@ export default [
             "**/node_modules/**",
             "**/dist/**",
             "**/.next/**",
+            "**/.next-playwright/**",
             "**/.open-next/**",
             "**/.wrangler/**",
             "**/.astro/**",

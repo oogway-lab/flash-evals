@@ -13,13 +13,16 @@ if (playwrightMode && !["app", "marketing"].includes(playwrightMode)) {
 
 const nextConfig: NextConfig = {
     // Each browser suite can run alongside the normal development server.
-    distDir: playwrightMode ? `.next/playwright-${playwrightMode}` : ".next",
+    distDir: playwrightMode ? `.next-playwright/${playwrightMode}` : ".next",
     typescript: {
         tsconfigPath: playwrightMode
             ? "tsconfig.playwright.json"
             : "tsconfig.json",
     },
     allowedDevOrigins: devWebUrl ? [devWebUrl.hostname] : [],
+    // In dev, Clerk's same-origin rewrite must retain 127.0.0.1. Normalizing
+    // it to localhost makes Next proxy back into itself when explicitly bound.
+    skipProxyUrlNormalize: process.env.NODE_ENV === "development",
     // Compiles components with the React Compiler (auto-memoization).
     reactCompiler: true,
     // Statically typed `href` / `router.push` route strings.

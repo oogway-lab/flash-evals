@@ -21,6 +21,7 @@ const APP = "apps/web";
 const FALLBACK_IGNORED_DIRS = new Set([
     "node_modules",
     ".next",
+    ".next-playwright",
     ".open-next",
     ".wrangler",
     ".turbo",

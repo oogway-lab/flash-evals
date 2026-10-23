@@ -11,7 +11,8 @@
         "apps/web/next-env.d.ts",
         "apps/web/globals.d.ts",
         "apps/web/open-next.config.ts",
-        "apps/web/server/db/migrations/**"
+        "apps/web/server/db/migrations/**",
+        "apps/web/.next-playwright/**"
     ],
     "ignoreDependencies": [
         "@flash-evals/llm-core",

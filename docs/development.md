@@ -76,7 +76,7 @@ real database and paid-provider checks are separate.
 | `pnpm run quality`                                                  | The broader quality gate: types, build, unit tests, lint, architecture and docs; excludes browser tests and security scans. |
 | `pnpm run security`                                                 | Available Gitleaks/Semgrep scanners and dependency audit; reports unavailable scanners.                                     |
 
-Browser suites use separate Next caches and ports **3100** (app), **3101**
+Browser suites use separate Next caches outside the production build directory and ports **3100** (app), **3101**
 (synthetic API), and **3200** (marketing), so you can keep interactive development
 running on 3000/3001. They follow the configured private bind host. Keep the test
 ports free and run one copy of each suite at a time. They do not prove real Clerk
