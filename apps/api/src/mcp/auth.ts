@@ -157,7 +157,9 @@ export async function resolveMcpPrincipalForRawToken(
 
     let email = normalizeEmailAddress(row.email);
     if (requiresDomainAdmission(config)) {
-        if (!isEmailAllowedForDomain(email, config.flashEvalsAllowedEmailDomain)) {
+        if (
+            !isEmailAllowedForDomain(email, config.flashEvalsAllowedEmailDomain)
+        ) {
             throw new ApiForbiddenError(
                 "This Flash Evals account is not allowed to use MCP.",
             );
@@ -257,10 +259,15 @@ export async function resolveClerkOAuthIdentity(
             authorizedParties: config.authorizedParties,
             headerType: ["at+jwt", "application/at+jwt"],
         });
-    } catch {
+    } catch (error) {
+        // Clerk 3.24+ no longer applies authorizedParties to OAuth tokens in
+        // authenticateRequest, so an azp mismatch first surfaces here.
+        const reason = clerkRejectionReason(
+            error instanceof Error ? error.message : null,
+        );
         throw new McpAuthenticationError(
             "Invalid or expired Clerk OAuth token.",
-            "issuer_verification_failed",
+            reason === "sdk_rejected" ? "issuer_verification_failed" : reason,
         );
     }
     if (claims.iss !== config.issuer) {
@@ -372,7 +379,10 @@ async function verifyCurrentClerkEmailAdmission(
     const normalized = normalizeEmailAddress(email);
     if (
         requiresDomainAdmission(config) &&
-        !isEmailAllowedForDomain(normalized, config.flashEvalsAllowedEmailDomain)
+        !isEmailAllowedForDomain(
+            normalized,
+            config.flashEvalsAllowedEmailDomain,
+        )
     ) {
         throw new ApiForbiddenError(
             "This Flash Evals account is not allowed to use MCP.",
