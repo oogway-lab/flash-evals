@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { audioTranscriptConfigHash } from "@mosaic/llm-core";
+import { audioTranscriptConfigHash } from "@flash-evals/llm-core/transcript-identity";
 import {
     canonicalJsonString,
     sttModelIdentityForId,

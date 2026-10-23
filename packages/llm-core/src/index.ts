@@ -2,7 +2,6 @@ export * from "./models/catalogStore.js";
 export * from "./models/catalog.js";
 export * from "./types.js";
 export * from "./cost.js";
-export { audioTranscriptConfigHash } from "./providers/transcriptIdentity.js";
 export {
     MODEL_REGISTRY,
     installModelCatalog,

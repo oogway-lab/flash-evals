@@ -12,7 +12,7 @@ import {
 import { retryWorkflowRunPayload } from "./workflowRunRetry.js";
 
 // Session-local tables exercise the real retry SQL without touching application data.
-const databaseUrl = process.env.MOSAIC_TEST_DATABASE_URL;
+const databaseUrl = process.env.FLASH_EVALS_TEST_DATABASE_URL;
 describe.skipIf(!databaseUrl)(
     "workflow retry spend checkpoint (PostgreSQL)",
     () => {

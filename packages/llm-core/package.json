@@ -12,6 +12,12 @@
             "import": "./dist/index.js",
             "require": "./dist/index.js",
             "default": "./dist/index.js"
+        },
+        "./transcript-identity": {
+            "types": "./src/providers/transcriptIdentity.ts",
+            "import": "./dist/providers/transcriptIdentity.js",
+            "require": "./dist/providers/transcriptIdentity.js",
+            "default": "./dist/providers/transcriptIdentity.js"
         }
     },
     "scripts": {
