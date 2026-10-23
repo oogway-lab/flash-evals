@@ -3,6 +3,15 @@ set -euo pipefail
 umask 077
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
+# The helper relies on util-linux flock, bash 4 mapfile and a systemd user
+# manager. Say so instead of failing with a misleading lock message elsewhere.
+for tool in flock systemctl; do
+    command -v "$tool" > /dev/null || {
+        echo "dev:backup requires Linux with $tool; see docs/development.md for a manual snapshot."
+        exit 1
+    }
+done
+
 # Refuse a snapshot of the wrong database or a remote object store. Never source
 # .env as shell code, and never echo credentials into the journal.
 node --input-type=module <<'JS'

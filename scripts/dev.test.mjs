@@ -113,12 +113,19 @@ child.on('exit',(code)=>process.exit(code??0));
     },
 );
 
-test("failed database backup resumes development and publishes no incomplete snapshot", () => {
+test("failed database backup resumes development and publishes no incomplete snapshot", {
+    // backup-dev.sh needs util-linux flock and bash 4; it is Linux-only.
+    skip: process.platform !== "linux" && "backup helper is Linux-only",
+}, () => {
     const dir = mkdtempSync(path.join(tmpdir(), "flash-evals-backup-"));
     try {
         for (const folder of ["scripts/lib", "apps/api", "apps/web", "bin"])
             mkdirSync(path.join(dir, folder), { recursive: true });
-        for (const file of ["scripts/backup-dev.sh", "scripts/lib/dev-env.cjs"])
+        for (const file of [
+            "scripts/backup-dev.sh",
+            "scripts/lib/dev-env.cjs",
+            "scripts/lib/dev-host.cjs",
+        ])
             copyFileSync(path.join(root, file), path.join(dir, file));
         const url =
             "postgres://synthetic:synthetic@localhost:54322/flash_evals";

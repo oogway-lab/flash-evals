@@ -130,7 +130,7 @@ saved, so recovery cannot promise exactly-once external billing.
 
 ## Backups
 
-The optional service installation enables a daily backup at **04:00 Asia/Kolkata**.
+The optional service installation enables a daily backup at **04:00 host local time**.
 Inspect its schedule and logs; change the schedule through a systemd timer
 [override](https://www.freedesktop.org/software/systemd/man/latest/systemctl.html)
 if that time does not suit your environment.

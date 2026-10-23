@@ -3,7 +3,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { isIP } from "node:net";
+import { isPrivateDevHost } from "./lib/dev-host.cjs";
 
 const { values } = parseArgs({
     args: process.argv.slice(2).filter((arg) => arg !== "--"),
@@ -19,14 +19,7 @@ if (values.help) {
     process.exit(0);
 }
 const host = values.host;
-const octets = host.split(".").map(Number);
-if (
-    isIP(host) !== 4 ||
-    !(
-        host === "127.0.0.1" ||
-        (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127)
-    )
-) {
+if (!isPrivateDevHost(host)) {
     throw new Error(
         "Use 127.0.0.1 for local/SSH access or a private Tailscale IPv4 address for remote access.",
     );

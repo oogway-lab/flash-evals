@@ -60,7 +60,8 @@ writeFileSync(
 Description=Daily Flash Evals development snapshot
 
 [Timer]
-OnCalendar=*-*-* 04:00:00 Asia/Kolkata
+# Host local time; contributors override the schedule with a timer drop-in.
+OnCalendar=*-*-* 04:00:00
 # Avoid an unexpected pause while working after a missed backup or reboot.
 Persistent=false
 Unit=flash-evals-backup.service
@@ -107,6 +108,6 @@ run("systemctl", [
     "flash-evals-backup.timer",
 ]);
 console.info(
-    "Installed persistent development service and daily 04:00 India backup. Node: " +
+    "Installed persistent development service and daily 04:00 (host local time) backup. Node: " +
         node,
 );

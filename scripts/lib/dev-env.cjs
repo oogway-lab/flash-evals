@@ -3,7 +3,7 @@
 const { existsSync, readFileSync } = require("node:fs");
 const path = require("node:path");
 const { parseEnv } = require("node:util");
-const { isIP } = require("node:net");
+const { isPrivateDevHost } = require("./dev-host.cjs");
 
 const root = path.resolve(__dirname, "../..");
 
@@ -19,14 +19,7 @@ const devHost =
     webEnv.FLASH_EVALS_DEV_BIND_HOST ||
     "127.0.0.1";
 
-const octets = devHost.split(".").map(Number);
-if (
-    isIP(devHost) !== 4 ||
-    !(
-        devHost === "127.0.0.1" ||
-        (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127)
-    )
-) {
+if (!isPrivateDevHost(devHost)) {
     throw new Error(
         "Development host must be loopback or a private Tailscale IPv4 address.",
     );

@@ -19,12 +19,10 @@ import { root } from "./lib/dev-env.cjs";
 
 function checkout(t) {
     const dir = mkdtempSync(path.join(tmpdir(), "flash-evals-setup-"));
-    for (const folder of ["scripts", "apps/api", "apps/web"])
+    for (const folder of ["scripts/lib", "apps/api", "apps/web"])
         mkdirSync(path.join(dir, folder), { recursive: true });
-    copyFileSync(
-        path.join(root, "scripts/setup-local.mjs"),
-        path.join(dir, "scripts/setup-local.mjs"),
-    );
+    for (const file of ["scripts/setup-local.mjs", "scripts/lib/dev-host.cjs"])
+        copyFileSync(path.join(root, file), path.join(dir, file));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     return dir;
 }

@@ -24,9 +24,17 @@ const webUrl = new URL(configuredWebOrigin);
 webUrl.port = webPort;
 const webOrigin = webUrl.origin;
 const apiOrigin = `http://localhost:${apiPort}`;
+// Like --port for web: an explicit API port override must also move the saved
+// .env API URLs (setup writes :3001), or the browser and uploads miss the API.
+function savedApiUrl(value) {
+    if (!value || !process.env.FLASH_EVALS_DEV_API_PORT) return value;
+    const url = new URL(value);
+    url.port = apiPort;
+    return url.href.replace(/\/$/, "");
+}
 const browserApiOrigin =
     process.env.NEXT_PUBLIC_API_BASE_URL ||
-    webEnv.NEXT_PUBLIC_API_BASE_URL ||
+    savedApiUrl(webEnv.NEXT_PUBLIC_API_BASE_URL) ||
     apiOrigin;
 const seedTeamId = "f3b1a534-d8ef-4146-aead-96301d99d496";
 const seedUserId = "5b7ecdb4-ac4b-4219-89ea-f5f50aeae7bd";
@@ -51,7 +59,9 @@ const commands = [
         args: ["--filter", "@flash-evals/web", "dev", ...hostArgs, ...webArgs],
         env: {
             API_BASE_URL:
-                process.env.API_BASE_URL || webEnv.API_BASE_URL || apiOrigin,
+                process.env.API_BASE_URL ||
+                savedApiUrl(webEnv.API_BASE_URL) ||
+                apiOrigin,
             NEXT_PUBLIC_API_BASE_URL: browserApiOrigin,
             FLASH_EVALS_DEV_WEB_ORIGIN: webOrigin,
             AUTH_DEV: "true",
