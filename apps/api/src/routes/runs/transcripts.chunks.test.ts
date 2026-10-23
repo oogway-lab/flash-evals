@@ -5,10 +5,8 @@ import {
     type IRunDetailItem,
 } from "@flash-evals/api-contract";
 import { createHash } from "node:crypto";
-import {
-    audioTranscriptConfigHash,
-    OPENROUTER_AUDIO_ADAPTER_VERSION,
-} from "@flash-evals/llm-core";
+import { OPENROUTER_AUDIO_ADAPTER_VERSION } from "@flash-evals/llm-core";
+import { audioTranscriptConfigHash } from "@flash-evals/llm-core/transcript-identity";
 import { describe, expect, it, vi } from "vitest";
 import type { IDb } from "../../db.js";
 import { audioTranscriptPayload } from "./transcripts.js";

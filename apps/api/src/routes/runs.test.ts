@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type * as LlmCore from "@flash-evals/llm-core";
-import { audioTranscriptConfigHash } from "@flash-evals/llm-core";
+import { audioTranscriptConfigHash } from "@flash-evals/llm-core/transcript-identity";
 
 vi.mock("@flash-evals/llm-core", async (importOriginal) => {
     const actual = await importOriginal<typeof LlmCore>();

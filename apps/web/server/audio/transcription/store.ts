@@ -1,4 +1,4 @@
-import { audioTranscriptConfigHash } from "@flash-evals/llm-core";
+import { audioTranscriptConfigHash } from "@flash-evals/llm-core/transcript-identity";
 import {
     canonicalJsonObject,
     canonicalJsonString,

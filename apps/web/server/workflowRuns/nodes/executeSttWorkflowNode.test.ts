@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { IWorkflowNodeArtifact } from "@mosaic/api-contract";
+import type { IWorkflowNodeArtifact } from "@flash-evals/api-contract";
 import type { IWorkflowSnapshotNode } from "../../db/jsonTypes";
 
 const mocks = vi.hoisted(() => ({
