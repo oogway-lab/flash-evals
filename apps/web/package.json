@@ -23,7 +23,7 @@
         "seed": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=../api/.env --env-file-if-exists=.env --import tsx scripts/seed.ts"
     },
     "dependencies": {
-        "@ai-sdk/gateway": "^4.0.120",
+        "@ai-sdk/gateway": "^4.0.123",
         "@base-ui/react": "1.9.0",
         "@clerk/nextjs": "^7.9.18",
         "@flash-evals/api-contract": "workspace:*",
@@ -59,7 +59,7 @@
         "@types/pg": "^8.23.1",
         "@types/react": "^19.3.0",
         "@types/react-dom": "^19.3.0",
-        "ai": "^7.0.147",
+        "ai": "^7.0.150",
         "autoprefixer": "^10.6.1",
         "babel-plugin-react-compiler": "^1.0.0",
         "drizzle-kit": "^0.31.11",
