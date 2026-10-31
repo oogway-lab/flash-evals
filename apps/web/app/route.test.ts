@@ -10,7 +10,7 @@ describe("anonymous marketing document", () => {
         expect(response.headers.get("cache-control")).toBe("private, no-store");
         const html = await response.text();
         expect(html).toContain(
-            "Pick your model on your data. Keep the receipts.",
+            "Choose your model. See the tradeoffs on your data.",
         );
         expect(html).toContain('href="/sign-in"');
         expect(html).toContain('href="https://flashevals.dev/"');
