@@ -73,7 +73,7 @@
     },
     "devDependencies": {
         "@eslint/js": "^9.39.5",
-        "@next/eslint-plugin-next": "^16.4.1",
+        "@next/eslint-plugin-next": "^16.4.3",
         "@playwright/test": "^1.64.1",
         "@vitest/coverage-v8": "5.0.5",
         "dependency-cruiser": "^18.7.0",
@@ -81,13 +81,13 @@
         "eslint-plugin-react": "^7.37.5",
         "eslint-plugin-react-hooks": "^7.0.1",
         "husky": "^9.1.7",
-        "jscpd": "^4.0.5",
+        "jscpd": "^4.3.0",
         "knip": "^5.72.0",
         "lint-staged": "^17.6.0",
         "prettier": "^3.9.10",
         "syncpack": "^15.3.3",
         "typedoc": "^0.28.14",
-        "typescript-eslint": "^8.72.0"
+        "typescript-eslint": "^8.72.1"
     },
     "lint-staged": {
         "*.{ts,tsx}": [

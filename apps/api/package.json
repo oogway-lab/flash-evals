@@ -18,9 +18,9 @@
         "mcp:smoke": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=.env --import tsx src/scripts/smoke-mcp.ts"
     },
     "dependencies": {
-        "@ai-sdk/gateway": "^4.0.120",
-        "@clerk/backend": "^3.26.0",
-        "@modelcontextprotocol/sdk": "^1.32.1",
+        "@ai-sdk/gateway": "^4.0.130",
+        "@clerk/backend": "^3.26.4",
+        "@modelcontextprotocol/sdk": "^1.32.2",
         "@flash-evals/api-contract": "workspace:*",
         "@flash-evals/object-storage": "workspace:*",
         "@flash-evals/llm-core": "workspace:*",
