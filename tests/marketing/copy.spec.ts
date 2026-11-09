@@ -50,23 +50,36 @@ test("illustrations identify synthetic data without implying provider rankings o
         "Model A",
     );
     await expect(page.locator(".board thead")).toContainText("Avg");
-    await expect(page.locator(".calls .res")).toHaveText([
-        "3 datasets",
-        "run queued",
-        "720 / 960 results",
-        "status + progress",
-        "outputs + scores",
-        "review note saved",
-    ]);
     await expect(page.locator(".site-foot")).toContainText(
         "synthetic outputs and sample figures",
-    );
-    await expect(page.locator(".judge")).toHaveText(
-        /request preserved.*Pass in A, B, C/,
     );
     await expect(page.locator("main")).not.toContainText(
         /claude|gemini|gpt-4o|88 MCP|about ten minutes|OTP leakage/,
     );
+});
+
+test("positions the sample and tool comparison with clear limits and sources", async ({
+    page,
+}) => {
+    await page.goto("/");
+    await expect(page.locator("#compare")).toContainText(
+        "illustrative comparison",
+    );
+    await expect(page.locator("#compare")).toContainText(
+        "Your results will depend",
+    );
+    await expect(page.locator("#alternatives")).toContainText(
+        "savings are not automatic or guaranteed",
+    );
+    for (const host of [
+        "langfuse.com",
+        "www.braintrust.dev",
+        "www.promptfoo.dev",
+    ]) {
+        await expect(
+            page.locator(`#alternatives a[href*="${host}"]`).first(),
+        ).toBeVisible();
+    }
 });
 
 test("all copy controls copy their complete commands and show success", async ({
@@ -185,7 +198,7 @@ for (const width of [360, 375, 390, 768, 1440]) {
             await page.screenshot({
                 path: `test-results/marketing-hero-${width}.png`,
             });
-            await page.locator("#agents").scrollIntoViewIfNeeded();
+            await page.locator("#more-title").scrollIntoViewIfNeeded();
             await page.screenshot({
                 path: `test-results/marketing-agent-${width}.png`,
             });

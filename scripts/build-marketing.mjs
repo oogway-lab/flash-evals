@@ -24,7 +24,7 @@ await writeFile(
     path.join(generated, "marketing.json"),
     JSON.stringify({ html }),
 );
-for (const file of ["_astro", "favicon.svg", "og.png", "robots.txt"]) {
+for (const file of ["_astro", "favicon.svg", "robots.txt"]) {
     await cp(path.join(dist, file), path.join(assets, file), {
         recursive: true,
     });
