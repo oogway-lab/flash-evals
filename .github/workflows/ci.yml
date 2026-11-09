@@ -89,7 +89,7 @@ jobs:
       - name: Verify Cloudflare build output
         run: |
           test -s apps/web/.open-next/worker.js
-          test -s apps/web/.open-next/assets/marketing/og.png
+          test -s apps/web/.open-next/assets/marketing/favicon.svg
           test -d apps/web/.open-next/assets/marketing/_astro
           test -d apps/web/.open-next/assets
 
