@@ -29,6 +29,8 @@
         "journalctl",
         "gitleaks",
         "semgrep",
+        "ffmpeg",
+        "ffprobe",
         "scripts/check-live-split-deployment-readiness.sh",
         "scripts/check-split-deployment-readiness.sh",
         "scripts/smoke-split-health.sh"
