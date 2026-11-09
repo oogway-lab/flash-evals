@@ -45,7 +45,7 @@ export const responses: ModelResponse[] = [
         fields: [
             { name: "merchant", got: "Corner Grocer" },
             { name: "date", got: "2026-09-14" },
-            { name: "total", got: "41.90", expected: "41.09" },
+            { name: "total", got: "41.09" },
             { name: "tax", got: "3.12" },
             { name: "line_items", got: "6" },
         ],
@@ -95,15 +95,15 @@ export const leaderboard: LeaderRow[] = [
         accuracy: "96.8%",
         avgLatency: "1.79 s",
         costPer1k: "4.12",
-        stamp: "Best score",
+        stamp: "Baseline",
     },
     {
         code: "B",
         model: "Model B",
-        accuracy: "93.1%",
+        accuracy: "96.8%",
         avgLatency: "0.58 s",
         costPer1k: "0.31",
-        stamp: "Fastest",
+        stamp: "Same score",
     },
     {
         code: "C",
@@ -132,7 +132,7 @@ export const lineItems = [
     {
         qty: "1",
         item: "Prompts",
-        note: "Define the task and output format. Test a sample before a run.",
+        note: "Compare prompt versions and output formats on your examples.",
     },
     {
         qty: "1",
@@ -152,17 +152,7 @@ export const lineItems = [
     {
         qty: "1",
         item: "Workflows",
-        note: "Connect prompt and evaluation steps for tasks with several stages.",
-    },
-    {
-        qty: "1",
-        item: "Audio variants",
-        note: "Compare up to six transcription settings in one audio run.",
-    },
-    {
-        qty: "1",
-        item: "Agent access",
-        note: "Let an MCP-compatible agent start runs and inspect results.",
+        note: "Build and compare multi-step approaches, including steps using smaller models.",
     },
     {
         qty: "1",
@@ -174,72 +164,6 @@ export const lineItems = [
         item: "Result reuse",
         note: "Reuse stored results for identical calls instead of paying twice.",
     },
-];
-
-export type TranscriptWord = { w: string; mark?: "sub" | "miss"; ref?: string };
-
-export const audio = {
-    item: "004",
-    file: "support_call_004.wav",
-    duration: "0:07",
-    language: "hi-en",
-    reference: "Mera OTP 4829 hai, please confirm karo.",
-    variants: [
-        {
-            code: "A",
-            label: "Config A · vocabulary hint",
-            words: [
-                { w: "Mera" },
-                { w: "OTP" },
-                { w: "4829" },
-                { w: "hai," },
-                { w: "please" },
-                { w: "confirm" },
-                { w: "karo." },
-            ] as TranscriptWord[],
-            accuracy: "100%",
-            speakers: "2 / 2",
-        },
-        {
-            code: "B",
-            label: "Config B · no hint",
-            words: [
-                { w: "Mera" },
-                { w: "OTB", mark: "sub", ref: "OTP" },
-                { w: "4829" },
-                { w: "hai," },
-                { w: "please" },
-                { w: "confirm" },
-                { w: "karo." },
-            ] as TranscriptWord[],
-            accuracy: "85.7%",
-            speakers: "2 / 2",
-        },
-        {
-            code: "C",
-            label: "Config C · different model",
-            words: [
-                { w: "Mera" },
-                { w: "OTP" },
-                { w: "4829" },
-                { w: "hi,", mark: "sub", ref: "hai," },
-                { w: "please" },
-                { w: "confirm" },
-                { w: "karo.", mark: "miss" },
-            ] as TranscriptWord[],
-            accuracy: "71.4%",
-            speakers: "unavailable",
-        },
-    ],
-};
-
-export const agentCalls = [
-    { tool: "list_datasets", result: "3 datasets" },
-    { tool: "create_eval_run", result: "run queued" },
-    { tool: "get_run_progress", result: "720 / 960 results" },
-    { tool: "get_run_summary", result: "status + progress" },
-    { tool: "list_run_cells", result: "outputs + scores" },
-    { tool: "save_run_note", result: "review note saved" },
 ];
 
 export const installSteps = [

@@ -159,14 +159,17 @@ try {
     assert.match(home.headers.get("content-type") ?? "", /text\/html/);
     assert.match(home.headers.get("cache-control") ?? "", /no-store/);
     const html = await home.text();
-    assert.match(html, /Choose your model\. See the tradeoffs on your data\./);
+    assert.match(
+        html,
+        /Find cheaper ways to run your AI\. Check accuracy first\./,
+    );
     assert.match(html, /href="\/sign-in"/);
     const stylesheet = html.match(/href="(\/marketing\/_astro\/[^" ]+\.css)"/);
     assert.ok(
         stylesheet,
         "the marketing stylesheet must use the asset namespace",
     );
-    for (const asset of [stylesheet[1], "/marketing/og.png"]) {
+    for (const asset of [stylesheet[1], "/marketing/favicon.svg"]) {
         const assetResponse = await globalThis.fetch(`${origin}${asset}`);
         assert.equal(assetResponse.status, 200, `marketing asset ${asset}`);
     }

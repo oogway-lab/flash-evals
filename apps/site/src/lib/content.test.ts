@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-    agentCalls,
-    audio,
     CLONE_COMMAND,
     DOCS_URL,
     installSteps,
@@ -33,19 +31,20 @@ describe("marketing demo content", () => {
         ]);
     });
 
-    it("keeps the leaderboard, audio comparison, and agent demo complete", () => {
+    it("keeps the illustrative comparison and capabilities complete", () => {
         expect(leaderboard.map((row) => row.code)).toEqual([
             "A",
             "B",
             "C",
             "D",
         ]);
-        expect(audio.variants).toHaveLength(3);
-        expect(
-            audio.variants.every((variant) => variant.words.length > 0),
-        ).toBe(true);
+        const baseline = leaderboard.find((row) => row.code === "A")!;
+        const alternative = leaderboard.find((row) => row.code === "B")!;
+        expect(alternative.accuracy).toBe(baseline.accuracy);
+        expect(Number(alternative.costPer1k)).toBeLessThan(
+            Number(baseline.costPer1k),
+        );
         expect(lineItems.length).toBeGreaterThan(0);
-        expect(agentCalls.length).toBeGreaterThan(0);
     });
 
     it("keeps install and documentation links pointed at the repository", () => {

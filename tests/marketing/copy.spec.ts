@@ -6,7 +6,10 @@ test("public CTAs lead to local setup, with pilot sign-in kept to the top bar", 
 }) => {
     await page.goto("/");
     const links = page.locator(".mast .next a");
-    await expect(links).toHaveText(["Set up locally", "View the source"]);
+    await expect(links).toHaveText([
+        "Try it locally with sample data",
+        "View the source",
+    ]);
     await expect(links.first()).toHaveAttribute(
         "href",
         /\/docs\/getting-started\.md$/,
@@ -37,8 +40,8 @@ test("illustrations identify synthetic data without implying provider rankings o
     page,
 }) => {
     await page.goto("/");
-    await expect(page.locator(".mast .meta")).toHaveText(
-        /SAMPLE RUN.*ILLUSTRATIVE DATA/,
+    await expect(page.locator("#compare .sec-title")).toContainText(
+        "sample data",
     );
     await expect(page.locator("[data-clock]")).toHaveCount(0);
     await expect(page.locator(".resp .model")).toHaveText([
@@ -50,23 +53,34 @@ test("illustrations identify synthetic data without implying provider rankings o
         "Model A",
     );
     await expect(page.locator(".board thead")).toContainText("Avg");
-    await expect(page.locator(".calls .res")).toHaveText([
-        "3 datasets",
-        "run queued",
-        "720 / 960 results",
-        "status + progress",
-        "outputs + scores",
-        "review note saved",
-    ]);
     await expect(page.locator(".site-foot")).toContainText(
         "synthetic outputs and sample figures",
-    );
-    await expect(page.locator(".judge")).toHaveText(
-        /request preserved.*Pass in A, B, C/,
     );
     await expect(page.locator("main")).not.toContainText(
         /claude|gemini|gpt-4o|88 MCP|about ten minutes|OTP leakage/,
     );
+});
+
+test("positions the sample and tool comparison with clear limits and sources", async ({
+    page,
+}) => {
+    await page.goto("/");
+    await expect(page.locator("#compare")).toContainText("In this sample");
+    await expect(page.locator("#compare")).toContainText(
+        "Your results will depend",
+    );
+    await expect(page.locator("#alternatives")).toContainText(
+        "savings are not guaranteed",
+    );
+    for (const host of [
+        "langfuse.com",
+        "www.braintrust.dev",
+        "www.promptfoo.dev",
+    ]) {
+        await expect(
+            page.locator(`#alternatives a[href*="${host}"]`).first(),
+        ).toBeVisible();
+    }
 });
 
 test("all copy controls copy their complete commands and show success", async ({
@@ -185,7 +199,7 @@ for (const width of [360, 375, 390, 768, 1440]) {
             await page.screenshot({
                 path: `test-results/marketing-hero-${width}.png`,
             });
-            await page.locator("#agents").scrollIntoViewIfNeeded();
+            await page.locator("#more-title").scrollIntoViewIfNeeded();
             await page.screenshot({
                 path: `test-results/marketing-agent-${width}.png`,
             });

@@ -9,7 +9,7 @@ test("anonymous / serves marketing and its local assets without an auth or dashb
     expect(response?.headers()["cache-control"]).toContain("no-store");
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-        "Choose your model. See the tradeoffs on your data.",
+        "Find cheaper ways to run your AI. Check accuracy first.",
     );
     await expect(
         page
@@ -23,15 +23,6 @@ test("anonymous / serves marketing and its local assets without an auth or dashb
     const href = await stylesheet.getAttribute("href");
     expect(href).toMatch(/^\/marketing\/_astro\//);
     expect((await request.get(href!)).status()).toBe(200);
-    const socialImage = await request.get("/marketing/og.png");
-    expect(socialImage.status()).toBe(200);
-    const png = await socialImage.body();
-    await expect(
-        page.locator('meta[property="og:image:width"]'),
-    ).toHaveAttribute("content", String(png.readUInt32BE(16)));
-    await expect(
-        page.locator('meta[property="og:image:height"]'),
-    ).toHaveAttribute("content", String(png.readUInt32BE(20)));
     await expect(page.locator(".mast .ln").last()).toHaveCSS(
         "clip-path",
         /^inset\(0(?:px|%)(?: 0(?:px|%))*\)$/,
@@ -199,6 +190,6 @@ test("interrupted and repeated sign-in navigation can return to marketing throug
     await expect(page).toHaveURL(/\/sign-in$/);
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-        "Choose your model. See the tradeoffs on your data.",
+        "Find cheaper ways to run your AI. Check accuracy first.",
     );
 });

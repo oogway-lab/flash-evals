@@ -10,8 +10,6 @@ import {
     MCP_DOCS_URL,
     REPO_URL,
     STT_DOCS_URL,
-    agentCalls,
-    audio,
     installSteps,
     item,
     leaderboard,
@@ -19,9 +17,9 @@ import {
     responses,
 } from "../lib/content";
 
-const title = "Flash Evals — compare models on your data";
+const title = "Flash Evals — reduce AI spend with evaluations";
 const description =
-    "Self-hosted, open-source evaluation for models and prompts. Test a model on your own text, images, and audio before you ship it or switch, with outputs, scores, latency, and estimated cost side by side.";
+    "Find opportunities to reduce AI spend while maintaining task accuracy. Compare models, prompts, and workflows on your own examples, with latency and estimated cost alongside results.";
 
 // Footer barcode: real Code 128, so a scanner reads the domain.
 const modules = code128B("flashevals.dev");
@@ -33,15 +31,6 @@ modules.forEach((width, index) => {
 });
 const barcodeWidth = x + 10;
 
-// Printed waveform for the audio item: deterministic, two speaker turns.
-const waveBars = Array.from({ length: 112 }, (_, i) => {
-    const turnGap = i > 50 && i < 56;
-    const envelope = turnGap ? 0.06 : 0.35 + 0.65 * Math.abs(Math.sin(i * 0.21));
-    const jitter = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
-    const h = Math.max(2, Math.round((0.25 + 0.75 * jitter) * envelope * 30) * 2);
-    return { x: i * 5, h };
-});
-
 const stampTilts = ["-7deg", "5deg", "-4deg"];
 let stampIndex = 0;
 ---
@@ -52,9 +41,8 @@ let stampIndex = 0;
     <header class="topbar">
         <a class="wordmark" href="/" aria-label="Flash Evals home">Flash Evals</a>
         <nav aria-label="Primary">
-            <a href="#run">How it works</a>
-            <a href="#audio">Audio</a>
-            <a href="#agents">Agents</a>
+            <a href="#compare" class="keep">See an example</a>
+            <a href="#alternatives">Compare tools</a>
             <a href="#self-host" class="keep">Run locally</a>
             <a href={REPO_URL} class="keep">GitHub</a>
             <a href="/sign-in" class="keep">Pilot sign-in</a>
@@ -68,19 +56,14 @@ let stampIndex = 0;
             <span class="ln center soft" style="--i:1">Self-hosted model and prompt evaluation</span>
             <span class="ln center soft" style="--i:2">flashevals.dev · AGPL-3.0-only · early alpha</span>
             <span class="ln stars" style="--i:3" aria-hidden="true"></span>
-            <span class="ln meta" style="--i:4">
-                <span>SAMPLE RUN · receipts-v3</span>
-                <span>ILLUSTRATIVE DATA</span>
-            </span>
-
             <h1 id="hero-title" class="ln" style="--i:5">
-                Choose your model. See the tradeoffs on your data.
+                Find cheaper ways to run your AI. Check accuracy first.
             </h1>
             <p class="ln pitch" style="--i:6">
-                Before you ship a model, or switch to a cheaper or newer one, run
-                it on your own text, images, and audio. Outputs, scores, latency,
-                and estimated cost stay side by side, so you can see what changed
-                and why.
+                Test smaller models, prompt changes, and multi-step workflows on
+                your own examples. Compare accuracy, latency, and estimated cost
+                against what you run today, and inspect the misses before you
+                ship.
             </p>
 
             <div class="ln" style="--i:7">
@@ -93,7 +76,7 @@ let stampIndex = 0;
                     </button>
                 </div>
                 <div class="next">
-                    <a href={DOCS_URL}>Set up locally <Icon name="arrow" /></a>
+                    <a href={DOCS_URL}>Try it locally with sample data <Icon name="arrow" /></a>
                     <a href={REPO_URL}>View the source <Icon name="arrow" /></a>
                 </div>
             </div>
@@ -106,6 +89,82 @@ let stampIndex = 0;
             </aside>
         </section>
 
+        <!-- Subtotal: the leaderboard -->
+        <section class="seg" id="compare" aria-labelledby="sub-title">
+            <h2 class="sec-title develop" id="sub-title">
+                <DoubleWidth text={`Compare · ${item.total} items`} />
+                <span class="soft">sample data</span>
+            </h2>
+            <p class="sec-lede develop">
+                In this sample, Model B matches the baseline
+                field score at a lower estimated cost and response time. Your
+                results will depend on your task and examples; inspect misses and
+                failed results before choosing.
+            </p>
+
+            <table class="board develop" data-board>
+                <caption class="visually-hidden">
+                    Illustrative comparison for a 240-item receipt extraction run
+                </caption>
+                <thead>
+                    <tr>
+                        <th scope="col"><span class="visually-hidden">Code</span></th>
+                        <th scope="col">Model</th>
+                        <th scope="col">Fields</th>
+                        <th scope="col">Avg</th>
+                        <th scope="col">$/1k</th>
+                        <th scope="col"><span class="visually-hidden">Verdict</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {
+                        leaderboard.map((row) => (
+                            <tr>
+                                <td>
+                                    <span class="code">{row.code}</span>
+                                </td>
+                                <td class="model">
+                                    <ModelId id={row.model} />
+                                    {row.failures && (
+                                        <span class="fail">
+                                            <Icon name="cross" /> {row.failures}
+                                        </span>
+                                    )}
+                                </td>
+                                <td data-label="Fields">{row.accuracy}</td>
+                                <td data-label="Avg">{row.avgLatency}</td>
+                                <td data-label="$/1k">{row.costPer1k}</td>
+                                <td class="verdict">
+                                    {row.stamp && (
+                                        <span
+                                            class="stamp"
+                                            style={`--tilt:${stampTilts[stampIndex]};--i:${stampIndex++}`}
+                                        >
+                                            {row.stamp}
+                                        </span>
+                                    )}
+                                </td>
+                            </tr>
+                        ))
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="6">
+                            3 failed results available for review
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <aside class="note">
+                <p><b>Read the tradeoffs.</b> Fields shows the average field score; Avg
+                    is mean response time; $/1k is estimated cost per 1,000 results.
+                    All values here are samples.
+                </p>
+            </aside>
+        </section>
+
         <!-- One item, three models -->
         <section class="seg run" id="run" aria-labelledby="run-title" data-run>
             <h2 class="sec-title develop" id="run-title">
@@ -113,9 +172,9 @@ let stampIndex = 0;
                 <span class="soft">sample run</span>
             </h2>
             <p class="sec-lede develop">
-                Every model gets the same examples. This sample tests receipt
-                extraction: can each model return the expected fields? Three
-                responses are shown below.
+                Look beyond the aggregate. These responses show
+                how each model handled one receipt and where a field differs
+                from the expected answer.
             </p>
 
             <div class="input develop">
@@ -200,83 +259,7 @@ let stampIndex = 0;
 
             <aside class="note right">
                 <p><b>See the mismatch.</b> Compare each scored field with the expected
-                    value. Here, one answer changes the total; another returns the
-                    date in the wrong format.
-                </p>
-            </aside>
-        </section>
-
-        <!-- Subtotal: the leaderboard -->
-        <section class="seg" aria-labelledby="sub-title">
-            <h2 class="sec-title develop" id="sub-title">
-                <DoubleWidth text={`Compare · ${item.total} items`} />
-                <span class="soft">sample data</span>
-            </h2>
-            <p class="sec-lede develop">
-                Scores, response times, and estimated costs add up across the
-                whole dataset. Inspect the misses and failed results before you
-                choose. This sample shows four models.
-            </p>
-
-            <table class="board develop" data-board>
-                <caption class="visually-hidden">
-                    Sample comparison for a 240-item receipt extraction run
-                </caption>
-                <thead>
-                    <tr>
-                        <th scope="col"><span class="visually-hidden">Code</span></th>
-                        <th scope="col">Model</th>
-                        <th scope="col">Fields</th>
-                        <th scope="col">Avg</th>
-                        <th scope="col">$/1k</th>
-                        <th scope="col"><span class="visually-hidden">Verdict</span></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {
-                        leaderboard.map((row) => (
-                            <tr>
-                                <td>
-                                    <span class="code">{row.code}</span>
-                                </td>
-                                <td class="model">
-                                    <ModelId id={row.model} />
-                                    {row.failures && (
-                                        <span class="fail">
-                                            <Icon name="cross" /> {row.failures}
-                                        </span>
-                                    )}
-                                </td>
-                                <td data-label="Fields">{row.accuracy}</td>
-                                <td data-label="Avg">{row.avgLatency}</td>
-                                <td data-label="$/1k">{row.costPer1k}</td>
-                                <td class="verdict">
-                                    {row.stamp && (
-                                        <span
-                                            class="stamp"
-                                            style={`--tilt:${stampTilts[stampIndex]};--i:${stampIndex++}`}
-                                        >
-                                            {row.stamp}
-                                        </span>
-                                    )}
-                                </td>
-                            </tr>
-                        ))
-                    }
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="6">
-                            Sample cost: $1.23 · 3 failed results available for review
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
-
-            <aside class="note">
-                <p><b>Read the tradeoffs.</b> Fields shows the average field score; Avg
-                    is mean response time; $/1k is estimated cost per 1,000 results.
-                    All values here are samples.
+                    value. Here, one response returns the date in the wrong format.
                 </p>
             </aside>
         </section>
@@ -287,6 +270,7 @@ let stampIndex = 0;
                 <DoubleWidth text={`What you can test`} />
                 <span class="soft">tools · checks</span>
             </h2>
+            <p class="sec-lede develop">Start with your current approach, then test alternatives on the same examples. If a direct swap to a smaller model falls short, try splitting a complex prompt into focused sequential steps. Compare the workflow’s end-task quality, latency, and estimated cost against your baseline to see whether smaller models work for your task.</p>
             <ul class="items">
                 {
                     lineItems.map((li) => (
@@ -300,118 +284,50 @@ let stampIndex = 0;
             </ul>
         </section>
 
-        <!-- Audio -->
-        <section class="seg" id="audio" aria-labelledby="audio-title">
-            <h2 class="sec-title develop" id="audio-title">
-                <DoubleWidth text={`Audio · item ${audio.item}`} />
-                <span class="soft">sample · {audio.duration}</span>
+        <section class="seg" aria-labelledby="more-title">
+            <h2 class="sec-title develop" id="more-title">
+                <DoubleWidth text="More ways to test" />
+                <span class="soft">audio · agents</span>
             </h2>
             <p class="sec-lede develop">
-                Try up to six transcription settings on the same recordings.
-                Inspect word errors against a reference, and check speaker turns
-                when supported. This sample uses Hindi and English.
+                Evaluate transcription settings on audio, or connect an MCP-compatible
+                agent to prepare runs and inspect results. Agent evaluation calls can
+                incur provider charges.
             </p>
-
-            <svg
-                class="wave develop"
-                viewBox={`0 0 ${112 * 5} 64`}
-                preserveAspectRatio="none"
-                role="img"
-                aria-label="Illustrative waveform, two speaker turns"
-            >
-                {
-                    waveBars.map((b) => (
-                        <rect x={b.x} y={32 - b.h / 2} width="3" height={b.h} fill="currentColor" />
-                    ))
-                }
-            </svg>
-            <div class="speakers develop" aria-hidden="true">
-                <span style="width:45%">Speaker 1</span>
-                <span style="flex:1">Speaker 2</span>
+            <div class="next develop">
+                <a href={STT_DOCS_URL}>Audio evaluation guide <Icon name="arrow" /></a>
+                <a href={MCP_DOCS_URL}>Connect an agent <Icon name="arrow" /></a>
             </div>
-
-            <div class="transcript">
-                <div class="develop">
-                    <span class="ln caps soft">Expected transcript</span>
-                    <p class="words">{audio.reference}</p>
-                </div>
-                {
-                    audio.variants.map((v) => (
-                        <div class="variant develop">
-                            <div class="resp-head">
-                                <span class="code">{v.code}</span>
-                                <span class="model">{v.label}</span>
-                            </div>
-                            <p class="words">
-                                {v.words.map((word, i) => (
-                                    <>
-                                        {i > 0 && " "}
-                                        {word.mark === "sub" ? (
-                                            <span class="sub" title={`reference: ${word.ref}`}>
-                                                {word.w}
-                                            </span>
-                                        ) : word.mark === "miss" ? (
-                                            <del class="miss">{word.w}</del>
-                                        ) : (
-                                            word.w
-                                        )}
-                                    </>
-                                ))}
-                            </p>
-                            <div class="resp-sum">
-                                <span>Word match {v.accuracy}</span>
-                                <span>Speakers {v.speakers}</span>
-                            </div>
-                        </div>
-                    ))
-                }
-            </div>
-
-            <div class="judge develop">
-                <span>Judge · request preserved</span>
-                <span class="flag">Pass in A, B, C</span>
-            </div>
-
-            <aside class="note right">
-                <p><b>Check what matters.</b> A judge model can assess a transcript
-                    against your rubric, even without a reference. This sample
-                    checks whether the request to confirm is preserved.
-                </p>
-                <p><a href={STT_DOCS_URL}>Audio evaluation guide</a></p>
-            </aside>
         </section>
 
-        <!-- Agent copy -->
-        <section class="seg" id="agents" aria-labelledby="agents-title">
-            <h2 class="copy-banner develop" id="agents-title"><DoubleWidth text="YOUR AGENT" /></h2>
+        <section class="seg" id="alternatives" aria-labelledby="alternatives-title">
+            <h2 class="sec-title develop" id="alternatives-title">
+                <DoubleWidth text="Choosing a tool" />
+                <span class="soft">alternatives</span>
+            </h2>
             <p class="sec-lede develop">
-                Let your agent prepare an evaluation, start a run, inspect results,
-                and save review notes. MCP connects compatible agents to Flash
-                Evals, using the same data as the web app.
+                The right tool depends on the decision in front of you. These tools
+                overlap: several also compare models, scores, cost, and latency.
+                Our view, based on their documentation:
             </p>
-            <ol class="calls">
-                {
-                    agentCalls.map((c) => (
-                        <li class="develop">
-                            <Icon name="dot" />
-                            <span class="tool">{c.tool}</span>
-                            <span class="fill" />
-                            <span class="res">{c.result}</span>
-                        </li>
-                    ))
-                }
-            </ol>
-            <div class="endpoint develop">
-                <span class="soft">Local MCP</span> · http://127.0.0.1:3001/mcp
-            </div>
-
-            <aside class="note">
-                <p><b>Choose agent access.</b> Turn on the MCP server, then give each
-                    agent read-only, evaluation, or admin access. Evaluation calls
-                    can incur provider charges.
-                </p>
-                <p><a href={MCP_DOCS_URL}>Connect an agent</a></p>
-            </aside>
+            <ul class="items tools">
+                <li class="develop">
+                    <span class="name"><a href="https://langfuse.com/docs/evaluation/overview">Langfuse</a></span>
+                    <span class="what">A broad loop connecting production traces, datasets, evaluation, and experiments. Its <a href="https://langfuse.com/docs/evaluation/experiments/compare-experiments">comparison view</a> includes score, cost, and latency.</span>
+                </li>
+                <li class="develop">
+                    <span class="name"><a href="https://www.braintrust.dev/docs/observe">Braintrust</a></span>
+                    <span class="what">A platform for production observability and evaluation, with datasets, experiments, and human or automated scoring.</span>
+                </li>
+                <li class="develop">
+                    <span class="name"><a href="https://www.promptfoo.dev/docs/faq/">Promptfoo</a></span>
+                    <span class="what">A local-first evaluation tool for testing prompts across providers, with assertions, CI integration, and red teaming.</span>
+                </li>
+                <li class="develop ours">
+                    <span class="name">Flash Evals</span>
+                    <span class="what">An early-alpha, self-hosted workbench for testing lower-cost approaches against the one you run today. Build multi-step workflows, such as a complex prompt split into focused steps on smaller models, and compare end-task quality, latency, and estimated cost with your baseline. You design the steps; savings are not guaranteed.</span>
+                </li>
+            </ul>
         </section>
 
         <!-- Self-host -->

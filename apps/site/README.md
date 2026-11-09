@@ -106,12 +106,10 @@ The production deployment command remains the web app's existing
 `deploy:cloudflare` script. Rollback uses the existing `flash-evals` Worker's
 version history. No DNS or Clerk configuration change is needed for this integration.
 
-## Headers and social image
+## Headers and social metadata
 
 The root document uses the existing web security headers. Marketing assets have
 security and immutable hashed-asset caching rules in
 [`../web/public/_headers`](../web/public/_headers). Fonts are self-hosted.
-The canonical URL is `https://flashevals.dev/`; its social image is
-`/marketing/og.png` (1731×909), with image provenance embedded in the file.
-The social preview uses the same task-focused headline and anonymous sample
-model labels as the page; keep those labels and the sample-data disclosure intact.
+The canonical URL is `https://flashevals.dev/`; social previews use the page title
+and description.
