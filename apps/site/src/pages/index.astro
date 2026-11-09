@@ -19,7 +19,7 @@ import {
 
 const title = "Flash Evals — reduce AI spend with evaluations";
 const description =
-    "Find opportunities to reduce AI spend while maintaining or improving task accuracy. Compare models, prompts, and workflows on your own examples, with latency and estimated cost alongside results.";
+    "Find opportunities to reduce AI spend while maintaining task accuracy. Compare models, prompts, and workflows on your own examples, with latency and estimated cost alongside results.";
 
 // Footer barcode: real Code 128, so a scanner reads the domain.
 const modules = code128B("flashevals.dev");
@@ -41,7 +41,7 @@ let stampIndex = 0;
     <header class="topbar">
         <a class="wordmark" href="/" aria-label="Flash Evals home">Flash Evals</a>
         <nav aria-label="Primary">
-            <a href="#compare">See an example</a>
+            <a href="#compare" class="keep">See an example</a>
             <a href="#alternatives">Compare tools</a>
             <a href="#self-host" class="keep">Run locally</a>
             <a href={REPO_URL} class="keep">GitHub</a>
@@ -56,19 +56,14 @@ let stampIndex = 0;
             <span class="ln center soft" style="--i:1">Self-hosted model and prompt evaluation</span>
             <span class="ln center soft" style="--i:2">flashevals.dev · AGPL-3.0-only · early alpha</span>
             <span class="ln stars" style="--i:3" aria-hidden="true"></span>
-            <span class="ln meta" style="--i:4">
-                <span>SAMPLE RUN · receipts-v3</span>
-                <span>ILLUSTRATIVE DATA</span>
-            </span>
-
             <h1 id="hero-title" class="ln" style="--i:5">
-                Reduce AI spend. Keep accuracy in the picture.
+                Find cheaper ways to run your AI. Check accuracy first.
             </h1>
             <p class="ln pitch" style="--i:6">
-                Find lower-cost ways to run your AI tasks without losing sight of
-                accuracy or latency. Test new models on your own eval sets, compare
-                prompts and multi-step workflows, and inspect the results before
-                deciding what to ship.
+                Test smaller models, prompt changes, and multi-step workflows on
+                your own examples. Compare accuracy, latency, and estimated cost
+                against what you run today, and inspect the misses before you
+                ship.
             </p>
 
             <div class="ln" style="--i:7">
@@ -81,7 +76,7 @@ let stampIndex = 0;
                     </button>
                 </div>
                 <div class="next">
-                    <a href={DOCS_URL}>Set up locally <Icon name="arrow" /></a>
+                    <a href={DOCS_URL}>Try it locally with sample data <Icon name="arrow" /></a>
                     <a href={REPO_URL}>View the source <Icon name="arrow" /></a>
                 </div>
             </div>
@@ -101,7 +96,7 @@ let stampIndex = 0;
                 <span class="soft">sample data</span>
             </h2>
             <p class="sec-lede develop">
-                In this illustrative comparison, Model B matches the baseline
+                In this sample, Model B matches the baseline
                 field score at a lower estimated cost and response time. Your
                 results will depend on your task and examples; inspect misses and
                 failed results before choosing.
@@ -156,7 +151,7 @@ let stampIndex = 0;
                 <tfoot>
                     <tr>
                         <td colspan="6">
-                            Illustrative data · 3 failed results available for review
+                            3 failed results available for review
                         </td>
                     </tr>
                 </tfoot>
@@ -177,7 +172,7 @@ let stampIndex = 0;
                 <span class="soft">sample run</span>
             </h2>
             <p class="sec-lede develop">
-                Look beyond the aggregate. These illustrative responses show
+                Look beyond the aggregate. These responses show
                 how each model handled one receipt and where a field differs
                 from the expected answer.
             </p>
@@ -292,6 +287,7 @@ let stampIndex = 0;
         <section class="seg" aria-labelledby="more-title">
             <h2 class="sec-title develop" id="more-title">
                 <DoubleWidth text="More ways to test" />
+                <span class="soft">audio · agents</span>
             </h2>
             <p class="sec-lede develop">
                 Evaluate transcription settings on audio, or connect an MCP-compatible
@@ -307,28 +303,29 @@ let stampIndex = 0;
         <section class="seg" id="alternatives" aria-labelledby="alternatives-title">
             <h2 class="sec-title develop" id="alternatives-title">
                 <DoubleWidth text="Choosing a tool" />
+                <span class="soft">alternatives</span>
             </h2>
             <p class="sec-lede develop">
                 The right tool depends on the decision in front of you. These tools
                 overlap: several also compare models, scores, cost, and latency.
                 Our view, based on their documentation:
             </p>
-            <ul class="items">
+            <ul class="items tools">
                 <li class="develop">
-                    <span class="qty"></span><span class="name"><a href="https://langfuse.com/docs/evaluation/overview">Langfuse</a></span>
+                    <span class="name"><a href="https://langfuse.com/docs/evaluation/overview">Langfuse</a></span>
                     <span class="what">A broad loop connecting production traces, datasets, evaluation, and experiments. Its <a href="https://langfuse.com/docs/evaluation/experiments/compare-experiments">comparison view</a> includes score, cost, and latency.</span>
                 </li>
                 <li class="develop">
-                    <span class="qty"></span><span class="name"><a href="https://www.braintrust.dev/docs/observe">Braintrust</a></span>
+                    <span class="name"><a href="https://www.braintrust.dev/docs/observe">Braintrust</a></span>
                     <span class="what">A platform for production observability and evaluation, with datasets, experiments, and human or automated scoring.</span>
                 </li>
                 <li class="develop">
-                    <span class="qty"></span><span class="name"><a href="https://www.promptfoo.dev/docs/faq/">Promptfoo</a></span>
+                    <span class="name"><a href="https://www.promptfoo.dev/docs/faq/">Promptfoo</a></span>
                     <span class="what">A local-first evaluation tool for testing prompts across providers, with assertions, CI integration, and red teaming.</span>
                 </li>
-                <li class="develop">
-                    <span class="qty"></span><span class="name">Flash Evals</span>
-                    <span class="what">An early-alpha, self-hosted workbench focused on testing lower-cost approaches against quality and latency. Its direction is to help teams test whether focused sequential steps with smaller models can match a larger model on the end task. You design the workflows; decomposition and savings are not automatic or guaranteed.</span>
+                <li class="develop ours">
+                    <span class="name">Flash Evals</span>
+                    <span class="what">An early-alpha, self-hosted workbench for testing lower-cost approaches against the one you run today. Build multi-step workflows, such as a complex prompt split into focused steps on smaller models, and compare end-task quality, latency, and estimated cost with your baseline. You design the steps; savings are not guaranteed.</span>
                 </li>
             </ul>
         </section>

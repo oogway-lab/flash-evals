@@ -146,6 +146,21 @@ a {
 }
 
 @media (max-width: 760px) {
+    .topbar {
+        flex-wrap: wrap;
+        gap: 4px 24px;
+    }
+
+    .topbar nav {
+        flex-basis: 100%;
+        flex-wrap: wrap;
+        gap: 0 18px;
+    }
+
+    .topbar nav a {
+        white-space: nowrap;
+    }
+
     .topbar nav a:not(.keep) {
         display: none;
     }
@@ -174,6 +189,8 @@ a {
 }
 
 .site-foot a {
+    display: inline-block;
+    padding-block: 4px;
     text-decoration: none;
 }
 
@@ -935,6 +952,21 @@ a {
     font-size: 13px;
     line-height: 1.55;
     color: var(--print-soft);
+}
+
+.items.tools li {
+    grid-template-columns: 1fr;
+}
+
+.items.tools .what {
+    grid-column: 1;
+}
+
+.items.tools .ours {
+    margin-top: 6px;
+    padding: 12px 14px;
+    border-top: 0;
+    background: var(--hit-wash);
 }
 
 /* ---------- Audio copy ---------- */

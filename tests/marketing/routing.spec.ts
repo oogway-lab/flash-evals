@@ -9,7 +9,7 @@ test("anonymous / serves marketing and its local assets without an auth or dashb
     expect(response?.headers()["cache-control"]).toContain("no-store");
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-        "Reduce AI spend. Keep accuracy in the picture.",
+        "Find cheaper ways to run your AI. Check accuracy first.",
     );
     await expect(
         page
@@ -190,6 +190,6 @@ test("interrupted and repeated sign-in navigation can return to marketing throug
     await expect(page).toHaveURL(/\/sign-in$/);
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-        "Reduce AI spend. Keep accuracy in the picture.",
+        "Find cheaper ways to run your AI. Check accuracy first.",
     );
 });

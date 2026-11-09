@@ -6,7 +6,10 @@ test("public CTAs lead to local setup, with pilot sign-in kept to the top bar", 
 }) => {
     await page.goto("/");
     const links = page.locator(".mast .next a");
-    await expect(links).toHaveText(["Set up locally", "View the source"]);
+    await expect(links).toHaveText([
+        "Try it locally with sample data",
+        "View the source",
+    ]);
     await expect(links.first()).toHaveAttribute(
         "href",
         /\/docs\/getting-started\.md$/,
@@ -37,8 +40,8 @@ test("illustrations identify synthetic data without implying provider rankings o
     page,
 }) => {
     await page.goto("/");
-    await expect(page.locator(".mast .meta")).toHaveText(
-        /SAMPLE RUN.*ILLUSTRATIVE DATA/,
+    await expect(page.locator("#compare .sec-title")).toContainText(
+        "sample data",
     );
     await expect(page.locator("[data-clock]")).toHaveCount(0);
     await expect(page.locator(".resp .model")).toHaveText([
@@ -62,14 +65,12 @@ test("positions the sample and tool comparison with clear limits and sources", a
     page,
 }) => {
     await page.goto("/");
-    await expect(page.locator("#compare")).toContainText(
-        "illustrative comparison",
-    );
+    await expect(page.locator("#compare")).toContainText("In this sample");
     await expect(page.locator("#compare")).toContainText(
         "Your results will depend",
     );
     await expect(page.locator("#alternatives")).toContainText(
-        "decomposition and savings are not automatic or guaranteed",
+        "savings are not guaranteed",
     );
     for (const host of [
         "langfuse.com",
