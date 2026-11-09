@@ -69,7 +69,7 @@ test("positions the sample and tool comparison with clear limits and sources", a
         "Your results will depend",
     );
     await expect(page.locator("#alternatives")).toContainText(
-        "savings are not automatic or guaranteed",
+        "decomposition and savings are not automatic or guaranteed",
     );
     for (const host of [
         "langfuse.com",

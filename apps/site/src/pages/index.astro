@@ -275,7 +275,7 @@ let stampIndex = 0;
                 <DoubleWidth text={`What you can test`} />
                 <span class="soft">tools · checks</span>
             </h2>
-            <p class="sec-lede develop">Start with your current approach, then test alternatives on the same examples. If a direct model swap falls short, try a different prompt or a multi-step workflow with smaller models and compare the results.</p>
+            <p class="sec-lede develop">Start with your current approach, then test alternatives on the same examples. If a direct swap to a smaller model falls short, try splitting a complex prompt into focused sequential steps. Compare the workflow’s end-task quality, latency, and estimated cost against your baseline to see whether smaller models work for your task.</p>
             <ul class="items">
                 {
                     lineItems.map((li) => (
@@ -328,7 +328,7 @@ let stampIndex = 0;
                 </li>
                 <li class="develop">
                     <span class="qty"></span><span class="name">Flash Evals</span>
-                    <span class="what">An early-alpha, self-hosted workbench centered here on finding lower-cost approaches on your own examples while reviewing quality and latency. You design and compare the alternatives; savings are not automatic or guaranteed.</span>
+                    <span class="what">An early-alpha, self-hosted workbench focused on testing lower-cost approaches against quality and latency. Its direction is to help teams test whether focused sequential steps with smaller models can match a larger model on the end task. You design the workflows; decomposition and savings are not automatic or guaranteed.</span>
                 </li>
             </ul>
         </section>
