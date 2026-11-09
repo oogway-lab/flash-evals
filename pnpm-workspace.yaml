@@ -31,3 +31,11 @@ autoInstallPeers: true
 # No `confirmModulesPurge`: pnpm 12 removed it and refuses to install while it
 # is set. pnpm 12 also recreates node_modules without prompting when there is
 # no TTY, so non-interactive installs by agents and scripts do not hang.
+packageExtensions:
+    # @astrojs/astro2tsx leaves @napi-rs/wasm-runtime's @emnapi/runtime peer
+    # unpinned. pnpm can then borrow another package's @emnapi/runtime (rolldown
+    # 1.3 ships a 2.0 beta), which crashes @astrojs/check on load against
+    # @emnapi/core 1.x and fails `astro check`.
+    "@astrojs/astro2tsx@0.1":
+        dependencies:
+            "@emnapi/runtime": 1.11.3
