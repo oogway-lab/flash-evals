@@ -21,7 +21,7 @@ import {
 
 const title = "Flash Evals — compare models on your data";
 const description =
-    "Compare models and prompts on your own text, images, and audio. Inspect outputs, scores, latency, and estimated cost in an open-source evaluation workbench.";
+    "Self-hosted, open-source evaluation for models and prompts. Test a model on your own text, images, and audio before you ship it or switch, with outputs, scores, latency, and estimated cost side by side.";
 
 // Footer barcode: real Code 128, so a scanner reads the domain.
 const modules = code128B("flashevals.dev");
@@ -65,7 +65,7 @@ let stampIndex = 0;
         <!-- Masthead -->
         <section class="seg mast" aria-labelledby="hero-title">
             <span class="ln center brand" style="--i:0"><DoubleWidth text="FLASH EVALS" /></span>
-            <span class="ln center soft" style="--i:1">Model and prompt evaluation</span>
+            <span class="ln center soft" style="--i:1">Self-hosted model and prompt evaluation</span>
             <span class="ln center soft" style="--i:2">flashevals.dev · AGPL-3.0-only · early alpha</span>
             <span class="ln stars" style="--i:3" aria-hidden="true"></span>
             <span class="ln meta" style="--i:4">
@@ -77,10 +77,10 @@ let stampIndex = 0;
                 Choose your model. See the tradeoffs on your data.
             </h1>
             <p class="ln pitch" style="--i:6">
-                Compare models and prompts on your own text, images, and audio.
-                Inspect outputs and scores alongside latency and estimated cost.
-                Check answers against references or a rubric, then review the
-                cases that need a closer look.
+                Before you ship a model, or switch to a cheaper or newer one, run
+                it on your own text, images, and audio. Outputs, scores, latency,
+                and estimated cost stay side by side, so you can see what changed
+                and why.
             </p>
 
             <div class="ln" style="--i:7">
@@ -95,14 +95,13 @@ let stampIndex = 0;
                 <div class="next">
                     <a href={DOCS_URL}>Set up locally <Icon name="arrow" /></a>
                     <a href={REPO_URL}>View the source <Icon name="arrow" /></a>
-                    <a href="/sign-in">Pilot sign-in <Icon name="arrow" /></a>
                 </div>
             </div>
 
             <aside class="note">
-                <p><b>Start locally.</b> Explore the open-source alpha on your machine.
-                    Add your own provider keys for real evaluations. Hosted access
-                    is currently limited to the pilot.
+                <p><b>Your machine, your keys.</b> Flash Evals is open source and
+                    runs locally. Your examples go only to the model providers you
+                    choose. Hosted access is currently limited to the pilot.
                 </p>
             </aside>
         </section>
@@ -114,9 +113,9 @@ let stampIndex = 0;
                 <span class="soft">sample run</span>
             </h2>
             <p class="sec-lede develop">
-                Use the same examples to compare your chosen models. This sample
-                tests receipt extraction: can each model return the expected
-                fields? Three responses are shown below.
+                Every model gets the same examples. This sample tests receipt
+                extraction: can each model return the expected fields? Three
+                responses are shown below.
             </p>
 
             <div class="input develop">
@@ -214,9 +213,9 @@ let stampIndex = 0;
                 <span class="soft">sample data</span>
             </h2>
             <p class="sec-lede develop">
-                Compare scores, response times, and estimated costs across the
-                dataset. Then inspect the misses and failed results before choosing
-                a model. This sample compares four models.
+                Scores, response times, and estimated costs add up across the
+                whole dataset. Inspect the misses and failed results before you
+                choose. This sample shows four models.
             </p>
 
             <table class="board develop" data-board>
@@ -308,7 +307,7 @@ let stampIndex = 0;
                 <span class="soft">sample · {audio.duration}</span>
             </h2>
             <p class="sec-lede develop">
-                Compare up to six transcription settings on the same recordings.
+                Try up to six transcription settings on the same recordings.
                 Inspect word errors against a reference, and check speaker turns
                 when supported. This sample uses Hindi and English.
             </p>
@@ -407,9 +406,9 @@ let stampIndex = 0;
             </div>
 
             <aside class="note">
-                <p><b>Choose agent access.</b> MCP access can be read-only, evaluation,
-                    or admin. Evaluation calls can incur provider charges. Client
-                    confirmation flags do not create a human approval screen.
+                <p><b>Choose agent access.</b> Turn on the MCP server, then give each
+                    agent read-only, evaluation, or admin access. Evaluation calls
+                    can incur provider charges.
                 </p>
                 <p><a href={MCP_DOCS_URL}>Connect an agent</a></p>
             </aside>

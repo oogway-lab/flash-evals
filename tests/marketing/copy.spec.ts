@@ -1,21 +1,23 @@
 import { expect, test } from "@playwright/test";
 import { CLONE_COMMAND, installSteps } from "../../apps/site/src/lib/content";
 
-test("public CTAs lead to local setup and explicitly limited pilot access", async ({
+test("public CTAs lead to local setup, with pilot sign-in kept to the top bar", async ({
     page,
 }) => {
     await page.goto("/");
     const links = page.locator(".mast .next a");
-    await expect(links).toHaveText([
-        "Set up locally",
-        "View the source",
-        "Pilot sign-in",
-    ]);
+    await expect(links).toHaveText(["Set up locally", "View the source"]);
     await expect(links.first()).toHaveAttribute(
         "href",
         /\/docs\/getting-started\.md$/,
     );
-    await expect(links.last()).toHaveAttribute("href", "/sign-in");
+    await expect(
+        page.locator(".mast").getByRole("link", { name: /sign-in/i }),
+    ).toHaveCount(0);
+    await expect(page.locator(".mast")).toContainText("Self-hosted");
+    await expect(page.locator(".mast .note")).toContainText(
+        "Your examples go only to the model providers you choose.",
+    );
     await expect(page.locator(".mast .note")).toContainText(
         "Hosted access is currently limited to the pilot.",
     );

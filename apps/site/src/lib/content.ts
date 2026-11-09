@@ -147,7 +147,7 @@ export const lineItems = [
     {
         qty: "1",
         item: "Time + cost",
-        note: "Review response times and estimated costs where available.",
+        note: "See response time per result, and estimated cost when pricing is known.",
     },
     {
         qty: "1",
@@ -172,7 +172,7 @@ export const lineItems = [
     {
         qty: "1",
         item: "Result reuse",
-        note: "Reuse matching stored results when reuse is enabled.",
+        note: "Reuse stored results for identical calls instead of paying twice.",
     },
 ];
 

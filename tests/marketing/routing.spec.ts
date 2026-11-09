@@ -17,11 +17,6 @@ test("anonymous / serves marketing and its local assets without an auth or dashb
             .getByRole("link", { name: "Pilot sign-in", exact: true }),
     ).toHaveAttribute("href", "/sign-in");
     await expect(
-        page
-            .locator(".mast")
-            .getByRole("link", { name: "Pilot sign-in", exact: true }),
-    ).toHaveAttribute("href", "/sign-in");
-    await expect(
         page.getByRole("navigation", { name: "Primary" }),
     ).toBeVisible();
     const stylesheet = page.locator('link[rel="stylesheet"]').first();
@@ -201,12 +196,6 @@ test("interrupted and repeated sign-in navigation can return to marketing throug
     await page.goForward();
     await expect(page).toHaveURL(/\/sign-in$/);
     await page.reload();
-    await expect(page).toHaveURL(/\/sign-in$/);
-    await page.goto("/");
-    await page
-        .locator(".mast")
-        .getByRole("link", { name: "Pilot sign-in", exact: true })
-        .click();
     await expect(page).toHaveURL(/\/sign-in$/);
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
