@@ -7,10 +7,10 @@ server, database, or secrets.
 
 ## Develop
 
-From the repository root, after `pnpm install --frozen-lockfile`:
+From the repository root, after `bun install --frozen-lockfile`:
 
 ```bash
-pnpm --filter @flash-evals/site dev
+bun run --filter @flash-evals/site dev
 ```
 
 Open <http://127.0.0.1:4321/marketing/> for the standalone design preview.
@@ -18,7 +18,7 @@ On a VM/remote server, use the configured Tailscale IP explicitly:
 
 ```bash
 FLASH_EVALS_TAILSCALE_IP=$(tailscale ip -4)
-pnpm --filter @flash-evals/site dev --host "$FLASH_EVALS_TAILSCALE_IP"
+bun run --filter @flash-evals/site dev --host "$FLASH_EVALS_TAILSCALE_IP"
 ```
 
 Open port 4321 on that private IP. Keep previews private; do not use `--host
@@ -33,9 +33,9 @@ are illustrative and labeled accordingly; keep that labeling intact.
 ## Build and preview
 
 ```bash
-pnpm --filter @flash-evals/site typecheck
-pnpm run marketing:build
-pnpm run dev
+bun run --filter @flash-evals/site typecheck
+bun run marketing:build
+bun run dev
 ```
 
 The root development launcher supplies the synthetic sign-in identity and
@@ -44,7 +44,7 @@ Use the standalone Astro preview for design iteration, or the marketing browser
 suite for anonymous integration checks without a real Clerk account:
 
 ```bash
-pnpm exec playwright test --config playwright.marketing.config.ts
+bunx playwright test --config playwright.marketing.config.ts
 ```
 
 The integration script builds `apps/site/dist`, bundles its complete HTML into
@@ -58,8 +58,8 @@ integration script automatically. Rebuild/restart the integrated preview after
 editing the Astro source. For a design-only static preview:
 
 ```bash
-pnpm --filter @flash-evals/site build
-pnpm --filter @flash-evals/site preview
+bun run --filter @flash-evals/site build
+bun run --filter @flash-evals/site preview
 ```
 
 The static preview uses loopback port 4322. On a remote server add
@@ -98,8 +98,8 @@ Use the existing web deployment; there is no standalone marketing Worker or
 second apex-domain route configuration.
 
 ```bash
-pnpm run web:build:cloudflare
-pnpm run web:preview:cloudflare
+bun run web:build:cloudflare
+bun run web:preview:cloudflare
 ```
 
 The production deployment command remains the web app's existing
