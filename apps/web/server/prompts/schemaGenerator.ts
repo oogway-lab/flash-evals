@@ -4,7 +4,7 @@ import type {
     JsonSchemaObject,
 } from "../db/jsonTypes";
 import { ensureModelCatalog } from "../llm/catalog";
-import { registryEntryFor } from "../llm/modelRegistry";
+import { registryModelFor } from "../llm/modelRegistry";
 import { resolveReasoningEffort } from "../llm/reasoningConfig";
 import { isRecord } from "../lib/objects";
 import { validatePromptSchema } from "./schemaValidation";
@@ -53,7 +53,7 @@ export async function generateSchemaFromPrompt(input: {
         "gpt-6-luna";
     const provider = getEvalProvider(input.apiKeys);
     await ensureModelCatalog();
-    const reasoning = registryEntryFor(generatorModelId)?.reasoning ?? false;
+    const reasoning = registryModelFor(generatorModelId)?.reasoning ?? false;
 
     const result = await provider.complete({
         model: generatorModelId,
