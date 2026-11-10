@@ -89,6 +89,66 @@ describe("workflow chain", () => {
         );
     });
 
+    it("passes no answer over an order-only edge", () => {
+        const outputs = new Map([
+            ["extract", { nodeKey: "extract", label: "Extract", output: "{}" }],
+            ["points", { nodeKey: "points", label: "Points", output: "p" }],
+            ["notes", { nodeKey: "notes", label: "Notes", output: "n" }],
+        ]);
+        const orderOnly = {
+            fromNodeKey: "extract",
+            toNodeKey: "write",
+            carryOriginalInput: false,
+            orderOnly: true,
+        };
+        // Only order-only edges: the original input, as a root step reads it.
+        expect(assembleDagNodeInput("call", [orderOnly], outputs)).toBe(
+            "<input>call</input>",
+        );
+        // One passing edge beside it: that step's answer alone.
+        expect(
+            assembleDagNodeInput(
+                "call",
+                [
+                    orderOnly,
+                    {
+                        fromNodeKey: "points",
+                        toNodeKey: "write",
+                        carryOriginalInput: false,
+                    },
+                ],
+                outputs,
+            ),
+        ).toBe("p");
+        // Two passing edges keep their labelled blocks; the order-only one adds none.
+        expect(
+            assembleDagNodeInput(
+                "call",
+                [
+                    orderOnly,
+                    {
+                        fromNodeKey: "points",
+                        toNodeKey: "write",
+                        carryOriginalInput: false,
+                    },
+                    {
+                        fromNodeKey: "notes",
+                        toNodeKey: "write",
+                        carryOriginalInput: false,
+                    },
+                ],
+                outputs,
+            ),
+        ).toBe('<from node="Notes">n</from>\n<from node="Points">p</from>');
+        // The order-only source still runs first.
+        expect(
+            planLayers(
+                [{ nodeKey: "write" }, { nodeKey: "extract" }],
+                [orderOnly],
+            ).map((layer) => layer.map((node) => node.nodeKey)),
+        ).toEqual([["extract"], ["write"]]);
+    });
+
     it("layers disconnected STT branches only when explicitly allowed", () => {
         const nodes = ["root-a", "child-a", "root-b", "child-b"].map(
             (nodeKey) => ({ nodeKey }),

@@ -8,6 +8,15 @@ export interface IChainEdge {
     fromNodeKey: string;
     toNodeKey: string;
     carryOriginalInput: boolean;
+    /** The target waits for the source but doesn't read its answer. */
+    orderOnly?: boolean;
+}
+
+/** Edges whose source's answer the target reads (not order-only ones). */
+export function passingEdges<T extends Pick<IChainEdge, "orderOnly">>(
+    edges: readonly T[],
+): T[] {
+    return edges.filter((edge) => edge.orderOnly !== true);
 }
 
 export function orderLinearSnapshot<T extends IChainNode>(
@@ -48,13 +57,19 @@ export interface IUpstreamOutput {
     output: string;
 }
 
+/**
+ * A step's input from the steps it is connected from. Order-only edges
+ * contribute nothing: a step whose inbound edges are all order-only reads
+ * the original input, as a root step does.
+ */
 export function assembleDagNodeInput(
     originalInput: string,
     inboundEdges: IChainEdge[],
     upstreamOutputs: Map<string, IUpstreamOutput>,
 ): string {
-    if (inboundEdges.length === 0) return `<input>${originalInput}</input>`;
-    const orderedEdges = [...inboundEdges].sort((left, right) =>
+    const passing = passingEdges(inboundEdges);
+    if (passing.length === 0) return `<input>${originalInput}</input>`;
+    const orderedEdges = [...passing].sort((left, right) =>
         left.fromNodeKey.localeCompare(right.fromNodeKey),
     );
     const sources = orderedEdges.map((edge) =>

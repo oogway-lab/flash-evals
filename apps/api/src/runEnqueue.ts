@@ -44,9 +44,13 @@ export async function publishRunEnqueue(
                     runId,
                     enqueueStatus:
                         current?.status === "queued" ||
-                        ["running", "completed", "partial", "failed"].includes(
-                            historical?.status ?? "",
-                        )
+                        [
+                            "running",
+                            "completed",
+                            "partial",
+                            "failed",
+                            "cancelled",
+                        ].includes(historical?.status ?? "")
                             ? "queued"
                             : "pending_enqueue",
                 };

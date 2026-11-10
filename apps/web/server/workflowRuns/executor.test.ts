@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
     runTranscriptEvaluator: vi.fn(),
     scoreWorkflowCell: vi.fn(),
     scoreWorkflowTranscript: vi.fn(),
+    recordFinalAnswers: vi.fn(),
+    scorePipelineAnswers: vi.fn(),
     updatePayloads: [] as Array<Record<string, unknown>>,
     items: [] as Array<Record<string, any>>,
     snapshot: undefined as any,
@@ -15,6 +17,16 @@ const mocks = vi.hoisted(() => ({
     scoreRows: [] as Array<Record<string, any>>,
     labelsByItemId: new Map<string, Record<string, unknown>>(),
     loadImage: vi.fn(),
+    /** Extra fields of the workflow_runs row (config, cancel request). */
+    run: {} as Record<string, unknown>,
+    /** False when the run left pending during setup (cancelled). */
+    runStartable: true,
+    /** Rows the spend reads return, by table. */
+    spend: { cells: 0, items: 0 },
+    /** Status of the eval run a comparison reads; no row when undefined. */
+    evalRunStatus: undefined as string | undefined,
+    /** What the run's setup comparison has spent, all members together. */
+    comparisonSpend: 0,
 }));
 
 function withResolvedExecutions(snapshot: any) {
@@ -131,9 +143,12 @@ vi.mock("../db/client", () => ({
                             workflowSnapshot: withResolvedExecutions(
                                 mocks.snapshot,
                             ),
+                            ...mocks.run,
                         },
                     ]);
                 if (name === "workflow_run_cells") {
+                    if (selection?.spent)
+                        return query([{ spent: mocks.spend.cells }]);
                     if (selection?.total) {
                         const failed = mocks.cells.filter(
                             (cell) => cell.status === "failed",
@@ -141,7 +156,8 @@ vi.mock("../db/client", () => ({
                         const done = mocks.cells.filter(
                             (cell) =>
                                 cell.status === "succeeded" ||
-                                cell.status === "cached",
+                                cell.status === "cached" ||
+                                cell.status === "skipped",
                         ).length;
                         return query([
                             { total: mocks.cells.length, failed, done },
@@ -150,7 +166,15 @@ vi.mock("../db/client", () => ({
                     return query(mocks.cells);
                 }
                 if (name === "dataset_items") return query(mocks.items);
+                if (name === "runs")
+                    return query(
+                        mocks.evalRunStatus
+                            ? [{ status: mocks.evalRunStatus }]
+                            : [],
+                    );
                 if (name === "workflow_run_items") {
+                    if (selection?.spent)
+                        return query([{ spent: mocks.spend.items }]);
                     if (selection?.active)
                         return query([
                             {
@@ -185,6 +209,10 @@ vi.mock("../db/client", () => ({
                         const targetId = findCellId(condition);
                         return {
                             returning: vi.fn(async () => {
+                                if (tableName(table) === "workflow_runs")
+                                    return mocks.runStartable
+                                        ? [{ id: "run-1" }]
+                                        : [];
                                 if (tableName(table) === "workflow_run_items") {
                                     const row = mocks.runItems[0];
                                     if (!row) return [];
@@ -313,11 +341,24 @@ vi.mock("./scoring", () => ({
     scoreWorkflowTranscriptItem: mocks.scoreWorkflowTranscript,
 }));
 
+vi.mock("./finalAnswer", () => ({
+    recordFinalAnswers: mocks.recordFinalAnswers,
+}));
+vi.mock("./comparison", () => ({
+    scorePipelineAnswers: mocks.scorePipelineAnswers,
+}));
+vi.mock("../setupComparisons/spend", () => ({
+    readSetupComparisonSpendUsd: vi.fn(async () => mocks.comparisonSpend),
+}));
+
 import {
+    conditionOutcome,
+    upstreamStepsFor,
     executeWorkflowRun,
     supportsWorkflowLlmExecutionContract,
 } from "./executor";
 import { loadWorkflowScoringContext } from "./scoring";
+import { executeWorkflowLlmInvocation } from "./llmInvocation";
 
 describe("executeWorkflowRun", () => {
     it("rejects a snapshot from an unsupported LLM execution contract", () => {
@@ -388,12 +429,304 @@ describe("executeWorkflowRun", () => {
         mocks.getOrCreateTransliteration.mockReset();
         mocks.runTranscriptEvaluator.mockReset();
         mocks.scoreWorkflowCell.mockReset();
+        mocks.scoreWorkflowCell.mockResolvedValue(0);
         mocks.scoreWorkflowTranscript.mockReset();
+        mocks.recordFinalAnswers.mockReset();
+        mocks.scorePipelineAnswers.mockReset();
         mocks.loadImage.mockReset();
         mocks.runItems = [];
         mocks.scoreRows = [];
         mocks.labelsByItemId = new Map();
         mocks.updatePayloads.length = 0;
+        mocks.run = {};
+        mocks.runStartable = true;
+        mocks.spend = { cells: 0, items: 0 };
+        mocks.evalRunStatus = undefined;
+        mocks.comparisonSpend = 0;
+        vi.mocked(executeWorkflowLlmInvocation).mockClear();
+    });
+
+    it("ends a run cancelled before it started without calling any model", async () => {
+        mocks.run = {
+            cancelRequestedAt: new Date(),
+            stopReason: "cancelled",
+        };
+
+        await executeWorkflowRun("run-1");
+
+        expect(mocks.executeCell).not.toHaveBeenCalled();
+        expect(mocks.updatePayloads).toContainEqual({
+            status: "cancelled",
+            stopReason: "cancelled",
+        });
+        expect(mocks.cells.every((cell) => cell.status === "pending")).toBe(
+            true,
+        );
+    });
+
+    it("stops a run cancelled during its setup", async () => {
+        mocks.runStartable = false;
+
+        await executeWorkflowRun("run-1");
+
+        expect(mocks.executeCell).not.toHaveBeenCalled();
+        expect(mocks.updatePayloads).toContainEqual({
+            status: "running",
+            error: null,
+        });
+    });
+
+    it("stops starting steps once the run's spend reaches its limit", async () => {
+        mocks.run = { configSnapshot: { maxCostUsd: 1 } };
+        let clock = 1_000_000;
+        // Each stop check reads the database again (polls are 2 s apart).
+        const now = vi.spyOn(Date, "now").mockImplementation(() => {
+            clock += 3_000;
+            return clock;
+        });
+        mocks.executeCell.mockImplementation(async () => {
+            mocks.spend.cells = 1.2;
+            return { outputText: "answer", latencyMs: 1, costUsd: 1.2 };
+        });
+        try {
+            await executeWorkflowRun("run-1");
+        } finally {
+            now.mockRestore();
+        }
+
+        expect(mocks.executeCell).toHaveBeenCalledTimes(1);
+        expect(mocks.cells.find((cell) => cell.nodeKey === "a")?.status).toBe(
+            "succeeded",
+        );
+        expect(
+            mocks.cells
+                .filter((cell) => cell.nodeKey !== "a")
+                .map((cell) => cell.status),
+        ).toEqual(["pending", "pending"]);
+        expect(mocks.updatePayloads.at(-1)).toEqual({
+            status: "cancelled",
+            stopReason: "spend_cap",
+        });
+    });
+
+    it("counts what finished steps paid before the next spend read", async () => {
+        mocks.run = { configSnapshot: { maxCostUsd: 1 } };
+        // The spend read is not due again (no time passes), and the step's
+        // cost is not in the database yet: only the step's own cost shows it.
+        mocks.executeCell.mockResolvedValue({
+            outputText: "answer",
+            latencyMs: 1,
+            costUsd: 1.2,
+        });
+
+        await executeWorkflowRun("run-1");
+
+        expect(mocks.executeCell).toHaveBeenCalledTimes(1);
+        expect(mocks.updatePayloads.at(-1)).toEqual({
+            status: "cancelled",
+            stopReason: "spend_cap",
+        });
+    });
+
+    it("does not count a resumed step's already recorded spend twice", async () => {
+        mocks.run = { configSnapshot: { maxCostUsd: 1 } };
+        // An earlier pass recorded 0.9 on step A (an STT step's paid
+        // chunks); its total now is 0.95, so this pass paid 0.05.
+        mocks.cells[0]!.costUsd = 0.9;
+        mocks.spend.cells = 0.9;
+        mocks.executeCell
+            .mockResolvedValueOnce({
+                outputText: "answer",
+                latencyMs: 1,
+                costUsd: 0.95,
+            })
+            .mockResolvedValue({
+                outputText: "answer",
+                latencyMs: 1,
+                costUsd: 0.01,
+            });
+
+        await executeWorkflowRun("run-1");
+
+        // 0.9 recorded + 0.05 + 0.01: under the limit, so B and C run.
+        expect(mocks.executeCell).toHaveBeenCalledTimes(3);
+        expect(mocks.updatePayloads.at(-1)).not.toMatchObject({
+            stopReason: "spend_cap",
+        });
+    });
+
+    it("counts a step's judge calls before the next spend read", async () => {
+        mocks.run = { configSnapshot: { maxCostUsd: 1 } };
+        mocks.executeCell.mockResolvedValue({
+            outputText: "answer",
+            latencyMs: 1,
+            costUsd: 0,
+        });
+        mocks.scoreWorkflowCell.mockResolvedValue(1.2);
+
+        await executeWorkflowRun("run-1");
+
+        expect(mocks.executeCell).toHaveBeenCalledTimes(1);
+        expect(mocks.updatePayloads.at(-1)).toEqual({
+            status: "cancelled",
+            stopReason: "spend_cap",
+        });
+    });
+
+    it("compares the final answers with the chosen eval run once they are recorded", async () => {
+        const comparison = {
+            runId: "eval-run-1",
+            benchmark: { taskMap: { tasks: [] } },
+            referenceRunModelId: "rm-ref",
+        };
+        mocks.snapshot = {
+            ...mocks.snapshot,
+            finalAnswer: {
+                fields: [{ path: "$.a", stepKey: "a", stepPath: "$" }],
+            },
+        };
+        mocks.run = { configSnapshot: { comparison } };
+        const order: string[] = [];
+        mocks.recordFinalAnswers.mockImplementation(async () => {
+            order.push("record");
+        });
+        mocks.scorePipelineAnswers.mockImplementation(async () => {
+            order.push("score");
+        });
+        mocks.executeCell.mockResolvedValue({
+            outputText: "answer",
+            latencyMs: 1,
+            costUsd: 0,
+        });
+
+        await executeWorkflowRun("run-1");
+
+        expect(order).toEqual(["record", "score"]);
+        expect(mocks.scorePipelineAnswers).toHaveBeenCalledWith(
+            expect.objectContaining({
+                workflowRunId: "run-1",
+                comparison,
+                stop: expect.objectContaining({ check: expect.any(Function) }),
+            }),
+        );
+        expect(mocks.updatePayloads.at(-1)).toEqual({ status: "completed" });
+    });
+
+    it("waits for a setup comparison's eval run before scoring the answers", async () => {
+        mocks.snapshot = {
+            ...mocks.snapshot,
+            finalAnswer: {
+                fields: [{ path: "$.a", stepKey: "a", stepPath: "$" }],
+            },
+        };
+        mocks.run = {
+            setupComparisonId: "comparison-1",
+            configSnapshot: {
+                comparison: {
+                    runId: "eval-run-1",
+                    benchmark: { taskMap: { tasks: [] } },
+                },
+            },
+        };
+        mocks.evalRunStatus = "running";
+        mocks.executeCell.mockResolvedValue({
+            outputText: "answer",
+            latencyMs: 1,
+            costUsd: 0,
+        });
+
+        await executeWorkflowRun("run-1");
+
+        // Steps ran and the answers were recorded; scoring waits, and the
+        // run stays running (no final status) until it is queued again.
+        expect(mocks.executeCell).toHaveBeenCalledTimes(3);
+        expect(mocks.recordFinalAnswers).toHaveBeenCalled();
+        expect(mocks.scorePipelineAnswers).not.toHaveBeenCalled();
+        expect(mocks.updatePayloads.at(-1)).not.toHaveProperty(
+            "status",
+            "completed",
+        );
+
+        mocks.evalRunStatus = "completed";
+        await executeWorkflowRun("run-1");
+        expect(mocks.scorePipelineAnswers).toHaveBeenCalledTimes(1);
+        expect(mocks.updatePayloads.at(-1)).toEqual({ status: "completed" });
+    });
+
+    it("counts the whole setup comparison's spend toward the shared limit", async () => {
+        mocks.run = {
+            setupComparisonId: "comparison-1",
+            configSnapshot: { maxCostUsd: 1 },
+        };
+        // This run has spent nothing; the comparison's other runs have.
+        mocks.comparisonSpend = 1.5;
+
+        await executeWorkflowRun("run-1");
+
+        expect(mocks.executeCell).not.toHaveBeenCalled();
+        expect(mocks.updatePayloads.at(-1)).toEqual({
+            status: "cancelled",
+            stopReason: "spend_cap",
+        });
+    });
+
+    it("does not compare final answers once the run has stopped", async () => {
+        mocks.snapshot = {
+            ...mocks.snapshot,
+            finalAnswer: {
+                fields: [{ path: "$.a", stepKey: "a", stepPath: "$" }],
+            },
+        };
+        mocks.run = {
+            configSnapshot: {
+                maxCostUsd: 1,
+                comparison: {
+                    runId: "eval-run-1",
+                    benchmark: { taskMap: { tasks: [] } },
+                },
+            },
+        };
+        let clock = 1_000_000;
+        const now = vi.spyOn(Date, "now").mockImplementation(() => {
+            clock += 3_000;
+            return clock;
+        });
+        mocks.executeCell.mockImplementation(async () => {
+            mocks.spend.cells = 1.2;
+            return { outputText: "answer", latencyMs: 1, costUsd: 1.2 };
+        });
+        try {
+            await executeWorkflowRun("run-1");
+        } finally {
+            now.mockRestore();
+        }
+
+        expect(mocks.recordFinalAnswers).toHaveBeenCalled();
+        expect(mocks.scorePipelineAnswers).not.toHaveBeenCalled();
+        expect(mocks.updatePayloads.at(-1)).toEqual({
+            status: "cancelled",
+            stopReason: "spend_cap",
+        });
+    });
+
+    it("applies the run's data rules to every step and judge call", async () => {
+        const dataPolicy = { onlyHosts: ["vertex"], zeroDataRetention: true };
+        mocks.run = { configSnapshot: { dataPolicy } };
+        mocks.executeCell.mockResolvedValue({
+            outputText: "answer",
+            latencyMs: 1,
+            costUsd: 0,
+        });
+
+        await executeWorkflowRun("run-1");
+
+        const calls = vi.mocked(executeWorkflowLlmInvocation).mock.calls;
+        expect(calls).toHaveLength(3);
+        for (const [input] of calls)
+            expect(input).toMatchObject({ dataPolicy });
+        expect(mocks.scoreWorkflowCell).toHaveBeenCalledWith(
+            expect.objectContaining({ dataPolicy }),
+        );
     });
 
     it("transcribes an audio item once and reuses the transcript across workflow nodes", async () => {
@@ -433,9 +766,10 @@ describe("executeWorkflowRun", () => {
             cacheHit: false,
             lookupLatencyMs: 1,
         });
-        mocks.getOrCreateTransliteration.mockResolvedValue(
-            "Speaker 1: latin workflow transcript",
-        );
+        mocks.getOrCreateTransliteration.mockResolvedValue({
+            text: "Speaker 1: latin workflow transcript",
+            cacheHit: false,
+        });
         mocks.executeCell.mockResolvedValue({
             outputText: "node output",
             latencyMs: 1,
@@ -580,6 +914,228 @@ describe("executeWorkflowRun", () => {
         expect(mocks.updatePayloads).toContainEqual(
             expect.objectContaining({ status: "completed" }),
         );
+    });
+
+    it("skips the rest of the chain for an item whose condition fails, without calling the model", async () => {
+        mocks.snapshot = {
+            workflowId: "workflow-1",
+            name: "Sales chain",
+            kind: "multi",
+            nodes: [
+                {
+                    id: "node-input",
+                    nodeKey: "input",
+                    label: "Calls",
+                    nodeType: "input",
+                    nodeConfig: { type: "input", modality: "text" },
+                    evalConfig: { type: "none" },
+                },
+                ...["classify", "points", "notes"].map((nodeKey) => ({
+                    id: `node-${nodeKey}`,
+                    nodeKey,
+                    label: nodeKey[0]!.toUpperCase() + nodeKey.slice(1),
+                    nodeType: "prompt",
+                    nodeConfig: { type: "prompt" },
+                    promptVersionId: `pv-${nodeKey}`,
+                    promptContent: nodeKey,
+                    modelId: "model",
+                    evalConfig: { type: "none" },
+                    ...(nodeKey === "points"
+                        ? {
+                              runCondition: {
+                                  stepKey: "classify",
+                                  path: "$.is_sales",
+                                  operator: "equals",
+                                  values: [true],
+                              },
+                          }
+                        : {}),
+                })),
+            ],
+            edges: [
+                ["input", "classify"],
+                ["classify", "points"],
+                ["points", "notes"],
+            ].map(([from, to]) => ({
+                id: `${from}-${to}`,
+                fromNodeId: `node-${from}`,
+                toNodeId: `node-${to}`,
+                carryOriginalInput: false,
+            })),
+        };
+        mocks.items = ["sales", "other"].map((name) => ({
+            id: `item-${name}`,
+            type: "text",
+            inputText: `${name} call`,
+            storageKey: null,
+            mimeType: null,
+        }));
+        mocks.cells = mocks.items.flatMap((item) =>
+            ["input", "classify", "points", "notes"].map((nodeKey) => ({
+                id: `cell-${item.id}-${nodeKey}`,
+                datasetItemId: item.id,
+                nodeKey,
+                status: "pending",
+            })),
+        );
+        mocks.executeCell.mockImplementation(
+            async (_model: string, request: { prompt: string }) => {
+                const isSales = request.prompt.includes("sales call");
+                if (request.prompt.startsWith("classify"))
+                    return {
+                        outputText: JSON.stringify({ is_sales: isSales }),
+                        parsed: { is_sales: isSales },
+                        latencyMs: 1,
+                        costUsd: 0.01,
+                    };
+                return {
+                    outputText: `${request.prompt.split("\n")[0]} done`,
+                    latencyMs: 1,
+                    costUsd: 0.02,
+                };
+            },
+        );
+
+        await executeWorkflowRun("run-1");
+
+        const prompts = mocks.executeCell.mock.calls.map(
+            (call) => call[1].prompt.split("\n")[0],
+        );
+        expect(prompts.sort()).toEqual([
+            "classify",
+            "classify",
+            "notes",
+            "points",
+        ]);
+        const status = (item: string, node: string) =>
+            mocks.cells.find((cell) => cell.id === `cell-item-${item}-${node}`);
+        expect(status("sales", "notes")).toMatchObject({ status: "succeeded" });
+        expect(status("other", "points")).toMatchObject({
+            status: "skipped",
+            costUsd: 0,
+            outputJson: {
+                text: "",
+                skipReason:
+                    "Skipped: runs only when Classify $.is_sales is true (it was false).",
+            },
+        });
+        expect(status("other", "notes")).toMatchObject({
+            status: "skipped",
+            costUsd: 0,
+            outputJson: { skipReason: "Skipped: Points was skipped." },
+        });
+        // Skipped steps count as done, so the run completes.
+        expect(mocks.updatePayloads).toContainEqual(
+            expect.objectContaining({ status: "completed" }),
+        );
+    });
+
+    it("gates a step on two fields of an earlier step it waits for but doesn't read", async () => {
+        const prompt = (nodeKey: string) => ({
+            id: `node-${nodeKey}`,
+            nodeKey,
+            label: nodeKey[0]!.toUpperCase() + nodeKey.slice(1),
+            nodeType: "prompt",
+            nodeConfig: { type: "prompt" },
+            promptVersionId: `pv-${nodeKey}`,
+            promptContent: nodeKey,
+            modelId: "model",
+            evalConfig: { type: "none" },
+        });
+        mocks.snapshot = {
+            workflowId: "workflow-1",
+            name: "Gated chain",
+            kind: "multi",
+            nodes: [
+                {
+                    id: "node-input",
+                    nodeKey: "input",
+                    label: "Calls",
+                    nodeType: "input",
+                    nodeConfig: { type: "input", modality: "text" },
+                    evalConfig: { type: "none" },
+                },
+                prompt("extract"),
+                {
+                    ...prompt("points"),
+                    runCondition: {
+                        all: [
+                            {
+                                stepKey: "extract",
+                                path: "$.archived",
+                                operator: "equals",
+                                values: [false],
+                            },
+                            {
+                                stepKey: "extract",
+                                path: "$.type",
+                                operator: "equals",
+                                values: ["sales"],
+                            },
+                        ],
+                    },
+                },
+            ],
+            edges: [
+                { from: "input", to: "extract" },
+                { from: "extract", to: "points", orderOnly: true },
+            ].map(({ from, to, orderOnly }) => ({
+                id: `${from}-${to}`,
+                fromNodeId: `node-${from}`,
+                toNodeId: `node-${to}`,
+                carryOriginalInput: false,
+                ...(orderOnly ? { orderOnly } : {}),
+            })),
+        };
+        mocks.items = ["open", "archived"].map((name) => ({
+            id: `item-${name}`,
+            type: "text",
+            inputText: `${name} call`,
+            storageKey: null,
+            mimeType: null,
+        }));
+        mocks.cells = mocks.items.flatMap((item) =>
+            ["input", "extract", "points"].map((nodeKey) => ({
+                id: `cell-${item.id}-${nodeKey}`,
+                datasetItemId: item.id,
+                nodeKey,
+                status: "pending",
+            })),
+        );
+        mocks.executeCell.mockImplementation(
+            async (_model: string, request: { prompt: string }) => {
+                if (request.prompt.startsWith("extract")) {
+                    const parsed = {
+                        archived: request.prompt.includes("archived call"),
+                        type: "sales",
+                    };
+                    return {
+                        outputText: JSON.stringify(parsed),
+                        parsed,
+                        latencyMs: 1,
+                        costUsd: 0.01,
+                    };
+                }
+                return { outputText: "points done", latencyMs: 1, costUsd: 0 };
+            },
+        );
+
+        await executeWorkflowRun("run-1");
+
+        const pointsPrompts = mocks.executeCell.mock.calls
+            .map((call) => call[1].prompt as string)
+            .filter((text) => text.startsWith("points"));
+        // The gated step reads the original input, not Extract's answer.
+        expect(pointsPrompts).toEqual(["points\n\n<input>open call</input>"]);
+        expect(
+            mocks.cells.find((cell) => cell.id === "cell-item-archived-points"),
+        ).toMatchObject({
+            status: "skipped",
+            outputJson: {
+                skipReason:
+                    "Skipped: runs only when Extract $.archived is false (it was true).",
+            },
+        });
     });
 
     it("keeps executing when record-only scoring fails", async () => {
@@ -1885,3 +2441,161 @@ function metricWorkflowSnapshot() {
         ],
     };
 }
+
+describe("conditionOutcome", () => {
+    const node = {
+        runCondition: {
+            stepKey: "classify",
+            path: "$.kind",
+            operator: "one_of" as const,
+            values: ["sales", "renewal"],
+        },
+    };
+    const label = (key: string) => key[0]!.toUpperCase() + key.slice(1);
+    type Source = ReturnType<Parameters<typeof conditionOutcome>[1]>;
+    const only = (cell: Source) => () => cell;
+    it("runs, waits, blocks or skips from the checked step's state", () => {
+        expect(conditionOutcome({}, only(undefined), label)).toEqual({
+            kind: "run",
+        });
+        expect(
+            conditionOutcome(
+                node,
+                only({
+                    status: "succeeded",
+                    outputJson: { text: '{"kind":"renewal"}' },
+                }),
+                label,
+            ),
+        ).toEqual({ kind: "run" });
+        expect(
+            conditionOutcome(
+                node,
+                only({ status: "running", outputJson: null }),
+                label,
+            ),
+        ).toEqual({ kind: "wait" });
+        expect(
+            conditionOutcome(
+                node,
+                only({ status: "failed", outputJson: null }),
+                label,
+            ),
+        ).toEqual({ kind: "blocked", stepKey: "classify" });
+        expect(
+            conditionOutcome(
+                node,
+                only({
+                    status: "succeeded",
+                    outputJson: { text: "", json: {} },
+                }),
+                label,
+            ),
+        ).toEqual({
+            kind: "skip",
+            reason: "Skipped: runs only when Classify $.kind is one of sales, renewal (it was missing).",
+        });
+    });
+
+    it("needs every condition to hold and names the first that does not", () => {
+        const gated = {
+            runCondition: {
+                all: [
+                    {
+                        stepKey: "extract",
+                        path: "$.archived",
+                        operator: "equals" as const,
+                        values: [false],
+                    },
+                    {
+                        stepKey: "extract",
+                        path: "$.type",
+                        operator: "equals" as const,
+                        values: ["sales"],
+                    },
+                ],
+            },
+        };
+        const answer = (json: Record<string, unknown>) =>
+            only({ status: "succeeded", outputJson: { text: "", json } });
+        expect(
+            conditionOutcome(
+                gated,
+                answer({ archived: false, type: "sales" }),
+                label,
+            ),
+        ).toEqual({ kind: "run" });
+        expect(
+            conditionOutcome(
+                gated,
+                answer({ archived: false, type: "support" }),
+                label,
+            ),
+        ).toEqual({
+            kind: "skip",
+            reason: 'Skipped: runs only when Extract $.type is sales (it was "support").',
+        });
+        expect(
+            conditionOutcome(
+                gated,
+                answer({ archived: true, type: "sales" }),
+                label,
+            ),
+        ).toEqual({
+            kind: "skip",
+            reason: "Skipped: runs only when Extract $.archived is false (it was true).",
+        });
+    });
+});
+
+describe("upstreamStepsFor", () => {
+    it("gives an input template every step upstream, answered or not", () => {
+        const cell = (status: string, outputJson?: unknown) =>
+            ({ status, outputJson }) as never;
+        const steps = upstreamStepsFor({ id: "item-1" }, "write", {
+            incoming: new Map([
+                [
+                    "write",
+                    [
+                        {
+                            fromNodeKey: "points",
+                            toNodeKey: "write",
+                            carryOriginalInput: false,
+                        },
+                    ],
+                ],
+                [
+                    "points",
+                    [
+                        {
+                            fromNodeKey: "extract",
+                            toNodeKey: "points",
+                            carryOriginalInput: false,
+                            orderOnly: true,
+                        },
+                    ],
+                ],
+            ]),
+            nodeByKey: new Map([
+                ["extract", { label: "Extract" }],
+                ["points", { label: "Points" }],
+            ]) as never,
+            cellsByItemAndNode: new Map([
+                [
+                    "item-1:extract",
+                    cell("succeeded", { text: "", json: { a: 1 } }),
+                ],
+                ["item-1:points", cell("skipped")],
+            ]),
+        });
+        expect(steps).toEqual(
+            new Map([
+                ["points", { label: "Points", status: "skipped" }],
+                [
+                    "extract",
+                    { label: "Extract", status: "succeeded", answer: { a: 1 } },
+                ],
+            ]),
+        );
+    });
+});

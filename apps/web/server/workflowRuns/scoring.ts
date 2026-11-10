@@ -1,11 +1,16 @@
-import { getBareModelName, type ApiKeys } from "@flash-evals/llm-core";
-import { and, eq, inArray } from "drizzle-orm";
+import {
+    getBareModelName,
+    type ApiKeys,
+    type ICompletionDataPolicy,
+} from "@flash-evals/llm-core";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import {
     judgeConfigs,
     labels,
     promptVersions,
     workflowCellScores,
+    workflowRunCells,
     workflowRunItemScores,
     workflowRunItems,
 } from "../db/schema";
@@ -421,6 +426,7 @@ async function settleTranscriptScoringJob(
     return "error";
 }
 
+/** Scores a step's answer; returns what its judge calls paid (USD). */
 export async function scoreWorkflowCell(input: {
     cellId: string;
     node: IWorkflowSnapshotNode;
@@ -430,8 +436,10 @@ export async function scoreWorkflowCell(input: {
     context?: IWorkflowScoringContext;
     teamId?: string;
     projectId?: string;
-}): Promise<void> {
-    if (input.node.evalConfig.type === "none") return;
+    /** The run's data rules, applied to judge calls too. */
+    dataPolicy?: ICompletionDataPolicy;
+}): Promise<number> {
+    if (input.node.evalConfig.type === "none") return 0;
     const fieldConfigs =
         input.node.evalConfig.type === "field_diff"
             ? input.node.evalConfig.fieldConfigs
@@ -442,7 +450,7 @@ export async function scoreWorkflowCell(input: {
             : undefined,
         resolveJudgePrompt(input.node, input.context),
     ]);
-    if (input.node.evalConfig.type === "judge" && !judgePrompt) return;
+    if (input.node.evalConfig.type === "judge" && !judgePrompt) return 0;
     const output =
         typeof input.output === "object" && input.output !== null
             ? (input.output as OutputJson)
@@ -484,13 +492,20 @@ export async function scoreWorkflowCell(input: {
                   pricing: pricingFor(
                       input.node.resolvedLlmExecution.route.modelId,
                   ),
+                  ...(input.dataPolicy ? { dataPolicy: input.dataPolicy } : {}),
               });
               scorerExecutionProvenance =
                   execution.artifact.executionProvenance;
-              return judgeOutcomeFromCompletion({
-                  parsed: execution.artifact.json,
-                  schemaViolation: execution.artifact.json === undefined,
-              });
+              // A call that returns bad JSON was still paid for.
+              return {
+                  ...judgeOutcomeFromCompletion({
+                      parsed: execution.artifact.json,
+                      schemaViolation: execution.artifact.json === undefined,
+                  }),
+                  ...(execution.costUsd !== undefined
+                      ? { costUsd: execution.costUsd }
+                      : {}),
+              };
           }
         : undefined;
     const result = await scoreOutput(
@@ -509,4 +524,24 @@ export async function scoreWorkflowCell(input: {
         explicitJudge,
     );
     await replaceCellScores(input.cellId, result, scorerExecutionProvenance);
+    const judgeCostUsd = result.judge?.costUsd;
+    await addJudgeCost(input.cellId, judgeCostUsd);
+    return judgeCostUsd !== undefined && judgeCostUsd > 0 ? judgeCostUsd : 0;
+}
+
+/**
+ * Adds what this scoring pass's judge calls cost to the step's judge cost.
+ * Each pass pays again, so the cost is added, never replaced.
+ */
+async function addJudgeCost(
+    cellId: string,
+    costUsd: number | undefined,
+): Promise<void> {
+    if (costUsd === undefined || !(costUsd > 0)) return;
+    await db
+        .update(workflowRunCells)
+        .set({
+            judgeCostUsd: sql`coalesce(${workflowRunCells.judgeCostUsd}, 0) + ${costUsd}`,
+        })
+        .where(eq(workflowRunCells.id, cellId));
 }

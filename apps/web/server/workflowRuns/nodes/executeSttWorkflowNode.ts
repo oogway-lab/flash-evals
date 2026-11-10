@@ -1,4 +1,8 @@
-import type { ApiKeys, EvalImage } from "@flash-evals/llm-core";
+import type {
+    ApiKeys,
+    EvalImage,
+    ICompletionDataPolicy,
+} from "@flash-evals/llm-core";
 import type { IWorkflowNodeArtifact } from "@flash-evals/api-contract";
 import { eq } from "drizzle-orm";
 import { db } from "../../db/client";
@@ -6,6 +10,7 @@ import { workflowCellScores, workflowRunCells } from "../../db/schema";
 import {
     transcriptionSpend,
     trackTranscriptionSpend,
+    type ITranscriptionSpend,
 } from "../../audio/transcription/spend";
 import type { IWorkflowSnapshotNode, LabelJson } from "../../db/jsonTypes";
 import { scoreTranscriptMetrics } from "../../audio/metrics";
@@ -48,6 +53,8 @@ interface IExecuteSttWorkflowNodeInput {
     labelsByItemId: Map<string, LabelJson>;
     teamId: string;
     projectId: string;
+    /** The run's data rules, applied to the step's model call. */
+    dataPolicy?: ICompletionDataPolicy;
 }
 
 export async function executeSttWorkflowNode(
@@ -126,7 +133,10 @@ async function executeSttNode(
             await db
                 .update(workflowRunCells)
                 .set({
-                    costUsd: checkpoint.costUsd ?? null,
+                    // The known part is spend (the ledger records each
+                    // rise); the checkpoint's "unavailable" says it is a
+                    // lower bound.
+                    costUsd: spentUsd(checkpoint) ?? null,
                     outputJson: {
                         text: "",
                         providerMetadata: { transcriptionSpend: checkpoint },
@@ -143,10 +153,12 @@ async function executeSttNode(
         modelId: config.modelId,
         language: config.language,
         config: config.config,
+        levelVolume: config.levelVolume === true,
         onCostIncurred: (costUsd) => spend.record(costUsd),
         openaiApiKey: input.apiKeys.openai,
         aiGatewayApiKey: input.apiKeys.gateway,
         sonioxApiKey: input.sttProviderKeys.soniox,
+        elevenlabsApiKey: input.sttProviderKeys.elevenlabs,
         geminiApiKey: input.sttProviderKeys.gemini,
         openrouterApiKey: input.sttProviderKeys.openrouter,
     });
@@ -177,10 +189,22 @@ async function executeSttNode(
         latencyMs: Date.now() - startedAt,
         // Cell cost is new spend; a reused transcript keeps its original cost
         // in providerMetadata but costs nothing in this run.
-        ...(spend.current.costUsd !== undefined
-            ? { costUsd: spend.current.costUsd }
+        ...(spentUsd(spend.current) !== undefined
+            ? { costUsd: spentUsd(spend.current) }
             : {}),
     };
+}
+
+/**
+ * What the cell has paid so far: the complete total, or with a part unknown
+ * ("unavailable" in transcriptionSpend) the known part, at least, so that
+ * spend still reaches the ledger. Undefined when nothing known was paid.
+ */
+function spentUsd(spend: ITranscriptionSpend): number | undefined {
+    if (spend.costSource === "computed") return spend.costUsd;
+    return spend.costUsd !== undefined && spend.costUsd > 0
+        ? spend.costUsd
+        : undefined;
 }
 
 async function executeLlmTextNode(
@@ -198,6 +222,7 @@ async function executeLlmTextNode(
         prompt: `${node.nodeConfig.promptText}\n\n${input.inputText}`,
         images: input.images,
         pricing: pricingFor(node.resolvedLlmExecution.route.modelId),
+        ...(input.dataPolicy ? { dataPolicy: input.dataPolicy } : {}),
     });
 }
 
@@ -236,6 +261,7 @@ async function executeTransliterationNode(
             .filter((part): part is string => part !== undefined)
             .join("\n"),
         pricing: pricingFor(node.resolvedLlmExecution.route.modelId),
+        ...(input.dataPolicy ? { dataPolicy: input.dataPolicy } : {}),
     });
 }
 
@@ -269,6 +295,7 @@ async function executeJudgeNode(
         images: input.images,
         responseSchema: judgeRequest.responseSchema,
         pricing: pricingFor(node.resolvedLlmExecution.route.modelId),
+        ...(input.dataPolicy ? { dataPolicy: input.dataPolicy } : {}),
     });
     const result = judgeOutcomeFromCompletion({
         parsed: execution.artifact.json,
