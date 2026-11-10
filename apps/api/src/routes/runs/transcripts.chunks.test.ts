@@ -84,6 +84,31 @@ describe("audioTranscriptPayload", () => {
             );
         },
     );
+    it("reads levelled transcripts only for a config that levels volume", async () => {
+        const config = { modelId: "elevenlabs:scribe_v2", config: {} };
+        const identity = sttModelIdentityForId(config.modelId);
+        const plainHash = createHash("sha256").update("{}").digest("hex");
+        const levelledHash = audioTranscriptConfigHash(identity, "{}", {
+            levelVolume: true,
+        });
+        expect(audioTranscriptConfigHash(identity, "{}")).toBe(plainHash);
+        expect(levelledHash).not.toBe(plainHash);
+        const query = vi.fn(
+            async (_sql: string, _values?: unknown[]) =>
+                ({ rows: [] }) as never,
+        );
+        await audioTranscriptPayload({ query } as IDb, [audioItem], [config]);
+        await audioTranscriptPayload(
+            { query } as IDb,
+            [audioItem],
+            [{ ...config, levelVolume: true }],
+        );
+        const hashes = query.mock.calls
+            .filter(([sql]) => sql.includes("config_hash = $6"))
+            .map(([, values]) => values?.[5]);
+        expect(hashes).toEqual([plainHash, levelledHash]);
+    });
+
     it.each([
         [
             "with a selected STT config",

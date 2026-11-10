@@ -700,7 +700,7 @@ describe("getOrCreateAudioTranscript", () => {
                 modelId: "vercel:openai/gpt-4o-transcribe",
             }),
         ).rejects.toThrow(
-            "Add AI_GATEWAY_API_KEY to run Vercel Gateway transcription.",
+            "Add your AI Gateway API key in Settings (or AI_GATEWAY_API_KEY in the app's .env) to run Vercel Gateway transcription.",
         );
         expect(mocks.loadAudioBytes).not.toHaveBeenCalled();
         expect(fetch).not.toHaveBeenCalled();
@@ -890,6 +890,113 @@ describe("getOrCreateAudioTranscript", () => {
         );
     });
 
+    it("transcribes through ElevenLabs Scribe and prices it per audio hour", async () => {
+        mocks.loadAudioBytes.mockResolvedValue(Buffer.from("audio"));
+        const scribe = {
+            language_code: "hin",
+            language_probability: 0.9,
+            text: " haan ji ",
+            audio_duration_secs: 60,
+            words: [
+                {
+                    text: "haan",
+                    type: "word",
+                    start: 0,
+                    end: 0.3,
+                    speaker_id: "speaker_0",
+                    logprob: 0,
+                },
+                {
+                    text: " ",
+                    type: "spacing",
+                    start: 0.3,
+                    end: 0.35,
+                    speaker_id: "speaker_0",
+                    logprob: 0,
+                },
+                {
+                    text: "ji",
+                    type: "word",
+                    start: 0.35,
+                    end: 0.6,
+                    speaker_id: "speaker_0",
+                    logprob: 0,
+                },
+            ],
+        };
+        vi.mocked(fetch).mockResolvedValueOnce(
+            new Response(JSON.stringify(scribe), { status: 200 }),
+        );
+
+        await expect(
+            getOrCreateAudioTranscript({
+                datasetItemId: "item-1",
+                storageKey: "11111111-1111-4111-8111-111111111111",
+                mimeType: "audio/webm",
+                modelId: "elevenlabs:scribe_v2",
+                language: "hi",
+                config: { keywords: "Avalon", diarization: true },
+                elevenlabsApiKey: "el-test",
+            }),
+        ).resolves.toBe("haan ji");
+
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(fetch).toHaveBeenCalledWith(
+            "https://api.elevenlabs.io/v1/speech-to-text",
+            expect.objectContaining({
+                method: "POST",
+                headers: { "xi-api-key": "el-test" },
+                body: expect.any(FormData),
+                signal: expect.any(AbortSignal),
+            }),
+        );
+        expect(mocks.insertValues).toHaveBeenCalledWith(
+            expect.objectContaining({
+                providerId: "elevenlabs",
+                routeId: "elevenlabs-speech-to-text",
+                sttModelId: "elevenlabs:scribe_v2",
+                canonicalModelId: "scribe_v2",
+                transcript: "haan ji",
+                detectedLanguage: "hin",
+                segmentsJson: [
+                    {
+                        text: "haan ji",
+                        speaker: "speaker_0",
+                        startMs: 0,
+                        endMs: 600,
+                    },
+                ],
+                speakersJson: [{ id: "speaker_0", label: "speaker_0" }],
+                providerMetadata: expect.objectContaining({
+                    provider: "elevenlabs",
+                    route: "elevenlabs-speech-to-text",
+                    model: "scribe_v2",
+                    audioDurationMs: 60_000,
+                    costSource: "computed",
+                    // $0.22/hour plus the $0.05/hour keyterm add-on.
+                    costUsd: expect.closeTo((60_000 / 3_600_000) * 0.27, 10),
+                    diarizationMode: "native",
+                }),
+                warnings: [],
+                status: "completed",
+            }),
+        );
+    });
+
+    it("requires the ElevenLabs key for ElevenLabs STT model ids", async () => {
+        await expect(
+            getOrCreateAudioTranscript({
+                datasetItemId: "item-1",
+                storageKey: "11111111-1111-4111-8111-111111111111",
+                mimeType: "audio/webm",
+                modelId: "elevenlabs:scribe_v2",
+            }),
+        ).rejects.toThrow(
+            "Add your ElevenLabs API key in Settings (or ELEVENLABS_API_KEY in the app's .env) to run ElevenLabs transcription.",
+        );
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
     it("defaults Soniox diarization off when the run config omits the toggle", async () => {
         mocks.loadAudioBytes.mockResolvedValue(Buffer.from("audio"));
         vi.mocked(fetch)
@@ -936,7 +1043,9 @@ describe("getOrCreateAudioTranscript", () => {
                 mimeType: "audio/webm",
                 modelId: "soniox:stt-async-v5",
             }),
-        ).rejects.toThrow("Add SONIOX_API_KEY to run Soniox transcription.");
+        ).rejects.toThrow(
+            "Add your Soniox API key in Settings (or SONIOX_API_KEY in the app's .env) to run Soniox transcription.",
+        );
         expect(mocks.loadAudioBytes).not.toHaveBeenCalled();
         expect(fetch).not.toHaveBeenCalled();
     });
@@ -949,7 +1058,9 @@ describe("getOrCreateAudioTranscript", () => {
                 mimeType: "audio/webm",
                 modelId: "gpt-4o-mini-transcribe",
             }),
-        ).rejects.toThrow("Add OPENAI_API_KEY to run audio transcription.");
+        ).rejects.toThrow(
+            "Add your OpenAI API key in Settings (or OPENAI_API_KEY in the app's .env) to run audio transcription.",
+        );
 
         expect(mocks.loadAudioBytes).not.toHaveBeenCalled();
         expect(fetch).not.toHaveBeenCalled();
@@ -964,7 +1075,7 @@ describe("getOrCreateAudioTranscript", () => {
                 modelId: "openrouter:whisper-large-v3-turbo",
             }),
         ).rejects.toThrow(
-            "Add OPENROUTER_API_KEY to run OpenRouter transcription.",
+            "Add your OpenRouter API key in Settings (or OPENROUTER_API_KEY in the app's .env) to run OpenRouter transcription.",
         );
         expect(mocks.loadAudioBytes).not.toHaveBeenCalled();
         expect(fetch).not.toHaveBeenCalled();

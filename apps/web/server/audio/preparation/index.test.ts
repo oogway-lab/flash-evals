@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "child_process";
-import { mkdtempSync, readFileSync, rmSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -64,6 +64,43 @@ describe.skipIf(!hasFfmpeg)("prepareAudioForTranscription with FFmpeg", () => {
     });
 
     afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+    it("levels to FLAC that is smaller than the levelled WAV", async () => {
+        const levelled = async (levelledFormat: "flac" | "wav") => {
+            const result = await prepareAudioForTranscription({
+                bytes: shortWav,
+                mimeType: "audio/wav",
+                policy: undefined,
+                levelVolume: true,
+                levelledFormat,
+            });
+            if (result.kind !== "prepared")
+                throw new Error("expected levelled");
+            return result.chunks[0]!;
+        };
+        const flac = await levelled("flac");
+        const wav = await levelled("wav");
+        expect(flac.mimeType).toBe("audio/flac");
+        expect(flac.bytes.subarray(0, 4).toString("latin1")).toBe("fLaC");
+        expect(wav.mimeType).toBe("audio/wav");
+        expect(wav.bytes.subarray(0, 4).toString("latin1")).toBe("RIFF");
+        expect(flac.bytes.byteLength).toBeLessThan(wav.bytes.byteLength);
+        // Same 16 kHz mono 16-bit samples in both containers.
+        const info = (path: string) =>
+            execFileSync("ffprobe", [
+                "-v",
+                "error",
+                "-show_entries",
+                "stream=sample_rate,channels,sample_fmt",
+                "-of",
+                "csv=p=0",
+                path,
+            ])
+                .toString()
+                .trim();
+        writeFileSync(join(dir, "levelled.flac"), flac.bytes);
+        expect(info(join(dir, "levelled.flac"))).toBe("s16,16000,1");
+    });
 
     it("sends audio within budget unchanged", async () => {
         const result = await prepareAudioForTranscription({
@@ -135,6 +172,61 @@ describe.skipIf(!hasFfmpeg)("prepareAudioForTranscription with FFmpeg", () => {
         if (result.kind === "prepared") expect(result.chunks).toHaveLength(1);
     });
 
+    it("levels a quiet recording to 16 kHz mono WAV at a higher loudness", async () => {
+        const quiet = join(dir, "quiet.wav");
+        execFileSync("ffmpeg", [
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=5",
+            "-af",
+            "volume=0.01",
+            "-ac",
+            "2",
+            "-ar",
+            "44100",
+            quiet,
+        ]);
+        const result = await prepareAudioForTranscription({
+            bytes: readFileSync(quiet),
+            mimeType: "audio/wav",
+            policy: undefined,
+            levelVolume: true,
+        });
+        if (result.kind !== "prepared") throw new Error("expected levelled");
+        expect(result.volumeLevelled).toBe(true);
+        expect(result.chunks).toHaveLength(1);
+        const levelled = join(dir, "levelled-out.wav");
+        writeFileSync(levelled, result.chunks[0]!.bytes);
+        expect(result.chunks[0]!.mimeType).toBe("audio/wav");
+        const stream = JSON.parse(
+            execFileSync("ffprobe", [
+                "-v",
+                "error",
+                "-print_format",
+                "json",
+                "-show_streams",
+                levelled,
+            ]).toString(),
+        ) as {
+            streams: Array<{
+                codec_name: string;
+                channels: number;
+                sample_rate: string;
+            }>;
+        };
+        expect(stream.streams[0]).toMatchObject({
+            codec_name: "pcm_s16le",
+            channels: 1,
+            sample_rate: "16000",
+        });
+        expect(meanVolumeDb(levelled)).toBeGreaterThan(
+            meanVolumeDb(quiet) + 10,
+        );
+    });
+
     it("rejects bytes that are not audio as a permanent error", async () => {
         await expect(
             prepareAudioForTranscription({
@@ -196,3 +288,22 @@ describe("prepareAudioForTranscription without FFmpeg", () => {
         ).resolves.toEqual({ kind: "original" });
     });
 });
+
+function meanVolumeDb(path: string): number {
+    const result = spawnSync("ffmpeg", [
+        "-hide_banner",
+        "-nostats",
+        "-i",
+        path,
+        "-af",
+        "volumedetect",
+        "-f",
+        "null",
+        "-",
+    ]);
+    const match = /mean_volume: (-?\d+(?:\.\d+)?) dB/.exec(
+        result.stderr.toString(),
+    );
+    if (!match) throw new Error("volumedetect printed no mean volume");
+    return Number(match[1]);
+}

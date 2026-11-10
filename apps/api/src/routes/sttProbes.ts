@@ -330,6 +330,7 @@ function configWithResolvedKeys(
         openaiApiKey: keys.openai,
         aiGatewayApiKey: keys.vercelGateway,
         sonioxApiKey: keys.soniox,
+        elevenlabsApiKey: keys.elevenlabs,
         geminiApiKey: keys.gemini,
         openrouterApiKey: keys.openrouter,
         bifrostApiKey: keys.bifrost,
@@ -351,6 +352,8 @@ function probeCredential(
             return keys.vercelGateway ?? "";
         case "soniox":
             return keys.soniox ?? "";
+        case "elevenlabs":
+            return keys.elevenlabs ?? "";
         case "gemini":
             return keys.gemini ?? "";
         case "openrouter":
@@ -415,6 +418,13 @@ async function executeProbe(
             return probeSoniox(
                 definition.id.replace(/^soniox:/, ""),
                 keys.soniox,
+                audio,
+                signal,
+            );
+        case "elevenlabs":
+            return probeElevenLabs(
+                definition.id.replace(/^elevenlabs:/, ""),
+                keys.elevenlabs,
                 audio,
                 signal,
             );
@@ -634,6 +644,36 @@ async function probeSoniox(
     const text = stringProperty(transcript, "text")?.trim();
     if (!text) throw new Error(JSON.stringify(transcript));
     return text;
+}
+
+async function probeElevenLabs(
+    model: string,
+    key: string | undefined,
+    audio: Buffer,
+    signal: AbortSignal,
+): Promise<string> {
+    if (!key) throw new ApiBadRequestError("No ElevenLabs key is configured");
+    const form = new FormData();
+    form.append(
+        "file",
+        new Blob([arrayBuffer(audio)], { type: "audio/wav" }),
+        "stt-probe-tone.wav",
+    );
+    form.append("model_id", model);
+    // The fields every run sends, so the probe checks the same request shape.
+    form.append("diarize", "false");
+    form.append("timestamps_granularity", "word");
+    form.append("tag_audio_events", "false");
+    const parsed = await providerJson(
+        "https://api.elevenlabs.io/v1/speech-to-text",
+        { method: "POST", headers: { "xi-api-key": key }, body: form },
+        signal,
+    );
+    // The probe tone has no speech, so an empty transcript is a pass as long
+    // as the response has Scribe's shape (a text string and a word list).
+    if (typeof parsed.text !== "string" || !Array.isArray(parsed.words))
+        throw new Error(JSON.stringify(parsed));
+    return parsed.text.trim() || "(no speech in the probe tone)";
 }
 
 async function providerJson(

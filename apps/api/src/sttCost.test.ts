@@ -18,6 +18,7 @@ describe("STT audio-duration pricing", () => {
         ["gpt-4o-transcribe", 0.36],
         ["gpt-4o-mini-transcribe", 0.18],
         ["soniox:stt-async-v5", 0.1],
+        ["elevenlabs:scribe_v2", 0.22],
     ])("prices %s at $%s per audio hour", (modelId, perHour) => {
         expect(sttAudioHourPriceUsdForId(modelId)).toBe(perHour);
     });
@@ -52,4 +53,38 @@ describe("STT audio-duration pricing", () => {
             ).toBeUndefined();
         },
     );
+
+    it("adds ElevenLabs' keyterm add-on only when a usable term is sent", () => {
+        // elevenlabs.io/pricing/api: Scribe v2 $0.22/hour, keyterms +$0.05/hour.
+        expect(
+            sttAudioHourPriceUsdForId("elevenlabs:scribe_v2", {
+                keywords: "Avalon, Brightwater",
+            }),
+        ).toBeCloseTo(0.27, 6);
+        expect(
+            sttCostUsdForDuration("elevenlabs:scribe_v2", 3_600_000, {
+                keywords: "Avalon",
+            }),
+        ).toBeCloseTo(0.27, 6);
+        expect(
+            sttCostUsdForDuration("elevenlabs:scribe_v2", 1_800_000),
+        ).toBeCloseTo(0.11, 6);
+        // Blank or rejected-only boosts send no keyterms, so no add-on.
+        expect(
+            sttAudioHourPriceUsdForId("elevenlabs:scribe_v2", {
+                keywords: " , ",
+            }),
+        ).toBe(0.22);
+        expect(
+            sttAudioHourPriceUsdForId("elevenlabs:scribe_v2", {
+                keywords: "<tag>",
+            }),
+        ).toBe(0.22);
+        // Other providers ignore the keyword config when pricing.
+        expect(
+            sttAudioHourPriceUsdForId("soniox:stt-async-v5", {
+                keywords: "Avalon",
+            }),
+        ).toBe(0.1);
+    });
 });

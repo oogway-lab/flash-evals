@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scoreTranscriptMetrics } from "./metrics";
+import { normalizeTranscript, scoreTranscriptMetrics } from "./metrics";
 import { MAX_TRANSCRIPT_CHARACTERS } from "./editDistance";
 
 // V8 instrumentation distorts wall-clock measurements; regular unit tests keep
@@ -451,5 +451,35 @@ describe("scoreTranscriptMetrics", () => {
         });
 
         expect(result).toBeUndefined();
+    });
+});
+
+describe("normalizeTranscript", () => {
+    it("keeps Devanagari vowel signs and virama", () => {
+        expect(normalizeTranscript("क्या हाल है?")).toBe("क्या हाल है");
+    });
+
+    it("treats precomposed and decomposed letters as the same word", () => {
+        // क़ as U+0958 and as क + nukta; é as one code point and as e + accent.
+        expect(normalizeTranscript("\u0958ीमत")).toBe(
+            normalizeTranscript("\u0915\u093cीमत"),
+        );
+        expect(normalizeTranscript("caf\u00e9")).toBe(
+            normalizeTranscript("cafe\u0301"),
+        );
+    });
+
+    it("drops zero-width joiners instead of splitting the word", () => {
+        expect(normalizeTranscript("क्\u200dष")).toBe("क्ष");
+        expect(normalizeTranscript("क्\u200cष")).toBe("क्ष");
+    });
+
+    it("scores a Devanagari vowel-sign error as a word error", () => {
+        const result = scoreTranscriptMetrics({
+            candidateText: "कि हाल है",
+            label: { expectedTranscript: "की हाल है" },
+        });
+
+        expect(result?.details.wordCounts.substitutions).toBe(1);
     });
 });
