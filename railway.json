@@ -2,10 +2,10 @@
     "$schema": "https://railway.com/railway.schema.json",
     "build": {
         "builder": "RAILPACK",
-        "buildCommand": "pnpm --filter @flash-evals/api build"
+        "buildCommand": "bun run --filter @flash-evals/api build"
     },
     "deploy": {
-        "startCommand": "pnpm --filter @flash-evals/api start:railway",
+        "startCommand": "cd apps/api && NODE_ENV=production exec node ../../scripts/node-with-supabase-ca.mjs dist/railway.js",
         "healthcheckPath": "/health",
         "healthcheckTimeout": 30,
         "restartPolicyType": "ON_FAILURE",

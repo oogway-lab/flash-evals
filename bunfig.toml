@@ -1,0 +1,3 @@
+[install]
+# Strict per-package node_modules, like pnpm: a package can only import what it declares.
+linker = "isolated"

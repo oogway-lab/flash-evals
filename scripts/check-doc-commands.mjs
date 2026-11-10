@@ -39,7 +39,21 @@ const docsToCheck = [
     ...listMarkdownFiles("docs"),
 ].filter((docPath) => existsSync(join(root, docPath)));
 const commandPattern =
-    /\bpnpm\s+(?:--silent\s+)?(?:(--filter)\s+(@flash-evals\/[a-z-]+)\s+)?(?:run\s+)?([a-zA-Z0-9:_-]+)/;
+    /\bbun\s+(run\s+)?(?:--silent\s+)?(?:(--filter)\s+(@flash-evals\/[a-z-]+)\s+|--cwd\s+((?:apps|packages)\/[a-z-]+)\s+)?([a-zA-Z0-9:_./-]+)/;
+// Bun's own subcommands; anything else after `bun` must be a package script.
+const BUN_BUILTINS = new Set([
+    "install",
+    "add",
+    "remove",
+    "update",
+    "outdated",
+    "audit",
+    "pm",
+    "why",
+    "x",
+    "--version",
+    "-v",
+]);
 const packageToDir = new Map([
     ["@flash-evals/web", "apps/web"],
     ["@flash-evals/api", "apps/api"],
@@ -57,23 +71,39 @@ for (const docPath of docsToCheck) {
     for (const commandText of documentedCommands(source)) {
         const match = commandText.match(commandPattern);
         if (!match) continue;
-        const packageName = match[2];
-        const scriptName = match[3];
-        if (
-            ["install", "exec", "dlx", "audit", "--version", "-v"].includes(
-                scriptName,
-            )
-        )
+        const usesRun = Boolean(match[1]);
+        const packageName = match[3];
+        const cwdDir = match[4];
+        const scriptName = match[5];
+        // A file argument (`bun scripts/x.mjs`) runs that file, not a script.
+        if (scriptName.includes("/") || /\.[cm]?[jt]s$/.test(scriptName))
             continue;
+        if (!usesRun && scriptName === "test") {
+            failures.push(
+                `${docPath}: \`${commandText}\` runs Bun's test runner; write \`bun run test\``,
+            );
+            continue;
+        }
+        if (!usesRun && BUN_BUILTINS.has(scriptName)) continue;
 
-        const packageDir = packageName ? packageToDir.get(packageName) : "";
+        const packageDir = packageName
+            ? packageToDir.get(packageName)
+            : (cwdDir ?? "");
         if (packageName && !packageDir) {
-            failures.push(`${docPath}: unknown pnpm filter ${packageName}`);
+            failures.push(`${docPath}: unknown bun filter ${packageName}`);
             continue;
         }
 
         const scripts = packageScripts.get(packageDir ?? "");
         if (scripts?.has(scriptName)) continue;
+        // `bun run` also runs a package's local binary (wrangler, vitest).
+        if (
+            usesRun &&
+            existsSync(
+                join(root, packageDir ?? "", "node_modules/.bin", scriptName),
+            )
+        )
+            continue;
 
         const target = packageName
             ? `${packageName}:${scriptName}`
@@ -105,17 +135,17 @@ function listMarkdownFiles(relDir) {
 function documentedCommands(source) {
     const commands = [];
     // Pair inline code spans in order (with fenced blocks removed) so prose
-    // like "pnpm 11" between two spans is not read as a command.
+    // like "bun 1.3" between two spans is not read as a command.
     const prose = source.replace(/```[\s\S]*?```/g, "");
     for (const match of prose.matchAll(/`([^`]+)`/g)) {
-        if (/\bpnpm\s+/.test(match[1])) commands.push(match[1]);
+        if (/\bbun\s+/.test(match[1])) commands.push(match[1]);
     }
     for (const match of source.matchAll(/```[a-zA-Z]*\n([\s\S]*?)```/g)) {
         const block = match[1];
         for (const line of block.split("\n")) {
             const trimmed = line.trim();
-            // Also catch commands after env vars or `&&`, e.g. `FOO=1 pnpm ...`.
-            if (/\bpnpm\s+/.test(trimmed)) {
+            // Also catch commands after env vars or `&&`, e.g. `FOO=1 bun run ...`.
+            if (/\bbun\s+/.test(trimmed)) {
                 commands.push(trimmed);
             }
         }

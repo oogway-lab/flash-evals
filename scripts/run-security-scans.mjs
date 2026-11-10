@@ -36,10 +36,12 @@ const scans = [
         installHint: "brew install semgrep (or pipx install semgrep)",
     },
     {
-        name: "pnpm audit",
-        command: "pnpm",
-        args: ["audit", "--prod", "--audit-level=high"],
-        installHint: "pnpm ships with the repo toolchain; run corepack enable",
+        // `bun audit --prod` still counts workspace devDependencies, so this
+        // wrapper filters its findings to packages that actually ship.
+        name: "bun audit (production)",
+        command: "bun",
+        args: ["scripts/audit-production.mjs", "--audit-level=high"],
+        installHint: "install bun 1.3.14 (https://bun.sh)",
     },
 ];
 
@@ -80,7 +82,7 @@ if (skipped.length > 0) {
         ...skipped.map((scan) => `!!   ${scan.name}: ${scan.installHint}`),
         strict
             ? "!! Failing because --strict was passed."
-            : "!! Pass --strict (pnpm run security -- --strict) to fail instead.",
+            : "!! Pass --strict (bun run security --strict) to fail instead.",
         "!".repeat(72),
         "",
     ];

@@ -4,7 +4,7 @@ import { URL, fileURLToPath } from "node:url";
 import path from "node:path";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const build = spawnSync("pnpm", ["--filter", "@flash-evals/site", "build"], {
+const build = spawnSync("bun", ["run", "--cwd", "apps/site", "build"], {
     cwd: root,
     stdio: "inherit",
 });

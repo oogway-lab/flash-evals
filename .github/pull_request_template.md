@@ -10,13 +10,13 @@
 
 ## Verification
 
-- [ ] `pnpm run typecheck`
-- [ ] `pnpm run build`
-- [ ] `pnpm run test`
-- [ ] `pnpm run lint`
+- [ ] `bun run typecheck`
+- [ ] `bun run build`
+- [ ] `bun run test`
+- [ ] `bun run lint`
 - [ ] `node scripts/check-design-drift.mjs` (UI changes)
-- [ ] `pnpm run check:client-imports` (web/client changes)
-- [ ] `pnpm run security` (security/dependency-sensitive changes)
+- [ ] `bun run check:client-imports` (web/client changes)
+- [ ] `bun run security` (security/dependency-sensitive changes)
 
 ## UI Checklist
 

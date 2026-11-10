@@ -14,7 +14,7 @@ const { values } = parseArgs({
 });
 if (values.help) {
     console.info(
-        "Usage: pnpm run setup:local [--host <Tailscale IPv4>]\nCreates private env files only; never starts, migrates, or seeds a database.",
+        "Usage: bun run setup:local [--host <Tailscale IPv4>]\nCreates private env files only; never starts, migrates, or seeds a database.",
     );
     process.exit(0);
 }
@@ -57,9 +57,10 @@ FLASH_EVALS_WORKFLOW_LLM_WRITES_ENABLED=true
 FLASH_EVALS_WORKFLOW_LLM_WORKER_CONTRACT_VERSION=1
 FLASH_EVALS_MAX_RUN_CELLS=50
 FLASH_EVALS_TEAM_DAILY_SPEND_CAP_USD=2
-# Optional. Add a key to run model calls, then restart pnpm run dev.
-FLASH_EVALS_LLM_PROVIDER=openrouter
-OPENROUTER_API_KEY=
+# Optional. Add a key to run model calls, then restart bun run dev.
+# Settings > Model providers shows which providers have a key.
+FLASH_EVALS_LLM_PROVIDER=vercel-ai-gateway
+AI_GATEWAY_API_KEY=
 `,
     { mode: 0o600, flag: "wx" },
 );
@@ -80,8 +81,8 @@ Next:
   docker compose up -d --wait postgres
   node scripts/build-packages.mjs
   # Inspect the database first; preserve existing data and migration history.
-  pnpm run db:migrate
-  pnpm run seed  # NEW disposable database ONLY; resets application tables
-  pnpm run dev
+  bun run db:migrate
+  bun run seed  # NEW disposable database ONLY; resets application tables
+  bun run dev
 Open ${webOrigin}. No provider key is needed for the synthetic examples.
 See docs/getting-started.md before migrations/seeding or adding provider keys.`);

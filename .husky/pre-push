@@ -1,1 +1,1 @@
-pnpm run typecheck
+bun run typecheck

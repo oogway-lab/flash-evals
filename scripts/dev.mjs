@@ -4,6 +4,7 @@ import path from "node:path";
 import { clearInterval, setInterval } from "node:timers";
 import { fileURLToPath, URL } from "node:url";
 import { apiEnv, devHost, root, webEnv } from "./lib/dev-env.cjs";
+import { withoutShellProviderEnv } from "./lib/shell-provider-env.mjs";
 
 const webArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 const hostArgs = optionValue(webArgs, ["-H", "--hostname"])
@@ -42,8 +43,8 @@ const seedUserId = "5b7ecdb4-ac4b-4219-89ea-f5f50aeae7bd";
 const commands = [
     {
         name: "api",
-        command: "pnpm",
-        args: ["--filter", "@flash-evals/api", "dev"],
+        command: "bun",
+        args: ["run", "--cwd", "apps/api", "dev"],
         env: {
             CORS_ORIGINS:
                 process.env.CORS_ORIGINS ||
@@ -55,8 +56,8 @@ const commands = [
     },
     {
         name: "web",
-        command: "pnpm",
-        args: ["--filter", "@flash-evals/web", "dev", ...hostArgs, ...webArgs],
+        command: "bun",
+        args: ["run", "--cwd", "apps/web", "dev", ...hostArgs, ...webArgs],
         env: {
             API_BASE_URL:
                 process.env.API_BASE_URL ||
@@ -74,8 +75,8 @@ const commands = [
     },
     {
         name: "worker",
-        command: "pnpm",
-        args: ["--filter", "@flash-evals/web", "worker"],
+        command: "bun",
+        args: ["run", "--cwd", "apps/web", "worker"],
         env: {
             AUTH_DEV: "true",
             AUTH_DEV_ALLOW_INSECURE: "1",
@@ -99,14 +100,18 @@ const build = spawnSync(process.execPath, [buildScript], {
 if (build.status !== 0) process.exit(build.status ?? 1);
 
 // Each child leads its own process group so shutdown reaches the node
-// processes pnpm starts, not just pnpm; signalling pnpm alone left orphans.
+// processes bun starts, not just bun; signalling bun alone left orphans.
 const processGroups = new Set();
 let shuttingDown = false;
 
 for (const entry of commands) {
     const child = spawn(entry.command, entry.args, {
         cwd: root,
-        env: { ...process.env, FLASH_EVALS_PACKAGES_BUILT: "1", ...entry.env },
+        env: {
+            ...withoutShellProviderKeys(process.env),
+            FLASH_EVALS_PACKAGES_BUILT: "1",
+            ...entry.env,
+        },
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,
     });
@@ -155,7 +160,7 @@ function prefixStream(stream, name) {
     });
 }
 
-// Wait on the process groups rather than the pnpm children: pnpm exits as soon
+// Wait on the process groups rather than the bun children: bun exits as soon
 // as it forwards SIGTERM, while the node process under it is still shutting down.
 function shutdown(exitCode) {
     if (shuttingDown) return;
@@ -184,7 +189,7 @@ function shutdown(exitCode) {
 }
 
 // Kill whatever is still running in the groups before exiting, so a process
-// that outlives its pnpm parent doesn't keep running in the background.
+// that outlives its bun parent doesn't keep running in the background.
 function exit(exitCode) {
     signalProcessGroups("SIGKILL");
     process.exit(exitCode);
@@ -227,4 +232,14 @@ function optionValue(args, names) {
         if (match) return arg.slice(match.length);
     }
     return undefined;
+}
+
+/** Drops shell provider keys and settings; see lib/shell-provider-env.mjs. */
+function withoutShellProviderKeys(env) {
+    const { env: copy, dropped } = withoutShellProviderEnv(env);
+    if (dropped.length > 0)
+        console.warn(
+            `dev: ignoring ${dropped.join(", ")} from your shell; keys come from the repo's .env files or Settings.`,
+        );
+    return copy;
 }

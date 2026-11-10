@@ -6,8 +6,14 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 const root = process.cwd();
-const localCheck = path.join(root, "scripts/check-split-deployment-readiness.sh");
-const liveCheck = path.join(root, "scripts/check-live-split-deployment-readiness.sh");
+const localCheck = path.join(
+    root,
+    "scripts/check-split-deployment-readiness.sh",
+);
+const liveCheck = path.join(
+    root,
+    "scripts/check-live-split-deployment-readiness.sh",
+);
 const r2Origin =
     "https://flash-evals-media.0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com";
 const testSecret = "synthetic-secret-never-print-this";
@@ -16,7 +22,8 @@ function makeR2Env(kind, prefix = "flash-evals") {
     const common =
         kind === "api"
             ? {
-                  DATABASE_URL: "postgres://synthetic:synthetic@db.example.test:5432/test",
+                  DATABASE_URL:
+                      "postgres://synthetic:synthetic@db.example.test:5432/test",
                   CLERK_SECRET_KEY: "sk_test_synthetic",
                   FLASH_EVALS_ALLOWED_EMAIL_DOMAIN: "example.test",
                   CORS_ORIGINS: "https://app.example.test",
@@ -45,7 +52,8 @@ function makeSupabaseEnv(kind, prefix = "flash-evals") {
     const common =
         kind === "api"
             ? {
-                  DATABASE_URL: "postgres://synthetic:synthetic@db.example.test:5432/test",
+                  DATABASE_URL:
+                      "postgres://synthetic:synthetic@db.example.test:5432/test",
                   CLERK_SECRET_KEY: "sk_test_synthetic",
                   FLASH_EVALS_ALLOWED_EMAIL_DOMAIN: "example.test",
                   CORS_ORIGINS: "https://app.example.test",
@@ -121,7 +129,9 @@ function makeLiveFixture(dir, apiEnv, workerEnv, webEnv) {
         { mode: 0o700 },
     );
     const wrangler = path.join(dir, "wrangler-mock");
-    fs.writeFileSync(wrangler, "#!/bin/sh\n[ \"$1\" = whoami ]\n", { mode: 0o700 });
+    fs.writeFileSync(wrangler, '#!/bin/sh\n[ "$1" = whoami ]\n', {
+        mode: 0o700,
+    });
     return { apiFile, workerFile, webFile, binDir, wrangler };
 }
 
@@ -165,7 +175,10 @@ test("local check accepts R2 without any Supabase storage variables", () => {
     const result = runLocal(makeR2Env("api"), makeR2Env("web"));
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.match(result.stdout, /Split deployment readiness check passed/);
-    assert.doesNotMatch(result.stdout + result.stderr, /SUPABASE_(?:URL|SERVICE_ROLE_KEY|STORAGE_BUCKET)/);
+    assert.doesNotMatch(
+        result.stdout + result.stderr,
+        /SUPABASE_(?:URL|SERVICE_ROLE_KEY|STORAGE_BUCKET)/,
+    );
 });
 
 test("local check keeps the Supabase adapter requirements", () => {
@@ -184,7 +197,10 @@ test("local check keeps the Supabase adapter requirements", () => {
     delete web.SUPABASE_SERVICE_ROLE_KEY;
     const missing = runLocal(makeSupabaseEnv("api"), web);
     assert.notEqual(missing.status, 0);
-    assert.match(missing.stderr, /Web environment is missing SUPABASE_SERVICE_ROLE_KEY/);
+    assert.match(
+        missing.stderr,
+        /Web environment is missing SUPABASE_SERVICE_ROLE_KEY/,
+    );
 });
 
 test("local check rejects noncanonical Supabase prefixes even when services agree", () => {
@@ -224,15 +240,27 @@ test("local check reports missing R2 keys without printing configured secrets", 
     delete api.R2_SECRET_ACCESS_KEY;
     const result = runLocal(api, makeR2Env("web"));
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /API environment is missing R2_SECRET_ACCESS_KEY/);
-    assert.doesNotMatch(result.stdout + result.stderr, /synthetic-secret-never-print-this/);
+    assert.match(
+        result.stderr,
+        /API environment is missing R2_SECRET_ACCESS_KEY/,
+    );
+    assert.doesNotMatch(
+        result.stdout + result.stderr,
+        /synthetic-secret-never-print-this/,
+    );
 
     const blankApi = makeR2Env("api");
     blankApi.R2_ACCESS_KEY_ID = "   ";
     const blankResult = runLocal(blankApi, makeR2Env("web"));
     assert.notEqual(blankResult.status, 0);
-    assert.match(blankResult.stderr, /API environment is missing R2_ACCESS_KEY_ID/);
-    assert.doesNotMatch(blankResult.stdout + blankResult.stderr, /synthetic-secret-never-print-this/);
+    assert.match(
+        blankResult.stderr,
+        /API environment is missing R2_ACCESS_KEY_ID/,
+    );
+    assert.doesNotMatch(
+        blankResult.stdout + blankResult.stderr,
+        /synthetic-secret-never-print-this/,
+    );
 });
 
 test("local check rejects adapter, prefix, and CSP-origin mismatches", () => {
@@ -241,7 +269,10 @@ test("local check rejects adapter, prefix, and CSP-origin mismatches", () => {
     const result = runLocal(makeR2Env("api"), web);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /R2_STORAGE_PREFIX does not match/);
-    assert.match(result.stderr, /FLASH_EVALS_CSP_STORAGE_ORIGIN does not match/);
+    assert.match(
+        result.stderr,
+        /FLASH_EVALS_CSP_STORAGE_ORIGIN does not match/,
+    );
 
     const wrongAdapter = makeSupabaseEnv("web");
     const adapterResult = runLocal(makeR2Env("api"), wrongAdapter);
@@ -260,7 +291,10 @@ test("local check rejects local and insecure deployment modes", () => {
     insecureApi.FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS = "true";
     const insecureResult = runLocal(insecureApi, makeR2Env("web"));
     assert.notEqual(insecureResult.status, 0);
-    assert.match(insecureResult.stderr, /must not enable FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS/);
+    assert.match(
+        insecureResult.stderr,
+        /must not enable FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS/,
+    );
 
     const authBypassWeb = makeR2Env("web");
     authBypassWeb.AUTH_DEV = "true";
@@ -284,9 +318,15 @@ test("live check reads separate API and worker Railway services with R2 only", (
     );
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.match(result.stdout, /Live split deployment readiness check passed/);
-    assert.match(result.stdout, /worker uses pnpm run worker with no HTTP health check/);
+    assert.match(
+        result.stdout,
+        /worker uses bun run worker with no HTTP health check/,
+    );
     assert.deepEqual(calls, ["api", "worker"]);
-    assert.doesNotMatch(result.stdout + result.stderr, /SUPABASE_(?:URL|SERVICE_ROLE_KEY|STORAGE_BUCKET)/);
+    assert.doesNotMatch(
+        result.stdout + result.stderr,
+        /SUPABASE_(?:URL|SERVICE_ROLE_KEY|STORAGE_BUCKET)/,
+    );
 });
 
 test("live check accepts consistent Supabase configuration", () => {
@@ -351,7 +391,10 @@ test("live check fails closed on malformed Railway JSON", () => {
             },
         });
         assert.notEqual(result.status, 0);
-        assert.match(result.stderr, /Railway API service returned malformed variable JSON/);
+        assert.match(
+            result.stderr,
+            /Railway API service returned malformed variable JSON/,
+        );
         assert.doesNotMatch(
             result.stdout + result.stderr,
             /synthetic-internal-token|synthetic-secret-never-print-this/,
@@ -364,13 +407,26 @@ test("live check rejects missing, mismatched, and insecure Railway values withou
     delete workerMissing.R2_SECRET_ACCESS_KEY;
     const missing = runLive(makeR2Env("api"), workerMissing, makeR2Env("web"));
     assert.notEqual(missing.result.status, 0);
-    assert.match(missing.result.stderr, /Railway worker service is missing R2_SECRET_ACCESS_KEY/);
-    assert.doesNotMatch(missing.result.stdout + missing.result.stderr, /synthetic-secret-never-print-this/);
+    assert.match(
+        missing.result.stderr,
+        /Railway worker service is missing R2_SECRET_ACCESS_KEY/,
+    );
+    assert.doesNotMatch(
+        missing.result.stdout + missing.result.stderr,
+        /synthetic-secret-never-print-this/,
+    );
 
     const workerMismatch = makeR2Env("api", "other-prefix");
-    const mismatch = runLive(makeR2Env("api"), workerMismatch, makeR2Env("web"));
+    const mismatch = runLive(
+        makeR2Env("api"),
+        workerMismatch,
+        makeR2Env("web"),
+    );
     assert.notEqual(mismatch.result.status, 0);
-    assert.match(mismatch.result.stderr, /Railway worker service R2_STORAGE_PREFIX does not match/);
+    assert.match(
+        mismatch.result.stderr,
+        /Railway worker service R2_STORAGE_PREFIX does not match/,
+    );
 
     const insecureApi = makeR2Env("api");
     insecureApi.FLASH_EVALS_API_START_WORKER = "true";
@@ -378,12 +434,20 @@ test("live check rejects missing, mismatched, and insecure Railway values withou
     const insecure = runLive(insecureApi, makeR2Env("api"), makeR2Env("web"));
     assert.notEqual(insecure.result.status, 0);
     assert.match(insecure.result.stderr, /FLASH_EVALS_API_START_WORKER=false/);
-    assert.match(insecure.result.stderr, /must not enable FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS/);
+    assert.match(
+        insecure.result.stderr,
+        /must not enable FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS/,
+    );
 });
 
 test("live check rejects a same-service API/worker topology", () => {
     return withTempDir((dir) => {
-        const fixture = makeLiveFixture(dir, makeR2Env("api"), makeR2Env("api"), makeR2Env("web"));
+        const fixture = makeLiveFixture(
+            dir,
+            makeR2Env("api"),
+            makeR2Env("api"),
+            makeR2Env("web"),
+        );
         const result = spawnSync("bash", [liveCheck], {
             cwd: root,
             encoding: "utf8",

@@ -70,6 +70,26 @@ if (providerFilter.has("soniox")) {
     );
 }
 
+// Opt-in only (STT_SMOKE_PROVIDERS=elevenlabs): not in the default list, so an
+// existing smoke command never starts a new paid provider.
+if (providerFilter.has("elevenlabs")) {
+    const modelId = process.env.STT_SMOKE_ELEVENLABS_MODEL || "scribe_v2";
+    results.push(
+        await runSmoke(
+            {
+                provider: "elevenlabs",
+                modelId,
+                capabilityId: `elevenlabs:${modelId}`,
+            },
+            () =>
+                smokeElevenLabs({
+                    modelId,
+                    apiKey: process.env.ELEVENLABS_API_KEY,
+                }),
+        ),
+    );
+}
+
 for (const result of results) {
     console.log(JSON.stringify(redactResult(result)));
 }
@@ -268,6 +288,43 @@ async function getSonioxTranscript({ apiKey, transcriptionId }) {
     return parsed;
 }
 
+async function smokeElevenLabs({ modelId, apiKey }) {
+    const provider = "elevenlabs";
+    if (!apiKey)
+        return skipped(provider, modelId, "ELEVENLABS_API_KEY is missing");
+
+    const audio = await loadAudio();
+    const form = new FormData();
+    form.append(
+        "file",
+        new Blob([new Uint8Array(audio)], { type: mimeType }),
+        "smoke",
+    );
+    form.append("model_id", modelId);
+    form.append("diarize", "true");
+    form.append("timestamps_granularity", "word");
+    form.append("tag_audio_events", "false");
+    const response = await fetch(
+        "https://api.elevenlabs.io/v1/speech-to-text",
+        {
+            method: "POST",
+            headers: { "xi-api-key": apiKey },
+            body: form,
+        },
+    );
+    const parsed = await parseResponse(response);
+    const text = textFrom(parsed);
+    return {
+        provider,
+        modelId,
+        capabilityId: `elevenlabs:${modelId}`,
+        ok: response.ok && Boolean(text),
+        status: response.status,
+        text,
+        error: response.ok ? undefined : errorText(parsed),
+    };
+}
+
 async function parseResponse(response) {
     const body = await response.text();
     if (!body) return {};
@@ -351,6 +408,8 @@ function errorText(value) {
     if (typeof value?.error?.message === "string") return value.error.message;
     if (typeof value?.message === "string") return value.message;
     if (typeof value?.error_message === "string") return value.error_message;
+    if (typeof value?.detail?.message === "string") return value.detail.message;
+    if (typeof value?.detail === "string") return value.detail;
     return JSON.stringify(value);
 }
 

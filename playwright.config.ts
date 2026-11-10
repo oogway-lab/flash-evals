@@ -28,13 +28,13 @@ export default defineConfig({
               // the port can be set. The API is faked by the tests in tests/e2e.
               command:
                   `node scripts/build-packages.mjs && node scripts/build-marketing.mjs && ` +
-                  `pnpm --filter @flash-evals/web exec next dev --hostname ${devHost} --port ${webPort}`,
+                  `cd apps/web && exec ./node_modules/.bin/next dev --hostname ${devHost} --port ${webPort}`,
               url: `${webBaseUrl}/api/health`,
               reuseExistingServer: false,
               timeout: 120_000,
-              // pnpm 12 runs `next dev` in its own process group, so the
-              // default SIGKILL to Playwright's group would orphan it and
-              // hang the run. pnpm forwards SIGTERM to its child.
+              // `exec` makes `next dev` the shell's process itself, so
+              // Playwright's SIGTERM reaches Next directly and it exits
+              // cleanly instead of being orphaned.
               gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
               env: {
                   FLASH_EVALS_PLAYWRIGHT: "app",
