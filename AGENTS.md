@@ -14,10 +14,16 @@
   assume a contributor uses the original maintainer's machine or tailnet.
 - Development authentication grants the synthetic user's access to anyone who
   can reach the private UI. Keep that access restricted to trusted peers.
-- Use `pnpm run dev` to start the complete app. It supplies the auth identity,
+- Bun (pinned in `packageManager`) installs dependencies and runs scripts;
+  the apps run on Node. Always write `bun run test` (with `run`): without it,
+  Bun starts its own test runner instead of the package's Vitest script.
+  `docs:check` enforces this. Use `bun run --cwd apps/api mcp:stdio`-style
+  commands when output must stay clean (MCP stdio, long-running servers):
+  `--filter` prefixes every output line with the package name.
+- Use `bun run dev` to start the complete app. It supplies the auth identity,
   CORS and browser configuration. If the optional Linux service is installed,
-  use `pnpm run dev:restart` / `dev:status` / `dev:logs`. Stop it with
-  `pnpm run dev:stop` before launching manually.
+  use `bun run dev:restart` / `dev:status` / `dev:logs`. Stop it with
+  `bun run dev:stop` before launching manually.
 - Prefer the bundled Docker Compose PostgreSQL for first-time development.
   Inspect the database and pending migrations before changing them. Preserve
   existing data and make a private paired database/media/config backup before
@@ -25,7 +31,7 @@
   database volumes without explicit authorization to reset data.
 - Keep existing provider/encryption secrets and cost guardrails. Never print
   secrets, commit them, or make paid provider calls during routine setup/checks.
-  Read-only MCP checks use `pnpm run smoke:mcp` and its `-- --stdio` option.
+  Read-only MCP checks use `bun run smoke:mcp` and its `-- --stdio` option.
 - API and worker code does not hot-reload. Restart the root launcher after
   backend/shared-package/env changes; it rebuilds shared packages. Web edits use
   Next.js fast refresh. Browser tests use separate ports and caches.

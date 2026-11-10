@@ -290,7 +290,7 @@ Tables are the main evidence surface in Flash Evals.
 
 ## Components
 
-Compose from `apps/web/components/ui/*` first. These are shadcn components on **Base UI** (`base-nova` style, `apps/web/components.json`), restyled to this spec. Add missing pieces with `pnpm dlx shadcn@latest add <component>` and restyle them; never duplicate a primitive under a page-specific name. Composition uses Base UI's `render` prop, not Radix `asChild`.
+Compose from `apps/web/components/ui/*` first. These are shadcn components on **Base UI** (`base-nova` style, `apps/web/components.json`), restyled to this spec. Add missing pieces with `bunx shadcn@latest add <component>` and restyle them; never duplicate a primitive under a page-specific name. Composition uses Base UI's `render` prop, not Radix `asChild`.
 
 - Badges are for status only (run status, pass/fail, reference model). Ordinary metadata (modality, type, version, counts) is plain text.
 - One status module (`status-badge.tsx`) owns every status-to-label/variant mapping (run, cell, transcript, branch, prompt, review verdict, key probe, import row, STT gate). A status badge always carries its text.

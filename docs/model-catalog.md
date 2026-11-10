@@ -20,6 +20,9 @@ catalog includes models with text input and text output, including vision models
 speech, embeddings, reranking, and image generation are excluded. Provider
 discovery still checks availability using the team's configured credentials.
 Bifrost remains specific to its configured endpoint and is not stored globally.
+Direct Anthropic and Gemini API routes are not discovered from a catalog: the
+registry lists each one by hand with its direct ID and the maker's list price,
+and only for models whose direct ID is confirmed in the maker's docs.
 
 Normalized prices retain published cache-read, cache-write, reasoning, and
 token-tier rates. These fields are also validated when persisted snapshots load,
@@ -63,7 +66,7 @@ Choose a Gemini 3.x model for the next demo run after deployment.
 To update the checked-in fallback independently of the database:
 
 ```sh
-pnpm models:refresh-snapshot
+bun run models:refresh-snapshot
 ```
 
 Review and commit the resulting JSON. This command fetches public metadata and

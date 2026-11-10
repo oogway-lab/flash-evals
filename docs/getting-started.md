@@ -12,7 +12,7 @@ model calls. Hosted deployment has [separate instructions](deployment.md).
 | Environment                     | Use this guide with…                                                                                                               |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | macOS or Linux laptop           | A local terminal and loopback browser URLs.                                                                                        |
-| Windows                         | A WSL2 Linux terminal; keep the checkout and Node/pnpm inside that environment.                                                    |
+| Windows                         | A WSL2 Linux terminal; keep the checkout and Node/Bun inside that environment.                                                     |
 | Linux VM or remote server       | The same setup, plus [private browser access](remote-development.md) before starting a UI.                                         |
 | Existing installation with data | [Update an existing checkout](development.md#update-an-existing-checkout); keep its environment, keys, data and migration history. |
 
@@ -25,7 +25,7 @@ initializing examples; cloning does not make an existing database disposable.
 | ---------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Git              | Clone and contribute                                    | Your operating system's Git package.                                                        |
 | Node.js          | **24.21.0**, pinned in [`.nvmrc`](../.nvmrc) and CI     | [Node downloads](https://nodejs.org/en/download); an existing Node version manager is fine. |
-| pnpm             | **12.6.0**, pinned in [`package.json`](../package.json) | [pnpm installation](https://pnpm.io/installation).                                          |
+| Bun              | **1.3.14**, pinned in [`package.json`](../package.json) | [Bun installation](https://bun.sh/docs/installation).                                       |
 | Docker + Compose | Running Engine and Compose v2 with `--wait` support     | [Docker installation options](https://docs.docker.com/compose/install/).                    |
 
 Docker Desktop includes Engine and Compose on macOS/Windows. Linux can use
@@ -48,24 +48,25 @@ If you use another Node manager or the official installer, select the version
 from `.nvmrc` and skip the two `nvm` commands. The package engine range permits
 other versions, but the pin gives the closest match to CI.
 
-If pnpm is absent, the official POSIX installer supports a pinned version:
+Bun is the package manager and script runner; the app itself still runs on
+Node. If Bun is absent, the official installer supports a pinned version:
 
 ```bash
-curl -fsSL https://get.pnpm.io/install.sh | env PNPM_VERSION=12.6.0 sh -
+curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
 ```
 
 Follow its shell/PATH instructions and reopen your terminal if requested. An
-existing Corepack-managed pnpm installation is also fine; check the version in
-the same terminal you will use for development:
+existing Bun installation also works if its version matches; check the versions
+in the same terminal you will use for development:
 
 ```bash
 node --version
-pnpm --version
+bun --version
 docker compose version
 docker info
 ```
 
-Expect the Node/pnpm pins above and a reachable Docker daemon. Start Docker
+Expect the Node/Bun pins above and a reachable Docker daemon. Start Docker
 Desktop or the Linux Docker service if `docker info` cannot connect. FFmpeg and
 Playwright Chromium are optional until you need audio or browser tests; see
 [development tools](development.md#optional-tools).
@@ -75,8 +76,8 @@ Playwright Chromium are optional until you need audio or browser tests; see
 Run all following commands from the repository root:
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm run setup:local
+bun install --frozen-lockfile
+bun run setup:local
 ```
 
 The setup command only creates `apps/api/.env` and `apps/web/.env`. It does not
@@ -122,9 +123,9 @@ For this confirmed new, disposable database:
 
 ```bash
 node scripts/build-packages.mjs
-pnpm run db:migrate
+bun run db:migrate
 # First initialization ONLY: resets application tables and cascading references.
-pnpm run seed
+bun run seed
 ```
 
 Migrations create the schema; seed creates the synthetic `dev@local` user, team,
@@ -146,7 +147,7 @@ database and storage paths; use foreground development for a custom database.
 ## 4. Start and verify
 
 ```bash
-pnpm run dev
+bun run dev
 ```
 
 | Process | Address                        | Expected behavior                                              |
@@ -162,7 +163,7 @@ not a benchmark. In another terminal:
 ```bash
 curl --fail http://127.0.0.1:3000/api/health
 curl --fail http://127.0.0.1:3001/health
-pnpm run worker:status
+bun run worker:status
 ```
 
 The web health endpoint checks that Next responds; the API checks its backend.
@@ -170,7 +171,7 @@ The worker-status command checks the database/queues, so also confirm the runnin
 worker's `worker.ready` log. None of these establish provider authentication or
 paid execution. For remote access, substitute your configured private URLs.
 
-`pnpm run dev` supplies the sign-in bypass and seeded identity, builds shared
+`bun run dev` supplies the sign-in bypass and seeded identity, builds shared
 packages, and starts all three processes. Starting Next directly does not supply
 those settings. Never expose this development account or local-upload bypass on
 a public interface.
@@ -188,7 +189,7 @@ On subsequent starts:
 
 ```bash
 docker compose up -d --wait postgres
-pnpm run dev
+bun run dev
 ```
 
 There is no need to rerun setup, migrations, or seed for an ordinary restart.
@@ -199,7 +200,7 @@ For code changes, tests, provider calls, MCP, or updates, continue with the
 
 | Symptom                                | What to check                                                                                                                               |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node/pnpm missing or wrong version     | Use the same shell/environment as your checkout; activate `.nvmrc` and pnpm 12.6.0. Reopen the shell after installing tools.                |
+| Node/Bun missing or wrong version      | Use the same shell/environment as your checkout; activate `.nvmrc` and Bun 1.3.14. Reopen the shell after installing tools.                 |
 | Dependency installation fails          | Keep the lockfile; use `--frozen-lockfile`, check network access and the pinned tools. Avoid running installation as root.                  |
 | Docker daemon or socket inaccessible   | Start Docker; on Linux configure Docker access for your user and reconnect. In WSL2 enable integration for that distribution.               |
 | Compose does not recognize `--wait`    | Install/update the Compose v2 plugin; the command is `docker compose`, not legacy `docker-compose`.                                         |
@@ -209,10 +210,10 @@ For code changes, tests, provider calls, MCP, or updates, continue with the
 | UI asks for Clerk or has no workspace  | Use the root launcher and confirm seed, API, web, and worker use the same intended database. Preserve existing data while investigating.    |
 | API cannot be reached from the browser | Browser `localhost` means the browser's machine. Follow the [VM access guide](remote-development.md).                                       |
 | Changes do not take effect             | Web uses fast refresh; restart the root launcher after API, worker, shared-package, or environment edits.                                   |
-| Run stays pending                      | Confirm the worker process/log, then run `pnpm run worker:status`. Health alone does not prove execution.                                   |
+| Run stays pending                      | Confirm the worker process/log, then run `bun run worker:status`. Health alone does not prove execution.                                    |
 | Audio preparation fails                | Install FFmpeg/FFprobe where the worker runs.                                                                                               |
 | MCP rejects a working UI's user        | MCP needs its own token/configuration; fresh development tenancy should be `isolated`. See the [MCP guide](mcp-eval-server.md#local-setup). |
 
-When reporting a setup issue, include OS/architecture, Node/pnpm/Compose versions,
+When reporting a setup issue, include OS/architecture, Node/Bun/Compose versions,
 the failing command, and redacted error output. Omit `.env` contents, tokens,
 provider keys, private data, and database dumps.

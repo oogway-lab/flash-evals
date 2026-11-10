@@ -2,9 +2,9 @@
 
 ## Catalog under test
 
-The MCP server reports `flash-evals-evals` version `0.1.0`. The complete current catalog contains 88 tools, 8 resource templates, and the `create_eval_happy_path` prompt. The original catalog had 78 tools; ten additional tools provide bounded summary and page readers for dataset items, datasets, eval runs, workflow runs, and workflow summaries. The full tool names, descriptions, input schemas, and effect annotations are snapshotted in `apps/api/src/mcp/__snapshots__/registry.test.ts.snap`.
+The MCP server reports `flash-evals-evals` version `0.1.0`. The complete current catalog contains 97 tools, 8 resource templates, and the `create_eval_happy_path` prompt. The original catalog had 78 tools; ten additional tools provide bounded summary and page readers for dataset items, datasets, eval runs, workflow runs, and workflow summaries, `propose_benchmark_task_map` drafts a Task Map for benchmark runs, `cancel_run` stops an eval run, `cancel_workflow_run` and `retry_workflow_run` stop, resume or retry a workflow run, and five tools create, read and cancel setup comparisons, list the pipelines one can include and list the eval runs a pipeline can be compared with. The full tool names, descriptions, input schemas, and effect annotations are snapshotted in `apps/api/src/mcp/__snapshots__/registry.test.ts.snap`.
 
-The transport matrix in `apps/api/src/mcp/toolCoverage.test.ts` registers every tool through the production registry and calls it through the MCP SDK's actual stdio and streamable HTTP transports. Domain payloads and paid-provider boundaries are mocked in this broad matrix so destructive calls only touch synthetic fixtures and provider calls never incur charges. It verifies a successful handler result for all 88 tools; malformed arguments are rejected for every tool with an input schema. The three no-input-schema tools (`list_workspaces`, `get_current_user`, `list_provider_keys`) have no meaningful schema-invalid case.
+The transport matrix in `apps/api/src/mcp/toolCoverage.test.ts` registers every tool through the production registry and calls it through the MCP SDK's actual stdio and streamable HTTP transports. Domain payloads and paid-provider boundaries are mocked in this broad matrix so destructive calls only touch synthetic fixtures and provider calls never incur charges. It verifies a successful handler result for all 97 tools; malformed arguments are rejected for every tool with an input schema. The three no-input-schema tools (`list_workspaces`, `get_current_user`, `list_provider_keys`) have no meaningful schema-invalid case.
 
 That matrix verifies transport, registration, input decoding, output-schema validation, and profile guards. It does not substitute for business-logic or persistence coverage. Those paths are separately tested against real Postgres or at route level, below.
 
@@ -56,6 +56,7 @@ That matrix verifies transport, registration, input decoding, output-schema vali
 | `optimize_prompt`                     | HTTP+stdio    | Invalid         | Read denied  |
 | `test_judge_draft`                    | HTTP+stdio    | Invalid         | Read denied  |
 | `generate_judge_for_run`              | HTTP+stdio    | Invalid         | Read denied  |
+| `propose_benchmark_task_map`          | HTTP+stdio    | Invalid         | Read denied  |
 | `create_judge_prompt`                 | HTTP+stdio    | Invalid         | Read denied  |
 | `duplicate_prompt_version`            | HTTP+stdio    | Invalid         | Read denied  |
 | `delete_prompt`                       | HTTP+stdio    | Invalid         | Read denied  |
@@ -69,6 +70,7 @@ That matrix verifies transport, registration, input decoding, output-schema vali
 | `save_run_note`                       | HTTP+stdio    | Invalid         | Read denied  |
 | `annotate_run_cell`                   | HTTP+stdio    | Invalid         | Read denied  |
 | `retry_run`                           | HTTP+stdio    | Invalid         | Read denied  |
+| `cancel_run`                          | HTTP+stdio    | Invalid         | Read denied  |
 | `delete_run`                          | HTTP+stdio    | Invalid         | Read denied  |
 | `list_provider_keys`                  | HTTP+stdio    | No input schema | Read allowed |
 | `set_provider_key`                    | HTTP+stdio    | Invalid         | Read denied  |
@@ -93,6 +95,8 @@ That matrix verifies transport, registration, input decoding, output-schema vali
 | `delete_workflow`                     | HTTP+stdio    | Invalid         | Read denied  |
 | `select_workflow_llm_model`           | HTTP+stdio    | Invalid         | Read denied  |
 | `create_workflow_run`                 | HTTP+stdio    | Invalid         | Read denied  |
+| `cancel_workflow_run`                 | HTTP+stdio    | Invalid         | Read denied  |
+| `retry_workflow_run`                  | HTTP+stdio    | Invalid         | Read denied  |
 | `list_workflow_runs`                  | HTTP+stdio    | Invalid         | Read allowed |
 | `list_workflow_run_summaries_page`    | HTTP+stdio    | Invalid         | Read allowed |
 | `list_workflow_summaries_page`        | HTTP+stdio    | Invalid         | Read allowed |
@@ -102,11 +106,16 @@ That matrix verifies transport, registration, input decoding, output-schema vali
 | `save_workflow_run_note`              | HTTP+stdio    | Invalid         | Read denied  |
 | `annotate_workflow_run_cell`          | HTTP+stdio    | Invalid         | Read denied  |
 | `get_workflow_run_progress`           | HTTP+stdio    | Invalid         | Read allowed |
+| `create_setup_comparison`             | HTTP+stdio    | Invalid         | Read denied  |
+| `get_setup_comparison`                | HTTP+stdio    | Invalid         | Read allowed |
+| `cancel_setup_comparison`             | HTTP+stdio    | Invalid         | Read denied  |
+| `list_setup_comparison_pipelines`     | HTTP+stdio    | Invalid         | Read allowed |
+| `list_pipeline_comparison_runs`       | HTTP+stdio    | Invalid         | Read allowed |
 
 ## Resources and prompt
 
-| Surface                  | HTTP         | stdio        | Evidence                                   |
-| ------------------------ | ------------ | ------------ | ------------------------------------------ |
+| Surface                       | HTTP         | stdio        | Evidence                                   |
+| ----------------------------- | ------------ | ------------ | ------------------------------------------ |
 | `flash-evals-dataset`         | Read success | Read success | Complete legacy detail resource            |
 | `flash-evals-prompt`          | Read success | Read success | Complete prompt detail resource            |
 | `flash-evals-run`             | Read success | Read success | Complete legacy run matrix resource        |
@@ -115,7 +124,7 @@ That matrix verifies transport, registration, input decoding, output-schema vali
 | `flash-evals-dataset-items`   | Read success | Read success | Bounded first page and completion metadata |
 | `flash-evals-run-summary`     | Read success | Read success | Compact summary with bounded-page link     |
 | `flash-evals-run-cells`       | Read success | Read success | Bounded first page and completion metadata |
-| `create_eval_happy_path` | Get success  | Get success  | Prompt content returned by both transports |
+| `create_eval_happy_path`      | Get success  | Get success  | Prompt content returned by both transports |
 
 Read-profile calls now positively exercise every independently listed read tool through both HTTP and stdio, alongside direct denials for every restricted tool. Eval-profile coverage checks a successful read and write plus an admin-only denial over both transports. Read-profile resource access is also exercised through stdio. Resource handlers use the authenticated project resolver; HTTP and stdio tests cover cross-tenant reads, protocol errors, and team/project ownership.
 
@@ -131,7 +140,7 @@ Successful tools retain the complete compact JSON text fallback alongside `struc
 | HTTP auth, compatibility, errors, and protocol            | `apps/api/src/mcp/http.test.ts`, plus the HTTP matrix above                                              | Real streamable HTTP transport; OAuth resolution is stubbed only in the exhaustive fixture matrix                                                                                                                       |
 | stdio registration and protocol                           | `apps/api/src/mcp/stdio.test.ts`, plus the stdio matrix above                                            | Real MCP `StdioServerTransport` and SDK client connected through in-memory byte streams                                                                                                                                 |
 
-The full workspace suite previously passed on the combined implementation and acceptance-test head (`pnpm test`: 174 files passed, 3 skipped; 1,273 passed, 5 skipped). The API Postgres integrations are opt-in and were skipped in that checkout because no `FLASH_EVALS_TEST_DATABASE_URL` was configured. The separate [real-backend acceptance ledger](mcp-real-backend-acceptance.md) records the 10/10 HTTP/Postgres scenarios, reader/idempotency integration results, and the exact distinction between HTTP/Postgres and stdio profile coverage. The final text-fallback compatibility regression has a dedicated >24,000-character test.
+The full workspace suite previously passed on the combined implementation and acceptance-test head (`bun run test`: 174 files passed, 3 skipped; 1,273 passed, 5 skipped). The API Postgres integrations are opt-in and were skipped in that checkout because no `FLASH_EVALS_TEST_DATABASE_URL` was configured. The separate [real-backend acceptance ledger](mcp-real-backend-acceptance.md) records the 10/10 HTTP/Postgres scenarios, reader/idempotency integration results, and the exact distinction between HTTP/Postgres and stdio profile coverage. The final text-fallback compatibility regression has a dedicated >24,000-character test.
 
 ## Catalog-size note
 

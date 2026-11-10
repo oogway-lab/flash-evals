@@ -31,7 +31,7 @@ publish local bearer tokens or put them in checked-in client configuration.
 First complete [Getting started](getting-started.md), including migrations and
 the synthetic examples. If your development data already exists, keep it: do
 not reseed to enable MCP. Keep the API, web app, and worker running with
-`pnpm run dev` (or the installed development service).
+`bun run dev` (or the installed development service).
 
 Fresh `setup:local` selects `FLASH_EVALS_TENANCY_MODE=isolated` in both env files.
 For an older local setup, check this mode and leave the allowed-email-domain
@@ -51,7 +51,7 @@ MCP admission configuration.
     FLASH_EVALS_MCP_TOKEN_PEPPER=replace-with-your-generated-value
     ```
 
-2. Stop and restart `pnpm run dev` to load the changes. Leave the OAuth settings
+2. Stop and restart `bun run dev` to load the changes. Leave the OAuth settings
    unset for this local fallback; a partial OAuth configuration can prevent the
    API from starting, and a complete OAuth configuration takes precedence over
    raw tokens on HTTP.
@@ -59,7 +59,7 @@ MCP admission configuration.
    development account:
 
     ```bash
-    pnpm --filter @flash-evals/api mcp:token:create -- --email dev@local --name "Local MCP"
+    bun run --filter @flash-evals/api mcp:token:create -- --email dev@local --name "Local MCP"
     ```
 
     The command prints `tokenId`, `userId`, `teamId`, and the full `token` once.
@@ -92,8 +92,8 @@ For the built-in HTTP and stdio smoke checks, save the token privately as
 `FLASH_EVALS_MCP_LOCAL_TOKEN` in `apps/api/.env` and run:
 
 ```bash
-pnpm run smoke:mcp
-pnpm run smoke:mcp -- --stdio
+bun run smoke:mcp
+bun run smoke:mcp -- --stdio
 ```
 
 These read existing workspace/project/dataset records and check missing/invalid
@@ -130,10 +130,12 @@ root. Build shared packages first if this is a fresh checkout:
 
 ```bash
 node scripts/build-packages.mjs
-pnpm --silent --filter @flash-evals/api mcp:stdio
+bun run --silent --cwd apps/api mcp:stdio
 ```
 
-`--silent` keeps pnpm's command banners off the stdio protocol stream.
+`--silent` keeps Bun's command echo off the stdio protocol stream. Use `--cwd`,
+not `--filter`: `--filter` prefixes every output line with the package name,
+which corrupts the protocol.
 The client process must inherit `FLASH_EVALS_MCP_LOCAL_TOKEN`, and the API environment
 file must enable `FLASH_EVALS_MCP_RAW_TOKEN_FALLBACK_ENABLED=true`. Configure the
 client's working directory as the repository root. The stdio server talks to the
@@ -143,7 +145,7 @@ for evaluations. It does not turn the server into an unauthenticated local tool.
 When finished, revoke the token by the ID printed during creation:
 
 ```bash
-pnpm --filter @flash-evals/api mcp:token:revoke -- --token-id YOUR_TOKEN_UUID
+bun run --filter @flash-evals/api mcp:token:revoke -- --token-id YOUR_TOKEN_UUID
 unset FLASH_EVALS_MCP_LOCAL_TOKEN
 ```
 
@@ -214,7 +216,9 @@ transport throughout. Review the selected provider before proceeding.
 
 For explicit provider selection, pass the same optional `transport` to each
 prompt operation you choose. Accepted values are `openai`, `gateway`,
-`openrouter`, and `bifrost`. Omitting it keeps the configured default. Use
+`openrouter`, `bifrost`, `anthropic`, and `google` (the last two call the
+maker's own API with a key saved in Settings). Omitting it keeps the configured
+default. Use
 `test_prompt_draft` or `validate_runnable_prompt` as separate exploratory checks
 only when useful; `create_runnable_prompt` validates again because it creates a
 new validation record for the saved version. Workflow routes provide explicit
@@ -293,6 +297,15 @@ passes:
 
 Keep the returned `promptVersionId` as `PROMPT_VERSION_UUID`. If validation
 fails, inspect its evidence and revise the prompt or schema before retrying.
+
+A version saved this way is "checked on a model": the passed check the
+validation recorded is attached to it. A version saved runnable through the
+direct REST endpoint (`POST /api/prompts/runnable`) without the
+`validationAttemptId` that `POST /api/prompts/validate-runnable` returns for
+the same content, schema and model is saved, but marked
+`"modelCheck": "not_checked"` in prompt details and lists and shown as
+"Runnable, not checked on a model" in the app instead of a plain "Runnable".
+Copies keep the source's mark.
 `create_runnable_prompt` calls the prompt text `content`; the standalone
 validation tool calls it `prompt`.
 
@@ -343,9 +356,54 @@ after dataset or prompt state changes. Reusing it for different input returns a
 conflict. Omitting it creates a new run on each call, so do not blindly repeat an
 unkeyed request after a timeout; inspect `list_runs` and the API logs first.
 
+To compare candidate models against a benchmark model task by task, set
+`referenceModel` to the benchmark and pass `benchmark` with a Task Map and, for
+judged tasks, a judge model. Every other model is scored against the benchmark's
+output for the same item; `get_run` then returns `benchmarkComparison`, with a
+pass, conditional, fail or inconclusive verdict per model against the optional
+`policy`. Set `benchmark.source` to `"labels"` to use the dataset's stored
+answers as the benchmark instead of a reference model; `relativeCost` and
+`relativeLatency` are still measured against the run's reference model when it
+has one. A task's own `source`
+overrides the run's, so one run can check a hand-checked field against the
+stored answers and the other tasks against the reference model; the reference
+model is then also scored on the stored-answer tasks. A reference model is
+required whenever any task uses `"model"`. `propose_benchmark_task_map` drafts the Task Map from a runnable prompt
+version for review; it saves nothing. A `rules` task checks each model's own
+answer with no yardstick; its `word_count` check (`min`, `max` or both) holds
+each field to a word limit. Put length limits there, not in a `head_to_head`
+rubric or `rubric` criteria: LLM judges miscount words. See
+[Concepts](../CONCEPTS.md#benchmark-comparison).
+
+`create_eval_run` takes an optional `maxCostUsd` spend limit. The worker stops
+starting cells once the run's recorded model and judge spend reaches it; calls
+already sent finish, so spend can end slightly over. The run then ends
+`cancelled` with `stopReason: "spend_cap"`.
+
+`create_eval_run` also takes an optional `dataPolicy` (`onlyHosts`,
+`zeroDataRetention`, `disallowPromptTraining`): which hosting companies may
+serve the run's model and judge calls and what they may keep, as the app's
+**Data rules** set it. Models must be on a route that can follow the rules, as
+for pipeline runs below.
+
+`create_eval_run` (and `create_setup_comparison`) also take an optional
+`itemFilter` to run on a labelled subset: `{ taskKey, equals }` keeps only the
+items whose stored answer for that benchmark task's field (a task comparing
+one field) equals the value, compared as text, trimmed and ignoring case; give
+`path` (e.g. `"$.call_type"`) instead of `taskKey` for a field outside the Task
+Map. Every model runs on the same items, the run snapshot records the filter
+with its resolved path, and the run page shows it. A filter no item matches is
+refused.
+
 `retry_run` retries failed work and also returns `runId` and `enqueueStatus`.
-It may make additional paid provider calls. There is no durable run-cancellation
-tool; disconnecting the MCP client does not stop a queued run.
+It may make additional paid provider calls. Retrying a cancelled run resumes
+it: the cells that did not run are run.
+
+`cancel_run` stops a pending or running eval run. The worker checks for the
+request before each cell: calls already sent finish, cells not started are left
+not run, and the run ends `cancelled`. A run no worker has started yet is
+cancelled at once. Disconnecting the MCP client does not stop a run; call
+`cancel_run`.
 
 ### Workflows
 
@@ -357,7 +415,12 @@ refresh your copy before submitting a whole-graph edit.
 
 Use `list_eval_context` and the workflow model tools to choose explicit model
 routing for model-backed nodes. A saved route version pins a provider/model
-configuration; a project default is resolved when the run is created.
+configuration; a project default is resolved when the run is created. The
+workflow transports are `openai`, `gateway`, `openrouter`, `bifrost`,
+`anthropic` and `google`; the last two call the maker's own API with the
+Anthropic or Gemini key saved in Settings, and
+`list_workflow_llm_provider_models` lists their models from the model registry
+without a request to the maker.
 
 `create_workflow_run` requires `projectId`, `workflowId`, `datasetId`,
 `runTarget` (`dataset` or `single_item`), and a non-empty `idempotencyKey`.
@@ -366,6 +429,71 @@ request and reuse it with the same input when retrying. A result with
 `enqueueStatus: "pending_enqueue"` identifies a durable run awaiting queue
 publication; preserve its `workflowRunId` rather than creating another run.
 Poll `get_workflow_run_progress` with the project, workflow, and workflow-run IDs.
+
+`create_workflow_run` also takes an optional `maxCostUsd` spend limit and an
+optional `dataPolicy` (`onlyHosts`, `zeroDataRetention`,
+`disallowPromptTraining`), as eval runs do. The limit counts step calls, the
+judge calls that score them and shared audio transcription; once reached, the
+worker starts no more steps and the run ends `cancelled` with
+`stopReason: "spend_cap"`. The data rules apply to every step and judge call
+of the run; the run is refused when a model-backed step uses an OpenAI route
+(it can't follow the rules), a Bifrost route whose model ID doesn't start
+with `openrouter/` (Bifrost sends it to another provider, which can't be
+limited), an OpenRouter route pinned to a host the rules don't allow, or an `anthropic` or `google` route under rules
+other than an `onlyHosts` list that names the maker.
+
+`create_workflow_run` also takes an optional `compareWithRunId`: a completed
+(or partial) eval run on the same dataset that has a benchmark Task Map. The
+pipeline needs a final answer. After the items' final answers are recorded,
+the worker scores each one against that run's reference model and stored
+answers with its Task Map, policy and judge, and `get_workflow_run` returns
+`comparison` (the verdict summary for the reference and the pipeline, cost per
+item, and the run's Task Map) and each answer's `benchmarkScore`,
+`benchmarkDetails` and `judgeCostUsd`. The judge follows the eval run's data
+rules; with the pipeline run's own `dataPolicy` too, it must satisfy both
+(hosts both allow; every retention and training rule either sets). Creation
+is refused when the pipeline has no final answer, the run is on another
+dataset, has not finished, has no Task Map, or the combined rules leave its
+judge no host. Judging counts toward `maxCostUsd`.
+
+`list_pipeline_comparison_runs` lists the eval runs `compareWithRunId` accepts
+(finished, with a Task Map), newest first, optionally on one `datasetId`.
+
+`cancel_workflow_run` stops a pending or running workflow run: calls already
+sent finish, steps not started are left not run, and the run ends `cancelled`.
+A pending run is cancelled at once. `retry_workflow_run` runs failed steps
+again, resumes a cancelled run, and queues again a pending run whose job is
+gone; it returns `requeued: false` (and queues nothing) while the run's job is
+still waiting. It may make additional paid provider calls.
+
+### Setup comparisons
+
+`create_setup_comparison` compares single models and saved pipelines with
+today's model in one call. It takes the fields of `create_eval_run` (the
+dataset, `referenceModel`, the other `modelIds`, prompt versions, `benchmark`
+with its Task Map, targets and judge, `dataPolicy`, `maxTokens`, `itemLimit`)
+plus `pipelineIds`: saved pipelines with a final answer that read the same
+dataset (`list_setup_comparison_pipelines` lists them with their steps and why
+one can't be compared). `referenceModel` and `benchmark` are required; pass
+only the reference in `modelIds` when every candidate is a pipeline.
+
+It creates one eval run (the reference and the single models) and one
+workflow run per pipeline compared with that eval run on its items, all in
+one transaction, and queues them. `maxCostUsd` is one spend limit for the
+whole comparison: every member's model, step and judge calls count toward it,
+and each member stops starting work once their total reaches it. Pipeline
+steps start straight away; their final answers are scored once the eval run
+has finished. `get_setup_comparison` returns the status (derived from the
+member runs), the shared spend and each member, with `waitingForEvalRun` on a
+pipeline whose answers wait for scoring and `waitingForWorker` on a run no
+worker has picked up. Its `ranking` has one row per setup (`kind`
+`reference`, `model` or `pipeline`) with the verdict summary, `accuracy` (the
+mean of the task results; the reference counts as 1 where it is the
+yardstick), `costPerCall`, `latencyMs`, `scoredItems`, `waitingItems`,
+`failedItems` and `notBeaten` (no other setup is at least as accurate and
+costs no more per call while being better on one). `cancel_setup_comparison` stops every member, as
+`cancel_run` and `cancel_workflow_run` do. Read each member's results with
+`get_run` and `get_workflow_run`.
 
 ## Resources and the setup prompt
 

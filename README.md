@@ -28,7 +28,7 @@ A **workflow** connects several steps when a single prompt is not enough.
 ## Run locally
 
 Flash Evals runs on macOS or Linux, and on Windows through WSL2. You need Git,
-Node.js **24.21.0** (the `.nvmrc`/CI pin), pnpm **12.6.0**, and a running Docker
+Node.js **24.21.0** (the `.nvmrc`/CI pin), Bun **1.3.14**, and a running Docker
 Engine with Compose v2. The application runs on your host; Docker runs PostgreSQL.
 No Clerk, Supabase, or model-provider account is needed for the synthetic examples.
 
@@ -38,14 +38,14 @@ For a **new, disposable development database**:
 git clone https://github.com/oogway-lab/flash-evals.git
 cd flash-evals
 # If you use nvm: nvm install && nvm use
-pnpm install --frozen-lockfile
-pnpm run setup:local
+bun install --frozen-lockfile
+bun run setup:local
 docker compose up -d --wait postgres
 node scripts/build-packages.mjs
-pnpm run db:migrate
+bun run db:migrate
 # First initialization ONLY: this resets application tables.
-pnpm run seed
-pnpm run dev
+bun run seed
+bun run dev
 ```
 
 Open <http://127.0.0.1:3000>. The command starts web, API, and worker together;
@@ -64,7 +64,7 @@ On subsequent days, run only:
 
 ```bash
 docker compose up -d --wait postgres
-pnpm run dev
+bun run dev
 ```
 
 Real provider calls require credentials and may incur charges. Setup and the
@@ -82,6 +82,7 @@ and $2 in recorded daily team spend; they are guardrails, not a prepaid balance.
 | Connect an agent or call the MCP server               | [MCP guide](docs/mcp-eval-server.md)                  |
 | Set provider keys, storage, authentication, or limits | [Configuration](docs/configuration.md)                |
 | Evaluate audio and transcripts                        | [Speech-to-text evaluations](docs/stt-evaluations.md) |
+| Chain prompt steps and compare them with one prompt   | [Pipelines](docs/pipelines.md)                        |
 | Understand runs, workflows, and model routing         | [Concepts](CONCEPTS.md)                               |
 | Change the code and run checks                        | [Contributing](CONTRIBUTING.md)                       |
 | Understand data isolation and security reporting      | [Security policy](SECURITY.md)                        |
