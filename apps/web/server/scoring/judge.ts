@@ -1,12 +1,15 @@
 import {
-    getEvalProvider,
+    completionCostFields,
     type ApiKeys,
+    type ICostPricing,
     type EvalImage,
     type EvalProviderTransport,
     type CompletionResult,
     type CompletionRequest,
     type ReasoningEffort,
+    type ICompletionDataPolicy,
 } from "@flash-evals/llm-core";
+import { getLimitedEvalProvider } from "../llm/providerConcurrency";
 import type { IJudgeCriterion, JudgeDeclaredInput } from "../db/jsonTypes";
 import { WORKFLOW_JUDGE_SCHEMA_NAME } from "@flash-evals/api-contract";
 import { errorMessage } from "../lib/errors";
@@ -113,9 +116,13 @@ export interface JudgeInput {
     declaredInputs?: JudgeDeclaredInput[];
     reasoningEffort?: ReasoningEffort;
     transport?: EvalProviderTransport;
+    /** The run's data rules, applied to the judge call too. */
+    dataPolicy?: ICompletionDataPolicy;
+    /** The judge model's prices, so the call's cost can be recorded. */
+    pricing?: ICostPricing;
 }
 
-export type JudgeOutcome =
+export type JudgeOutcome = (
     | {
           ok: true;
           score: number;
@@ -123,10 +130,14 @@ export type JudgeOutcome =
           criteria: IJudgeCriterion[];
           winner: JudgeWinner;
       }
-    | { ok: false; error: string };
+    | { ok: false; error: string }
+) & {
+    /** What the call cost, when the provider or the price list says. */
+    costUsd?: number;
+};
 
 export async function runJudge(input: JudgeInput): Promise<JudgeOutcome> {
-    const provider = getEvalProvider(
+    const provider = getLimitedEvalProvider(
         input.apiKeys,
         input.transport ? { transport: input.transport } : {},
     );
@@ -136,7 +147,12 @@ export async function runJudge(input: JudgeInput): Promise<JudgeOutcome> {
             model: input.judgeModelId,
             ...judgeCompletionRequest(input),
         });
-        return judgeOutcomeFromCompletion(result);
+        // A call that returns bad JSON was still paid for.
+        const { costUsd } = completionCostFields(result, input.pricing);
+        return {
+            ...judgeOutcomeFromCompletion(result),
+            ...(costUsd !== undefined ? { costUsd } : {}),
+        };
     } catch (err) {
         return {
             ok: false,
@@ -175,6 +191,7 @@ export function judgeCompletionRequest(
         );
 
     return {
+        ...(input.dataPolicy ? { dataPolicy: input.dataPolicy } : {}),
         system:
             "You are a strict evaluator. Score each rubric criterion independently " +
             "(reason first, then a 0-1 score), then give an overall 0-1 score. " +

@@ -98,8 +98,8 @@ function withinTolerance(
     tolerance: number,
     relative: boolean,
 ): boolean {
-    const a = Number(actual);
-    const e = Number(expected);
+    const a = parseNumber(actual);
+    const e = parseNumber(expected);
     if (Number.isNaN(a) || Number.isNaN(e)) return false;
     const diff = Math.abs(a - e);
     if (relative) {
@@ -107,6 +107,40 @@ function withinTolerance(
         return diff / Math.abs(e) <= tolerance;
     }
     return diff <= tolerance;
+}
+
+// "₹", "Rs.", "INR" or "$" before or after the number, any case.
+const CURRENCY = /^(?:₹|rs\.?|inr|\$)\s*|\s*(?:₹|rs\.?|inr|\$)$/giu;
+// Western (120,000) or Indian (1,20,000) digit grouping, nothing else:
+// "12,5" stays unparsed rather than becoming 125.
+const GROUPED =
+    /^\d{1,3}(?:,\d{3})+(?:\.\d+)?$|^\d{1,2}(?:,\d{2})*,\d{3}(?:\.\d+)?$/u;
+
+/** Spaces used between digit groups: "1 000", "1\u00a0000", "1\u202f000". */
+const GROUP_SPACE = /[ \u00a0\u202f]/gu;
+/** Plain decimal digits only: no hex, binary, octal, exponent or Infinity. */
+const PLAIN_NUMBER = /^(?:\d+(?:\.\d*)?|\.\d+)$/u;
+
+/**
+ * A number from a model answer: "1,20,000", "1 000", "₹50000",
+ * "Rs. 1,500.50" and "-$20" parse. Commas or spaces count only between
+ * valid digit groups ("12 5" and "12,5" stay unparsed rather than becoming
+ * 125), and only plain decimals are numbers ("0x10", "1e3" and "Infinity"
+ * are not). Words like "lakh" or "crore" are not understood.
+ */
+function parseNumber(value: unknown): number {
+    if (typeof value !== "string") return Number(value);
+    let text = value.trim();
+    const sign = /^[+-]/u.test(text) ? text[0]! : "";
+    text = text.slice(sign.length).trim().replace(CURRENCY, "");
+    const signAfterCurrency =
+        sign === "" && /^[+-]/u.test(text) ? text[0]! : "";
+    text = text.slice(signAfterCurrency.length).trim();
+    const spaced = text.replace(GROUP_SPACE, ",");
+    if (spaced !== text && !text.includes(",")) text = spaced;
+    if (GROUPED.test(text)) text = text.replace(/,/gu, "");
+    if (!PLAIN_NUMBER.test(text)) return Number.NaN;
+    return Number(`${sign}${signAfterCurrency}${text}`);
 }
 
 function toArray(v: unknown): unknown[] {

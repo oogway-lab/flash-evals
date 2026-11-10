@@ -3,7 +3,9 @@ import { PgBoss, type JobInsert } from "pg-boss";
 import {
     LEGACY_PG_BOSS_SCHEMA,
     PG_BOSS_SCHEMA,
+    RUN_JOB_OPTIONS,
     RUN_QUEUE,
+    WORKFLOW_RUN_JOB_OPTIONS,
     WORKFLOW_RUN_QUEUE,
     WORKFLOW_RUN_QUEUE_OPTIONS,
 } from "../server/jobs/queueNames";
@@ -60,7 +62,20 @@ function toInsert(job: ILegacyJob): JobInsert {
         startAfter: job.startAfter,
         expireInSeconds: job.expireInSeconds,
         ...(job.singletonKey ? { singletonKey: job.singletonKey } : {}),
+        ...currentJobOptions(job),
     };
+}
+
+/**
+ * Legacy jobs carry pg-boss's 15-minute expiry, which retries a long run
+ * while it is still running. Copies take the current expiry, and eval-run
+ * copies drop pg-boss retries like every new eval-run job.
+ */
+function currentJobOptions(job: ILegacyJob): Partial<JobInsert> {
+    if (job.name === RUN_QUEUE) return { ...RUN_JOB_OPTIONS };
+    if (job.name === WORKFLOW_RUN_QUEUE)
+        return { expireInSeconds: WORKFLOW_RUN_JOB_OPTIONS.expireInSeconds };
+    return {};
 }
 
 async function copyWaitingJobs(
@@ -166,7 +181,7 @@ async function main(): Promise<void> {
         await boss.start();
         const client = await pool.connect();
         try {
-            await boss.createQueue(RUN_QUEUE);
+            await boss.createQueue(RUN_QUEUE, RUN_JOB_OPTIONS);
             await boss.createQueue(
                 WORKFLOW_RUN_QUEUE,
                 WORKFLOW_RUN_QUEUE_OPTIONS,

@@ -103,7 +103,7 @@ describe("getEvalProvider", () => {
         expect(vercel.complete).not.toHaveBeenCalled();
     });
 
-    it("selects providers from FLASH_EVALS_LLM_PROVIDER", () => {
+    it("selects providers from FLASH_EVALS_LLM_PROVIDER", async () => {
         const openai = provider();
         const vercel = provider();
         const gateway = provider();
@@ -167,7 +167,7 @@ describe("getEvalProvider", () => {
         ).toBe(openrouter);
 
         process.env.FLASH_EVALS_LLM_PROVIDER = "bifrost";
-        expect(
+        await expect(
             getEvalProvider(
                 {
                     openai: "sk-test",
@@ -184,8 +184,12 @@ describe("getEvalProvider", () => {
                             ? bifrost
                             : provider(),
                 },
-            ),
-        ).toBe(bifrost);
+            ).complete({ model: "gpt-4o", prompt: "x", maxTokens: 5 }),
+        ).resolves.toBeUndefined();
+        // Bifrost gets the model's Bifrost id.
+        expect(bifrost.complete).toHaveBeenCalledWith(
+            expect.objectContaining({ model: "openai/gpt-4o" }),
+        );
     });
 
     it("throws on unknown FLASH_EVALS_LLM_PROVIDER values", () => {

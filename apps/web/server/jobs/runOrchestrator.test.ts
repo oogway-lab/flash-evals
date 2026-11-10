@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as LlmCore from "@flash-evals/llm-core";
-import type { CompletionRequest, CompletionResult } from "@flash-evals/llm-core";
+import type {
+    CompletionRequest,
+    CompletionResult,
+} from "@flash-evals/llm-core";
 import { getEvalProvider } from "@flash-evals/llm-core";
-import { executeCell } from "./runOrchestrator";
+import { cellProviderMetadata, executeCell } from "./runOrchestrator";
 
 vi.mock("@flash-evals/llm-core", async (importOriginal) => {
     const actual = await importOriginal<typeof LlmCore>();
@@ -99,6 +102,27 @@ describe("executeCell", () => {
         );
     });
 
+    it("sends the gateway's own id for a model listed under another provider's id", async () => {
+        providerComplete();
+
+        // OpenRouter's id; Vercel AI Gateway calls the same model "zai/glm-5.2".
+        await executeCell(
+            "z-ai/glm-5.2",
+            { prompt: "Return JSON.", maxTokens: 500 },
+            { gateway: "test-gateway-key" },
+            undefined,
+            "gateway",
+        );
+
+        expect(getEvalProvider).toHaveBeenCalledWith(
+            expect.objectContaining({ gateway: "test-gateway-key" }),
+            {
+                transport: "gateway",
+                exactTransportModelId: "zai/glm-5.2",
+            },
+        );
+    });
+
     it("omits reasoning effort when the run-model request has none", async () => {
         const complete = providerComplete();
 
@@ -135,6 +159,69 @@ describe("executeCell", () => {
         expect(result.providerMetadata).toEqual({
             gateway: { generationId: "gen_123" },
         });
+    });
+
+    it("keeps a Bifrost call's thinking outcome and thinking tokens", async () => {
+        const thinking = {
+            requested: "medium" as const,
+            sent: true,
+            via: "reasoning.effort=medium (passed to OpenRouter)",
+        };
+        vi.mocked(getEvalProvider).mockReturnValue({
+            complete: vi.fn(async () => ({
+                ...completion(),
+                providerMetadata: undefined,
+                usage: {
+                    promptTokens: 10,
+                    completionTokens: 50,
+                    reasoningTokens: 40,
+                },
+                thinking,
+            })),
+        });
+
+        const result = await executeCell(
+            "openrouter/acme/thinker-1",
+            {
+                prompt: "Return JSON.",
+                maxTokens: 500,
+                reasoningEffort: "medium",
+            },
+            { bifrost: "key", bifrostBaseUrl: "https://gateway.example.test" },
+            undefined,
+            "bifrost",
+        );
+
+        expect(result.providerMetadata).toEqual({
+            thinking,
+            reasoningTokens: 40,
+        });
+    });
+});
+
+describe("cellProviderMetadata", () => {
+    it("records a level that wasn't sent, and why", () => {
+        expect(
+            cellProviderMetadata(
+                {
+                    usage: {},
+                    thinking: {
+                        requested: "high",
+                        sent: false,
+                        reason: "No thinking setting for this route.",
+                    },
+                },
+                "registry_list_price",
+            ),
+        ).toEqual({
+            thinking: {
+                requested: "high",
+                sent: false,
+                reason: "No thinking setting for this route.",
+            },
+            costBasis: "registry_list_price",
+        });
+        expect(cellProviderMetadata({ usage: {} }, undefined)).toBeUndefined();
     });
 });
 

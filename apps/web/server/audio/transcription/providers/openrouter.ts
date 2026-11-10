@@ -3,9 +3,10 @@ import {
     openRouterAttributionHeaders,
     transcribeOpenRouterAudio,
 } from "@flash-evals/llm-core";
-import type {
-    ITranscriptArtifact,
-    ITranscriptionProviderInput,
+import {
+    EmptyTranscriptError,
+    type ITranscriptArtifact,
+    type ITranscriptionProviderInput,
 } from "../types";
 import {
     audioUploadForm,
@@ -100,11 +101,15 @@ export async function transcribeWithOpenRouter(
     if (!isRecord(parsed))
         throw new Error("OpenRouter returned an invalid response.");
     const text = stringProperty(parsed, "text")?.trim();
-    if (!text) throw new Error("OpenRouter transcription returned empty text.");
     const usage = openRouterUsage(parsed);
     const costUsd = isRecord(parsed.usage)
         ? numberProperty(parsed.usage, "cost")
         : undefined;
+    if (!text)
+        throw new EmptyTranscriptError(
+            "OpenRouter transcription returned empty text.",
+            { costUsd },
+        );
     return {
         text,
         segments: openRouterSegments(parsed),

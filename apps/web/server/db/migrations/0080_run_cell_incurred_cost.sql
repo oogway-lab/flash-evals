@@ -1,0 +1,1 @@
+ALTER TABLE "run_cells" ADD COLUMN "incurred_cost_usd" double precision;

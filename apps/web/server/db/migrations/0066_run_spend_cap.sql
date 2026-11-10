@@ -1,0 +1,2 @@
+ALTER TABLE "runs" DROP CONSTRAINT "runs_stop_reason_check";--> statement-breakpoint
+ALTER TABLE "runs" ADD CONSTRAINT "runs_stop_reason_check" CHECK ("runs"."stop_reason" is null or "runs"."stop_reason" in ('cancelled', 'spend_cap'));

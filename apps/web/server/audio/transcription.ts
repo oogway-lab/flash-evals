@@ -1,6 +1,7 @@
 import {
     invalidSttConfigMessagesForModelId,
     sttPayloadConfigFieldsForModelId,
+    sttCostUsdForDuration,
     sttModelSupportsLanguage,
     unsupportedSttConfigKeysForFields,
 } from "@flash-evals/api-contract";
@@ -10,16 +11,18 @@ import {
     executeTranscription,
 } from "./transcription/execute";
 import { sttExecutionPolicy } from "./transcription/policy";
+import { TranscriptionAttemptsError } from "./transcription/retry";
 import {
     readCachedTranscript,
     transcriptIdentity,
     writeCompletedTranscriptArtifact,
     writeFailedTranscriptArtifact,
 } from "./transcription/store";
-import type {
-    ITranscriptArtifact,
-    ITranscriptIdentity,
-    ITranscribeAudioInput,
+import {
+    EmptyTranscriptError,
+    type ITranscriptArtifact,
+    type ITranscriptIdentity,
+    type ITranscribeAudioInput,
 } from "./transcription/types";
 
 export type {
@@ -72,7 +75,9 @@ async function resolveAudioTranscriptArtifact(
     input: ITranscribeAudioInput,
 ): Promise<IResolvedTranscriptArtifact> {
     const language = normalizeLanguage(input.language);
-    const identity = transcriptIdentity(input.modelId, input.config);
+    const identity = transcriptIdentity(input.modelId, input.config, {
+        levelVolume: input.levelVolume,
+    });
     validateConfigForExecution(input.modelId, language, input.config, identity);
     const lookupStartedAt = Date.now();
     const cached = await readCachedTranscript({
@@ -112,6 +117,7 @@ async function resolveAudioTranscriptArtifact(
                 openaiApiKey: input.openaiApiKey,
                 aiGatewayApiKey: input.aiGatewayApiKey,
                 sonioxApiKey: input.sonioxApiKey,
+                elevenlabsApiKey: input.elevenlabsApiKey,
                 geminiApiKey: input.geminiApiKey,
                 openrouterApiKey: input.openrouterApiKey,
             },
@@ -119,6 +125,7 @@ async function resolveAudioTranscriptArtifact(
             bytes,
             mimeType: input.mimeType,
             policy: sttExecutionPolicy(identity),
+            ...(input.levelVolume === true ? { levelVolume: true } : {}),
             chunkStore: {
                 read: (storageKey) =>
                     readCachedTranscript({
@@ -142,6 +149,17 @@ async function resolveAudioTranscriptArtifact(
             },
         });
     } catch (error) {
+        // A billed reply with no text still costs: record it, then fail.
+        const empty = emptyTranscriptError(error);
+        if (empty)
+            await input.onCostIncurred?.(
+                empty.costUsd ??
+                    sttCostUsdForDuration(
+                        input.modelId,
+                        empty.durationMs,
+                        identity.configJson,
+                    ),
+            );
         await writeFailedTranscriptArtifact({
             ...persisted,
             storageKey: input.storageKey,
@@ -169,6 +187,14 @@ async function resolveAudioTranscriptArtifact(
         lookupLatencyMs,
         incurredCostUsd: metadata?.incurredCostUsd ?? metadata?.costUsd,
     };
+}
+
+function emptyTranscriptError(
+    error: unknown,
+): EmptyTranscriptError | undefined {
+    const cause =
+        error instanceof TranscriptionAttemptsError ? error.lastError : error;
+    return cause instanceof EmptyTranscriptError ? cause : undefined;
 }
 
 function validateConfigForExecution(
@@ -214,21 +240,32 @@ function validateCredentialsForExecution(
 ): void {
     if (identity.providerId === "vercel-gateway" && !input.aiGatewayApiKey) {
         throw new Error(
-            "Add AI_GATEWAY_API_KEY to run Vercel Gateway transcription.",
+            "Add your AI Gateway API key in Settings (or AI_GATEWAY_API_KEY in the app's .env) to run Vercel Gateway transcription.",
         );
     }
     if (identity.providerId === "soniox" && !input.sonioxApiKey) {
-        throw new Error("Add SONIOX_API_KEY to run Soniox transcription.");
+        throw new Error(
+            "Add your Soniox API key in Settings (or SONIOX_API_KEY in the app's .env) to run Soniox transcription.",
+        );
+    }
+    if (identity.providerId === "elevenlabs" && !input.elevenlabsApiKey) {
+        throw new Error(
+            "Add your ElevenLabs API key in Settings (or ELEVENLABS_API_KEY in the app's .env) to run ElevenLabs transcription.",
+        );
     }
     if (identity.providerId === "openai" && !input.openaiApiKey) {
-        throw new Error("Add OPENAI_API_KEY to run audio transcription.");
+        throw new Error(
+            "Add your OpenAI API key in Settings (or OPENAI_API_KEY in the app's .env) to run audio transcription.",
+        );
     }
     if (identity.providerId === "gemini" && !input.geminiApiKey) {
-        throw new Error("Add GEMINI_API_KEY to run Gemini transcription.");
+        throw new Error(
+            "Add your Gemini API key in Settings (or GEMINI_API_KEY in the app's .env) to run Gemini transcription.",
+        );
     }
     if (identity.providerId === "openrouter" && !input.openrouterApiKey) {
         throw new Error(
-            "Add OPENROUTER_API_KEY to run OpenRouter transcription.",
+            "Add your OpenRouter API key in Settings (or OPENROUTER_API_KEY in the app's .env) to run OpenRouter transcription.",
         );
     }
 }
@@ -240,6 +277,7 @@ function isExecutableModelId(
     if (
         identity.providerId === "vercel-gateway" ||
         identity.providerId === "soniox" ||
+        identity.providerId === "elevenlabs" ||
         identity.providerId === "gemini" ||
         identity.providerId === "openrouter"
     ) {

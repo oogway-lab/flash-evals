@@ -1,11 +1,23 @@
-import { PgBoss } from "pg-boss";
-import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { PgBoss, type JobWithMetadata } from "pg-boss";
+import { and, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { redactSecrets } from "@flash-evals/secrets";
 import { db } from "../db/client";
 import { runs, runCells } from "../db/schema";
 import { executeRun } from "../runs/executor";
+import { queueWaitingComparisonPipelines } from "./workflowRunQueue";
+import { errorMessage } from "../lib/errors";
 import { parseStaleClaimMs } from "./claimLease";
-import { logWorkerEvent, safeWorkerError } from "./workerObservability";
-import { PG_BOSS_SCHEMA, RUN_QUEUE } from "./queueNames";
+import {
+    acquireRunExecutionLease,
+    refreshRunExecutionLease,
+    releaseRunExecutionLease,
+} from "./runExecutionLease";
+import {
+    logQueueWarning,
+    logWorkerEvent,
+    safeWorkerError,
+} from "./workerObservability";
+import { PG_BOSS_SCHEMA, RUN_JOB_OPTIONS, RUN_QUEUE } from "./queueNames";
 
 export { RUN_QUEUE } from "./queueNames";
 
@@ -22,6 +34,12 @@ let startPromise: Promise<void> | undefined;
 let stopPromise: Promise<{ remainingInFlight: number }> | undefined;
 let activeJobs = 0;
 const staleClaimMs = parseStaleClaimMs(process.env.RUN_STALE_CLAIM_MS);
+/**
+ * How long a job that found the run busy waits before trying again. Short,
+ * so a Retry right after a pass ends is not held up by the stale window; a
+ * dead pass's lease is still taken over once it is stale.
+ */
+const BUSY_RETRY_SECONDS = 60;
 
 async function getBoss(): Promise<PgBoss> {
     if (!boss) {
@@ -38,16 +56,35 @@ async function getBoss(): Promise<PgBoss> {
                 ...safeWorkerError(error),
             });
         });
+        instance.on("warning", (warning) =>
+            logQueueWarning(RUN_QUEUE, warning),
+        );
         await instance.start();
-        await instance.createQueue(RUN_QUEUE);
+        await instance.createQueue(RUN_QUEUE, RUN_JOB_OPTIONS);
+        // createQueue leaves an existing queue's settings alone, so a queue
+        // created with pg-boss's defaults (15-minute expiry, 2 retries) is
+        // updated here too. Every send also carries the options.
+        await instance.updateQueue(RUN_QUEUE, RUN_JOB_OPTIONS);
         boss = instance;
     }
     return boss;
 }
 
-export async function enqueueRun(runId: string): Promise<void> {
+export async function enqueueRun(
+    runId: string,
+    options: { startAfterSeconds?: number } = {},
+): Promise<void> {
     const b = await getBoss();
-    await b.send(RUN_QUEUE, { runId });
+    await b.send(
+        RUN_QUEUE,
+        { runId },
+        {
+            ...RUN_JOB_OPTIONS,
+            ...(options.startAfterSeconds
+                ? { startAfter: options.startAfterSeconds }
+                : {}),
+        },
+    );
 }
 
 export function startRunWorker(): Promise<void> {
@@ -64,40 +101,7 @@ export function startRunWorker(): Promise<void> {
             RUN_QUEUE,
             { includeMetadata: true },
             async (jobs) => {
-                for (const job of jobs) {
-                    const startedAt = Date.now();
-                    activeJobs += 1;
-                    logWorkerEvent("info", "job.started", {
-                        queue: RUN_QUEUE,
-                        runId: job.data.runId,
-                        jobId: job.id,
-                        retryCount: job.retryCount,
-                        retryLimit: job.retryLimit,
-                    });
-                    const heartbeat = startClaimHeartbeat(job.data.runId);
-                    try {
-                        await executeRun(job.data.runId);
-                        logWorkerEvent("info", "job.completed", {
-                            queue: RUN_QUEUE,
-                            runId: job.data.runId,
-                            jobId: job.id,
-                            durationMs: Date.now() - startedAt,
-                        });
-                    } catch (error) {
-                        logWorkerEvent("error", "job.failed", {
-                            queue: RUN_QUEUE,
-                            runId: job.data.runId,
-                            jobId: job.id,
-                            retryCount: job.retryCount,
-                            retryLimit: job.retryLimit,
-                            durationMs: Date.now() - startedAt,
-                            ...safeWorkerError(error),
-                        });
-                    } finally {
-                        clearInterval(heartbeat);
-                        activeJobs -= 1;
-                    }
-                }
+                for (const job of jobs) await handleRunJob(job);
             },
         );
         if (stopping) {
@@ -111,6 +115,107 @@ export function startRunWorker(): Promise<void> {
         throw error;
     });
     return startPromise;
+}
+
+async function handleRunJob(job: JobWithMetadata<RunJob>): Promise<void> {
+    const runId = job.data.runId;
+    const leaseId = await acquireRunExecutionLease(runId, staleClaimMs);
+    if (!leaseId) {
+        // Another pass is executing this run (or just finishing). Check again
+        // shortly; a run whose worker died is resumed once its lease is stale.
+        logWorkerEvent("warn", "job.deferred_run_busy", {
+            queue: RUN_QUEUE,
+            runId,
+            jobId: job.id,
+        });
+        await enqueueRun(runId, {
+            startAfterSeconds: Math.min(
+                BUSY_RETRY_SECONDS,
+                Math.ceil(staleClaimMs / 1000),
+            ),
+        });
+        return;
+    }
+    const startedAt = Date.now();
+    activeJobs += 1;
+    logWorkerEvent("info", "job.started", {
+        queue: RUN_QUEUE,
+        runId,
+        jobId: job.id,
+        retryCount: job.retryCount,
+        retryLimit: job.retryLimit,
+    });
+    const lease = { lost: false };
+    const heartbeat = startClaimHeartbeat(runId, leaseId, lease);
+    try {
+        await executeRun(runId, { leaseLost: () => lease.lost });
+        logWorkerEvent("info", "job.completed", {
+            queue: RUN_QUEUE,
+            runId,
+            jobId: job.id,
+            durationMs: Date.now() - startedAt,
+        });
+    } catch (error) {
+        logWorkerEvent("error", "job.failed", {
+            queue: RUN_QUEUE,
+            runId,
+            jobId: job.id,
+            retryCount: job.retryCount,
+            retryLimit: job.retryLimit,
+            durationMs: Date.now() - startedAt,
+            ...safeWorkerError(error),
+        });
+        await failRunThatNeverStarted(runId, error).catch((markError) =>
+            logWorkerEvent("error", "run.failure_persist_failed", {
+                queue: RUN_QUEUE,
+                runId,
+                ...safeWorkerError(markError),
+            }),
+        );
+    } finally {
+        clearInterval(heartbeat);
+        // Released first, so a Retry queued as the pass ends is not deferred.
+        await releaseRunExecutionLease(runId, leaseId).catch((error) =>
+            logWorkerEvent("error", "run_lease.release_failed", {
+                queue: RUN_QUEUE,
+                runId,
+                ...safeWorkerError(error),
+            }),
+        );
+        // A setup comparison's pipeline runs score their answers once this
+        // eval run has finished.
+        await queueWaitingComparisonPipelines(runId).catch((error: unknown) =>
+            logWorkerEvent("error", "comparison.queue_pipelines_failed", {
+                queue: RUN_QUEUE,
+                runId,
+                ...safeWorkerError(error),
+            }),
+        );
+        activeJobs -= 1;
+    }
+}
+
+const MAX_RUN_ERROR_CHARS = 1_000;
+
+/**
+ * A run whose pass failed before it started any cell (still pending: the
+ * worker sets it running only once setup is done) would otherwise stay
+ * pending forever with its job completed. It is marked failed with the
+ * redacted error, so the app shows why and offers Retry. A run that did
+ * start is left to stale-claim recovery.
+ */
+export async function failRunThatNeverStarted(
+    runId: string,
+    error: unknown,
+): Promise<void> {
+    const message = redactSecrets(errorMessage(error)).slice(
+        0,
+        MAX_RUN_ERROR_CHARS,
+    );
+    await db
+        .update(runs)
+        .set({ status: "failed", error: message })
+        .where(and(eq(runs.id, runId), eq(runs.status, "pending")));
 }
 
 function startRecoverySweep(): void {
@@ -183,9 +288,32 @@ export async function stopRunWorker(
     return stopPromise;
 }
 
-function startClaimHeartbeat(runId: string): ReturnType<typeof setInterval> {
+function startClaimHeartbeat(
+    runId: string,
+    leaseId: string,
+    lease: { lost: boolean },
+): ReturnType<typeof setInterval> {
     const timer = setInterval(
         () => {
+            if (lease.lost) return;
+            void refreshRunExecutionLease(runId, leaseId)
+                .then((held) => {
+                    if (held) return;
+                    // Another pass took the run over: this one stops
+                    // starting cells and leaves the run to it.
+                    lease.lost = true;
+                    logWorkerEvent("warn", "run_lease.lost", {
+                        queue: RUN_QUEUE,
+                        runId,
+                    });
+                })
+                .catch((error) =>
+                    logWorkerEvent("error", "run_lease.heartbeat_failed", {
+                        queue: RUN_QUEUE,
+                        runId,
+                        ...safeWorkerError(error),
+                    }),
+                );
             void db
                 .update(runCells)
                 .set({ claimedAt: new Date() })
@@ -207,6 +335,7 @@ function startClaimHeartbeat(runId: string): ReturnType<typeof setInterval> {
 export async function recoverOrphanedRuns(nowMs = Date.now()): Promise<void> {
     if (stopping) return;
     const cutoff = new Date(nowMs - staleClaimMs);
+    await recoverRunsStuckInSetup(cutoff);
     const rows = await db
         .select({
             id: runs.id,
@@ -245,6 +374,36 @@ export async function recoverOrphanedRuns(nowMs = Date.now()): Promise<void> {
         queue: RUN_QUEUE,
         recoveredCount: ids.length,
     });
+}
+
+/**
+ * A pending run whose pass died during setup (before it set the run
+ * running) keeps a lease no heartbeat refreshes, and its pg-boss job stays
+ * active until it expires. Its stale lease is cleared and the run queued
+ * again.
+ */
+async function recoverRunsStuckInSetup(cutoff: Date): Promise<void> {
+    const stuck = await db
+        .update(runs)
+        .set({ executionLeaseId: null, executionLeaseAt: null })
+        .where(
+            and(
+                eq(runs.status, "pending"),
+                isNotNull(runs.executionLeaseId),
+                or(
+                    isNull(runs.executionLeaseAt),
+                    lt(runs.executionLeaseAt, cutoff),
+                ),
+            ),
+        )
+        .returning({ id: runs.id });
+    for (const { id } of stuck) await enqueueRun(id);
+    if (stuck.length > 0)
+        logWorkerEvent("warn", "recovery.completed", {
+            queue: RUN_QUEUE,
+            phase: "setup",
+            recoveredCount: stuck.length,
+        });
 }
 
 function shouldRecoverRun(

@@ -1,3 +1,4 @@
+import { VOLUME_LEVELLING_FILTER } from "@flash-evals/llm-core/transcript-identity";
 import { spawn } from "child_process";
 import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
@@ -40,6 +41,19 @@ function toolTimeoutMs(): number {
         10,
     );
     return Number.isSafeInteger(parsed) && parsed >= 5_000 ? parsed : 120_000;
+}
+
+/**
+ * Time limit for levelling, which reads and re-encodes the whole recording
+ * in one pass: the usual step limit, or a fifth of the audio's length when
+ * that is longer (loudnorm runs many times faster than real time, so this
+ * only stops a stuck process). A long call no longer hits the 120 s default.
+ */
+export function levellingTimeoutMs(durationMs: number | undefined): number {
+    const base = toolTimeoutMs();
+    return durationMs !== undefined && Number.isFinite(durationMs)
+        ? Math.max(base, Math.ceil(durationMs / 5))
+        : base;
 }
 
 function prepConcurrency(): number {
@@ -89,6 +103,7 @@ function runTool(
     command: string,
     toolName: string,
     args: string[],
+    timeoutMs: number = toolTimeoutMs(),
 ): Promise<{ stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
         const child = spawn(command, args, {
@@ -110,10 +125,10 @@ function runTool(
             child.kill("SIGKILL");
             reject(
                 new Error(
-                    `${toolName} audio preparation exceeded ${toolTimeoutMs()} ms.`,
+                    `${toolName} audio preparation exceeded ${timeoutMs} ms.`,
                 ),
             );
-        }, toolTimeoutMs());
+        }, timeoutMs);
         child.on("error", (error: NodeJS.ErrnoException) => {
             clearTimeout(timeout);
             reject(
@@ -224,9 +239,86 @@ export function parseSilenceDetect(
 export const PREPARED_AUDIO_BITRATE_BPS = 48_000;
 
 /**
+ * Container for the levelled copy. Both hold the same 16 kHz mono 16-bit
+ * samples (FLAC is lossless and decodes to the same PCM) but FLAC is smaller,
+ * so it is used wherever the provider route accepts it. WAV stays for routes
+ * that only take WAV or MP3.
+ */
+export type LevelledAudioFormat = "flac" | "wav";
+
+export const LEVELLED_AUDIO_OUTPUTS: Record<
+    LevelledAudioFormat,
+    { mimeType: string; fileName: string; codecArgs: string[] }
+> = {
+    flac: {
+        mimeType: "audio/flac",
+        fileName: "levelled.flac",
+        codecArgs: ["-c:a", "flac", "-sample_fmt", "s16", "-f", "flac"],
+    },
+    wav: {
+        mimeType: "audio/wav",
+        fileName: "levelled.wav",
+        codecArgs: ["-c:a", "pcm_s16le", "-f", "wav"],
+    },
+};
+
+/**
+ * FFmpeg arguments that level a recording to a standard loudness and write it
+ * as 16 kHz mono 16-bit FLAC or WAV. Quiet recordings can otherwise make some
+ * providers misdetect the language or return empty text.
+ */
+export function volumeLevellingArgs(
+    inputPath: string,
+    outputPath: string,
+    format: LevelledAudioFormat,
+): string[] {
+    return [
+        "-hide_banner",
+        "-nostats",
+        "-loglevel",
+        "error",
+        "-threads",
+        "1",
+        "-i",
+        inputPath,
+        "-vn",
+        "-af",
+        VOLUME_LEVELLING_FILTER,
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        ...LEVELLED_AUDIO_OUTPUTS[format].codecArgs,
+        "-y",
+        outputPath,
+    ];
+}
+
+/** Write the levelled copy next to the source and return its path. */
+export async function levelVolume(
+    workspace: { dir: string; inputPath: string },
+    format: LevelledAudioFormat,
+    /** Length of the recording, so a long one gets a longer time limit. */
+    durationMs?: number,
+): Promise<string> {
+    const outputPath = join(
+        workspace.dir,
+        LEVELLED_AUDIO_OUTPUTS[format].fileName,
+    );
+    await runTool(
+        ffmpegPath(),
+        "FFmpeg",
+        volumeLevellingArgs(workspace.inputPath, outputPath, format),
+        levellingTimeoutMs(durationMs),
+    );
+    return outputPath;
+}
+
+/**
  * Encode a span as mono 16 kHz MP3. Speech models resample to 16 kHz mono, so
  * this keeps the content the model hears while bounding payload size. No
- * denoising or loudness filters are applied.
+ * denoising or loudness filters are applied here; levelling, when asked for,
+ * has already been applied to the input.
  */
 export async function encodeSpeechMp3(
     workspace: { dir: string; inputPath: string },

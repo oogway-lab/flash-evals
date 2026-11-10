@@ -1,0 +1,1 @@
+ALTER TYPE "public"."prompt_validation_status" ADD VALUE 'unchecked';

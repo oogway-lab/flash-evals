@@ -380,13 +380,18 @@ const DECIMAL_PLACEHOLDER = "\uE000";
 
 export function normalizeTranscript(text: string): string {
     const plainText = text
+        // One form for nukta letters and accents ("क़" typed as one code
+        // point or as क + ़); joiners only shape a word, so drop them rather
+        // than letting them split it.
+        .normalize("NFC")
+        .replace(/[\u200c\u200d]/g, "")
         .toLowerCase()
         .replace(/[’`']/g, "'")
         // Protect digit-internal decimals so "2.5" / "2,5" survive punctuation
         // stripping as "2.5" instead of being split into "2 5".
         .replace(/(\d)[.,](\d)/g, `$1${DECIMAL_PLACEHOLDER}$2`)
         .replace(
-            new RegExp(`[^\\p{L}\\p{N}'\\s${DECIMAL_PLACEHOLDER}]`, "gu"),
+            new RegExp(`[^\\p{L}\\p{M}\\p{N}'\\s${DECIMAL_PLACEHOLDER}]`, "gu"),
             " ",
         )
         .replace(new RegExp(DECIMAL_PLACEHOLDER, "g"), ".")

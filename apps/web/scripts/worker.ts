@@ -5,6 +5,7 @@ import {
 import { closeDatabasePool } from "../server/db/client";
 import { ensureModelCatalog } from "../server/llm/catalog";
 import { startRunWorker, stopRunWorker } from "../server/jobs/runQueue";
+import { warnAboutProviderConcurrency } from "../server/llm/providerConcurrency";
 import {
     startWorkflowRunWorker,
     stopWorkflowRunWorker,
@@ -36,6 +37,7 @@ const drainTimeoutMs = parseDrainTimeoutMs(
 
 async function main(): Promise<void> {
     logWorkerEvent("info", "worker.starting");
+    warnAboutProviderConcurrency();
     // Install persisted catalog metadata before claiming any run jobs.
     await ensureModelCatalog();
     await startRunWorker();

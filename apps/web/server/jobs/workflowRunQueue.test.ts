@@ -1,3 +1,5 @@
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -11,7 +13,20 @@ const mocks = vi.hoisted(() => ({
     selectGate: undefined as Promise<Array<{ id: string }>> | undefined,
     selectStarted: vi.fn(),
     executeWorkflowRun: vi.fn(),
+    /** Rows a "still pending" update returns: the run never started. */
+    pendingRows: [] as Array<{ id: string }>,
+    /** Pipeline runs waiting for their comparison's finished eval run. */
+    waitingRuns: [] as Array<{ id: string }>,
+    /** The join condition of the waiting-pipelines query. */
+    waitingJoin: undefined as unknown,
 }));
+
+function tableName(table: object): string | undefined {
+    const symbol = Object.getOwnPropertySymbols(table).find(
+        (candidate) => candidate.toString() === "Symbol(drizzle:Name)",
+    );
+    return symbol ? (table as Record<symbol, string>)[symbol] : undefined;
+}
 
 vi.mock("pg-boss", () => ({
     PgBoss: class PgBossMock {
@@ -33,8 +48,14 @@ vi.mock("../db/client", () => ({
     db: {
         selectDistinct: vi.fn(() => ({
             from: vi.fn(() => ({
-                innerJoin: vi.fn(() => ({
+                innerJoin: vi.fn((table: object, on: unknown) => ({
                     where: vi.fn(async () => {
+                        // The comparison query joins eval runs; the stale
+                        // claim query joins cells.
+                        if (tableName(table) === "runs") {
+                            mocks.waitingJoin = on;
+                            return mocks.waitingRuns;
+                        }
                         mocks.selectStarted();
                         if (mocks.selectGate) return await mocks.selectGate;
                         return mocks.staleRuns;
@@ -45,7 +66,13 @@ vi.mock("../db/client", () => ({
         update: vi.fn(() => ({
             set: vi.fn((payload: Record<string, unknown>) => {
                 mocks.updatePayloads.push(payload);
-                return { where: vi.fn(async () => undefined) };
+                return {
+                    where: vi.fn(() =>
+                        Object.assign(Promise.resolve(undefined), {
+                            returning: vi.fn(async () => mocks.pendingRows),
+                        }),
+                    ),
+                };
             }),
         })),
     },
@@ -65,6 +92,7 @@ vi.mock("../workflowRuns/executor", () => ({
 
 import {
     enqueueWorkflowRun,
+    queueWaitingComparisonPipelines,
     recoverOrphanedWorkflowRuns,
     startWorkflowRunWorker,
     stopWorkflowRunWorker,
@@ -75,6 +103,7 @@ describe("workflow run queue", () => {
         vi.useRealTimers();
         process.env.DATABASE_URL = "postgres://test";
         mocks.staleRuns = [];
+        mocks.waitingRuns = [];
         mocks.updatePayloads.length = 0;
         mocks.send.mockReset();
         mocks.work.mockReset();
@@ -83,6 +112,7 @@ describe("workflow run queue", () => {
         mocks.selectGate = undefined;
         mocks.selectStarted.mockReset();
         mocks.executeWorkflowRun.mockReset();
+        mocks.pendingRows = [];
     });
 
     it("enqueues bounded retries with backoff", async () => {
@@ -92,6 +122,7 @@ describe("workflow run queue", () => {
             "workflow-run",
             { workflowRunId: "run-1" },
             {
+                expireInSeconds: 86_400,
                 retryLimit: 3,
                 retryBackoff: true,
                 singletonKey: "run-1",
@@ -112,6 +143,44 @@ describe("workflow run queue", () => {
         expect(mocks.send).toHaveBeenCalledWith(
             "workflow-run",
             { workflowRunId: "run-1" },
+            expect.any(Object),
+        );
+    });
+
+    it("queues comparison pipeline runs once their eval run has finished", async () => {
+        mocks.waitingRuns = [{ id: "pipeline-run-1" }];
+
+        await expect(
+            queueWaitingComparisonPipelines("eval-run-1"),
+        ).resolves.toBe(1);
+
+        expect(mocks.send).toHaveBeenCalledWith(
+            "workflow-run",
+            { workflowRunId: "pipeline-run-1" },
+            expect.objectContaining({ singletonKey: "pipeline-run-1" }),
+        );
+        // Their status is left alone: the next pass scores and ends them.
+        expect(mocks.updatePayloads).toEqual([]);
+    });
+
+    it("finds waiting pipeline runs by the eval run they compare with, in a setup comparison or not", async () => {
+        await queueWaitingComparisonPipelines("eval-run-1");
+
+        const { sql } = new PgDialect().sqlToQuery(mocks.waitingJoin as SQL);
+        expect(sql).toContain(
+            `"runs"."id"::text = "workflow_runs"."config_snapshot" #>> '{comparison,runId}'`,
+        );
+        expect(sql).not.toContain("setup_comparison_id");
+    });
+
+    it("recovery also queues comparison pipeline runs left waiting", async () => {
+        mocks.waitingRuns = [{ id: "pipeline-run-1" }];
+
+        await recoverOrphanedWorkflowRuns();
+
+        expect(mocks.send).toHaveBeenCalledWith(
+            "workflow-run",
+            { workflowRunId: "pipeline-run-1" },
             expect.any(Object),
         );
     });
@@ -227,5 +296,57 @@ describe("workflow run queue", () => {
         );
         expect(mocks.bossConstructions).toBe(constructionCount + 1);
         expect(mocks.stop).toHaveBeenCalledOnce();
+    });
+
+    it("fails a run whose setup threw with the redacted error, without retrying it", async () => {
+        let handler: ((jobs: Array<any>) => Promise<void>) | undefined;
+        mocks.work.mockImplementation(async (_queue, _options, callback) => {
+            handler = callback;
+        });
+        mocks.pendingRows = [{ id: "run-1" }];
+        mocks.executeWorkflowRun.mockRejectedValue(
+            new Error(
+                "Provider key sk-abcdefghijklmnopqrstuvwxyz123456 is invalid",
+            ),
+        );
+        await startWorkflowRunWorker();
+
+        await expect(
+            handler?.([
+                {
+                    data: { workflowRunId: "run-1" },
+                    retryCount: 0,
+                    retryLimit: 3,
+                },
+            ]),
+        ).resolves.toBeUndefined();
+
+        const failed = mocks.updatePayloads.find(
+            (payload) => payload.status === "failed",
+        );
+        expect(failed?.error).toEqual(expect.stringContaining("is invalid"));
+        expect(failed?.error).not.toContain("abcdefghijklmnopqrstuvwxyz");
+        await stopWorkflowRunWorker(1_000);
+    });
+
+    it("leaves a run that had started to the job's retries", async () => {
+        let handler: ((jobs: Array<any>) => Promise<void>) | undefined;
+        mocks.work.mockImplementation(async (_queue, _options, callback) => {
+            handler = callback;
+        });
+        mocks.pendingRows = [];
+        mocks.executeWorkflowRun.mockRejectedValue(new Error("step failed"));
+        await startWorkflowRunWorker();
+
+        await expect(
+            handler?.([
+                {
+                    data: { workflowRunId: "run-1" },
+                    retryCount: 0,
+                    retryLimit: 3,
+                },
+            ]),
+        ).rejects.toThrow("step failed");
+        await stopWorkflowRunWorker(1_000);
     });
 });

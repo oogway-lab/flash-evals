@@ -1,21 +1,46 @@
+import { readFile } from "fs/promises";
+import {
+    VOLUME_LEVELLING_FILTER,
+    VOLUME_LEVELLING_VERSION,
+} from "@flash-evals/llm-core/transcript-identity";
 import {
     AudioToolUnavailableError,
     detectSilences,
+    LEVELLED_AUDIO_OUTPUTS,
+    PREPARED_AUDIO_BITRATE_BPS,
     encodeSpeechMp3,
+    levelVolume,
     probeAudio,
     withAudioWorkspace,
     withHeavyAudioSlot,
     type IAudioProbe,
+    type LevelledAudioFormat,
 } from "./ffmpeg";
 import { planChunkSpans, type IChunkSpan } from "./plan";
 
-export { PREPARED_AUDIO_BITRATE_BPS } from "./ffmpeg";
+export { PREPARED_AUDIO_BITRATE_BPS, type LevelledAudioFormat } from "./ffmpeg";
 
 /**
  * Bump when the encoding or chunking changes so transcripts made from older
  * prepared audio are not reused. Untransformed audio never carries a version.
  */
 export const AUDIO_PREPARATION_VERSION = "speech-mp3-16k-mono-48k.v1";
+
+/**
+ * Preparation version of audio levelled before transcription. v2 writes FLAC
+ * for routes that accept it (v1 wrote WAV everywhere), so chunks prepared
+ * under v1 are not reused. VOLUME_LEVELLING_VERSION is part of the transcript
+ * identity hash and stays fixed: the levelled samples are the same.
+ */
+export const LEVELLED_AUDIO_PREPARATION_VERSION = `${VOLUME_LEVELLING_VERSION}+levelled-flac.v2+${AUDIO_PREPARATION_VERSION}`;
+
+/**
+ * Version recorded on transcripts levelled before FLAC output. Their text came
+ * from the same levelled samples, so whole cached transcripts stay current.
+ */
+export const PREVIOUS_LEVELLED_AUDIO_PREPARATION_VERSION = `${VOLUME_LEVELLING_VERSION}+${AUDIO_PREPARATION_VERSION}`;
+
+export { VOLUME_LEVELLING_FILTER };
 
 export interface IAudioPreparationPolicy {
     /** Largest raw audio payload one provider request may carry. */
@@ -43,6 +68,8 @@ export type PreparedAudio =
           version: string;
           probe: IAudioProbe;
           chunks: IPreparedAudioChunk[];
+          /** The audio was loudness-levelled before chunking. */
+          volumeLevelled?: boolean;
       };
 
 /**
@@ -54,8 +81,23 @@ export async function prepareAudioForTranscription(input: {
     bytes: Buffer;
     mimeType: string;
     policy: IAudioPreparationPolicy | undefined;
+    /** Level loudness first; applies to every provider route. */
+    levelVolume?: boolean;
+    /** Container the route accepts for the levelled copy; WAV when absent. */
+    levelledFormat?: LevelledAudioFormat;
+    /** Upload budget for the levelled copy on routes without a policy. */
+    levelledMaxBytes?: number;
+    /** Longest levelled request on routes without a policy. */
+    levelledMaxDurationMs?: number;
 }): Promise<PreparedAudio> {
     const { bytes, mimeType, policy } = input;
+    if (input.levelVolume === true)
+        return prepareLevelledAudio(
+            bytes,
+            mimeType,
+            policy ?? levelledUploadPolicy(input),
+            input.levelledFormat ?? "wav",
+        );
     if (!policy) return { kind: "original" };
     const fitsAsIs =
         policy.acceptedMimeTypes.has(mimeType) &&
@@ -82,6 +124,92 @@ export async function prepareAudioForTranscription(input: {
         if (error instanceof AudioToolUnavailableError)
             throw new Error(
                 `Audio is ${formatMb(bytes.byteLength)} MB${policy.acceptedMimeTypes.has(mimeType) ? "" : ` (${mimeType})`}, outside the provider budget of ${formatMb(policy.maxBytes)} MB WAV/MP3, and ${error.message}`,
+            );
+        throw error;
+    }
+}
+
+/**
+ * Budget for a route that takes the levelled copy in its own format up to an
+ * upload size: the whole file when it fits, otherwise speech MP3 chunks sized
+ * so each one fits (5% headroom, as for OpenRouter) and is no longer than the
+ * route's duration limit.
+ */
+function levelledUploadPolicy(input: {
+    levelledFormat?: LevelledAudioFormat;
+    levelledMaxBytes?: number;
+    levelledMaxDurationMs?: number;
+}): IAudioPreparationPolicy | undefined {
+    const maxBytes = input.levelledMaxBytes;
+    if (maxBytes === undefined) return undefined;
+    return {
+        maxBytes,
+        maxDurationMs: Math.min(
+            Math.floor(
+                ((maxBytes * 8) / PREPARED_AUDIO_BITRATE_BPS) * 1000 * 0.95,
+            ),
+            input.levelledMaxDurationMs ?? Number.POSITIVE_INFINITY,
+        ),
+        acceptedMimeTypes: new Set([
+            LEVELLED_AUDIO_OUTPUTS[input.levelledFormat ?? "wav"].mimeType,
+        ]),
+    };
+}
+
+/**
+ * Level the recording with FFmpeg and send the levelled copy: whole (FLAC or
+ * WAV, as the route accepts) when it fits, otherwise compressed and chunked
+ * from the levelled audio so silence detection also sees the raised level.
+ * Never falls back to the original, so levelled and unlevelled transcripts
+ * are not mixed.
+ */
+async function prepareLevelledAudio(
+    bytes: Buffer,
+    mimeType: string,
+    policy: IAudioPreparationPolicy | undefined,
+    format: LevelledAudioFormat,
+): Promise<PreparedAudio> {
+    const output = LEVELLED_AUDIO_OUTPUTS[format];
+    try {
+        return await withAudioWorkspace(bytes, async (workspace) => {
+            const probe = await probeAudio(workspace.inputPath);
+            const levelledPath = await withHeavyAudioSlot(() =>
+                levelVolume(workspace, format, probe.durationMs),
+            );
+            const levelled = { dir: workspace.dir, inputPath: levelledPath };
+            const whole = await readFile(levelledPath);
+            const fits =
+                !policy ||
+                (policy.acceptedMimeTypes.has(output.mimeType) &&
+                    whole.byteLength <= policy.maxBytes &&
+                    probe.durationMs <= policy.maxDurationMs);
+            const chunks: IPreparedAudioChunk[] = fits
+                ? [
+                      {
+                          index: 0,
+                          startMs: 0,
+                          endMs: probe.durationMs,
+                          bytes: whole,
+                          mimeType: output.mimeType,
+                          hardCut: false,
+                          silent: false,
+                      },
+                  ]
+                : await withHeavyAudioSlot(() =>
+                      encodeChunks(levelled, probe.durationMs, policy),
+                  );
+            return {
+                kind: "prepared" as const,
+                version: LEVELLED_AUDIO_PREPARATION_VERSION,
+                probe,
+                chunks,
+                volumeLevelled: true,
+            };
+        });
+    } catch (error) {
+        if (error instanceof AudioToolUnavailableError)
+            throw new Error(
+                `Level volume first needs FFmpeg (${mimeType}, ${formatMb(bytes.byteLength)} MB): ${error.message}`,
             );
         throw error;
     }

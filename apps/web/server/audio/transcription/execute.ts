@@ -5,6 +5,9 @@ import type {
 } from "../../db/jsonTypes";
 import {
     AUDIO_PREPARATION_VERSION,
+    LEVELLED_AUDIO_PREPARATION_VERSION,
+    PREVIOUS_LEVELLED_AUDIO_PREPARATION_VERSION,
+    VOLUME_LEVELLING_FILTER,
     prepareAudioForTranscription,
     type IPreparedAudioChunk,
     type PreparedAudio,
@@ -37,7 +40,13 @@ export function cachedPreparationIsCurrent(
     artifact: ITranscriptArtifact,
 ): boolean {
     const version = artifact.providerMetadata?.audioPreparation?.version;
-    return version === undefined || version === AUDIO_PREPARATION_VERSION;
+    return (
+        version === undefined ||
+        version === AUDIO_PREPARATION_VERSION ||
+        version === LEVELLED_AUDIO_PREPARATION_VERSION ||
+        // Same levelled samples, sent as WAV; only chunk keys move to v2.
+        version === PREVIOUS_LEVELLED_AUDIO_PREPARATION_VERSION
+    );
 }
 
 /**
@@ -65,6 +74,8 @@ export async function executeTranscription(
         mimeType: string;
         policy: ISttExecutionPolicy;
         chunkStore: IChunkTranscriptStore;
+        /** Level loudness with FFmpeg before any provider sees the audio. */
+        levelVolume?: boolean;
     },
     deps: IExecuteTranscriptionDeps = {},
 ): Promise<ITranscriptArtifact> {
@@ -87,6 +98,19 @@ export async function executeTranscription(
         bytes: input.bytes,
         mimeType: input.mimeType,
         policy: input.policy.preparation,
+        ...(input.levelVolume === true
+            ? {
+                  levelVolume: true,
+                  levelledFormat: input.policy.levelledAudioFormat,
+                  levelledMaxBytes: input.policy.levelledAudioMaxBytes,
+                  ...(input.policy.levelledAudioMaxDurationMs !== undefined
+                      ? {
+                            levelledMaxDurationMs:
+                                input.policy.levelledAudioMaxDurationMs,
+                        }
+                      : {}),
+              }
+            : {}),
     });
     if (prepared.kind === "original") {
         const { artifact, attempts } = await transcribeWithRetry(
@@ -239,6 +263,9 @@ export function assembleChunkTranscripts(
     const hardCuts = ordered.filter((result) => result.chunk.hardCut).length;
     const audioPreparation: IAudioPreparationMetadata = {
         version: prepared.version,
+        ...(prepared.volumeLevelled
+            ? { volumeLevelling: VOLUME_LEVELLING_FILTER }
+            : {}),
         sourceBytes: source.bytes.byteLength,
         sourceMimeType: source.mimeType,
         sourceDurationMs: prepared.probe.durationMs,
@@ -315,6 +342,7 @@ export function assembleChunkTranscripts(
                 ? { incurredCostUsd: sum(incurred) }
                 : {}),
             ...(costUncertain ? { costUncertain } : {}),
+            ...(prepared.volumeLevelled ? { volumeLevelled: true } : {}),
             audioPreparation,
         },
         warnings: [

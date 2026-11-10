@@ -6,4 +6,5 @@ export const scorerType = pgEnum("scorer_type", [
     "judge",
     "transcript_metric",
     "transcript_judge",
+    "benchmark",
 ]);

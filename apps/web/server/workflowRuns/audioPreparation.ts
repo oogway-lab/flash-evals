@@ -1,14 +1,20 @@
 import { randomUUID } from "crypto";
-import type { EvalImage } from "@flash-evals/llm-core";
+import type { EvalImage, ICompletionDataPolicy } from "@flash-evals/llm-core";
 import { and, eq, sql } from "drizzle-orm";
 import type { ITranscriptArtifact } from "../audio/transcription";
 import { getOrCreateAudioTranscriptArtifactWithProvenance } from "../audio/transcription";
 import { transcriptIdentity } from "../audio/transcription/store";
-import { getOrCreateTransliteration } from "../audio/transliteration";
+import {
+    getOrCreateTransliteration,
+    transliterationFailureCostUsd,
+} from "../audio/transliteration";
 import { db } from "../db/client";
 import { workflowRunItems } from "../db/schema";
 import type { datasetItems } from "../db/schema";
-import type { IWorkflowSnapshot } from "../db/jsonTypes";
+import type {
+    IWorkflowSnapshot,
+    IWorkflowSttProviderMetadata,
+} from "../db/jsonTypes";
 import type { resolveApiKeys } from "../secrets/resolveApiKeys";
 import { loadImage } from "../images/source";
 import {
@@ -43,6 +49,7 @@ type PreparedWithPersistence = IPreparedWorkflowAudio & {
     persistence: {
         cacheHit: boolean;
         incurredCostUsd: number | undefined;
+        incurredCostSource: ITranscriptionSpend["costSource"];
         lookupLatencyMs: number;
         transcriptionLatencyMs: number;
         transliterationLatencyMs: number;
@@ -64,6 +71,8 @@ interface IWorkflowItemInput {
     apiKeys: ResolvedKeys["apiKeys"];
     prepareAudio?: boolean;
     includeImages?: boolean;
+    /** The run's data rules, applied to the transliteration call. */
+    dataPolicy?: ICompletionDataPolicy;
 }
 
 type PreparedAudioInput = IWorkflowItemInput & {
@@ -104,7 +113,9 @@ async function prepareWorkflowAudioItem(
 ): Promise<IPreparedWorkflowAudio> {
     const { sttConfig } = input;
     const leaseOwner = randomUUID();
-    const identity = transcriptIdentity(sttConfig.modelId, sttConfig.config);
+    const identity = transcriptIdentity(sttConfig.modelId, sttConfig.config, {
+        levelVolume: sttConfig.levelVolume,
+    });
     await ensurePreparationRow(input, identity);
     const claimed = await claimPreparation(input, leaseOwner);
     if (!claimed) return waitForPreparedWorkflowAudio(input, identity);
@@ -234,17 +245,19 @@ async function transcribePreparedItem(
             modelId: sttConfig.modelId,
             language: sttConfig.language,
             config: sttConfig.config,
+            levelVolume: sttConfig.levelVolume === true,
             onCostIncurred: (costUsd) => spend.record(costUsd),
             openaiApiKey: input.sttProviderKeys.openai,
             aiGatewayApiKey: input.sttProviderKeys.vercelGateway,
             sonioxApiKey: input.sttProviderKeys.soniox,
+            elevenlabsApiKey: input.sttProviderKeys.elevenlabs,
             geminiApiKey: input.sttProviderKeys.gemini,
             openrouterApiKey: input.sttProviderKeys.openrouter,
         });
     if (!spend.recorded) await spend.record(incurredCostUsd);
     const variant = selectedVariant(sttConfig);
     const transliterationStartedAt = Date.now();
-    const selectedTranscript =
+    const transliteration =
         variant === "latin"
             ? await getOrCreateTransliteration({
                   datasetItemId: item.id,
@@ -252,8 +265,17 @@ async function transcribePreparedItem(
                   sourceTranscript: artifact.text,
                   config: sttConfig.transliteration!,
                   apiKeys: input.apiKeys,
+                  ...(input.dataPolicy ? { dataPolicy: input.dataPolicy } : {}),
+              }).catch(async (error: unknown) => {
+                  // A paid reply that was cut off or empty still counts.
+                  const paid = transliterationFailureCostUsd(error);
+                  if (paid !== undefined) await spend.record(paid);
+                  throw error;
               })
-            : artifact.text;
+            : undefined;
+    // The item's spend includes the transliteration call (0 on a cache hit).
+    if (transliteration) await spend.record(transliteration.incurredCostUsd);
+    const selectedTranscript = transliteration?.text ?? artifact.text;
     const metadata = artifact.providerMetadata;
     return {
         workflowRunItemId,
@@ -267,6 +289,7 @@ async function transcribePreparedItem(
         persistence: {
             cacheHit,
             incurredCostUsd: spend.current.costUsd,
+            incurredCostSource: spend.current.costSource,
             lookupLatencyMs,
             transcriptionLatencyMs: cacheHit
                 ? 0
@@ -300,10 +323,7 @@ async function completePreparation(
             transcriptionLatencyMs: persistence.transcriptionLatencyMs,
             transliterationLatencyMs: persistence.transliterationLatencyMs,
             incurredCostUsd: persistence.incurredCostUsd,
-            incurredCostSource:
-                persistence.incurredCostUsd !== undefined
-                    ? "computed"
-                    : "unavailable",
+            incurredCostSource: persistence.incurredCostSource,
             cacheHit: persistence.cacheHit,
             preparationStatus: "completed",
             claimedAt: null,
@@ -330,10 +350,19 @@ function selectedVariant(sttConfig: PreparedAudioInput["sttConfig"]) {
 
 function safeProviderMetadata(
     metadata: ITranscriptArtifact["providerMetadata"],
-) {
-    if (!metadata?.raw || typeof metadata.raw !== "object") return undefined;
+): IWorkflowSttProviderMetadata | undefined {
+    // What ran: levelling and the preparation record carry no provider data.
+    const prepared: IWorkflowSttProviderMetadata = {
+        ...(metadata?.volumeLevelled ? { volumeLevelled: true } : {}),
+        ...(metadata?.audioPreparation
+            ? { audioPreparation: metadata.audioPreparation }
+            : {}),
+    };
+    if (!metadata?.raw || typeof metadata.raw !== "object")
+        return Object.keys(prepared).length > 0 ? prepared : undefined;
     const value = metadata.raw as Record<string, unknown>;
     return {
+        ...prepared,
         ...(typeof value.requestId === "string"
             ? { requestId: value.requestId }
             : {}),

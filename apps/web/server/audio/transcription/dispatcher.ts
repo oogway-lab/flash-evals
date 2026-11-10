@@ -1,3 +1,4 @@
+import { transcribeWithElevenLabs } from "./providers/elevenlabs";
 import { transcribeWithGemini } from "./providers/gemini";
 import { transcribeWithOpenAI } from "./providers/openai";
 import { transcribeWithOpenRouter } from "./providers/openrouter";
@@ -13,6 +14,8 @@ export async function dispatchTranscription(
             return transcribeWithVercelGateway(input);
         case "soniox":
             return transcribeWithSoniox(input);
+        case "elevenlabs":
+            return transcribeWithElevenLabs(input);
         case "gemini":
             return transcribeWithGemini(input);
         case "openrouter":

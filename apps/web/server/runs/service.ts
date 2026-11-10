@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
-import { eq, and, inArray, desc, sql } from "drizzle-orm";
-import type { ProviderTransport } from "@flash-evals/api-contract";
+import { eq, and, inArray, desc, isNull, sql } from "drizzle-orm";
+import type { IRunDataPolicy } from "@flash-evals/api-contract";
 import { db } from "../db/client";
 import {
     runs,
@@ -11,8 +11,15 @@ import {
     runCellAnnotations,
     runNotes,
 } from "../db/schema";
+import type { IBenchmarkCellDetails } from "@flash-evals/api-contract";
 import type { IPipelineFieldConfig, RunModelSpec } from "../db/jsonTypes";
 import { getPipeline } from "../pipelines/service";
+import {
+    cachedRouteMatches,
+    normalizedDataPolicy,
+    snapshotHasDataPolicy,
+    type ICachedCellRoute,
+} from "./dataPolicyReuse";
 
 export async function createRun(
     teamId: string,
@@ -82,6 +89,7 @@ export async function createRun(
                     schemaVersionId: m.schemaVersionId,
                     promptSnapshot: m.promptSnapshot,
                     reasoningConfig: m.reasoningConfig,
+                    temperature: m.temperature,
                     isReference: m.isReference,
                 })),
             )
@@ -164,6 +172,30 @@ export async function getScoredRunCellIds(runId: string): Promise<Set<string>> {
         .innerJoin(runCells, eq(runCells.id, cellScores.runCellId))
         .where(eq(runCells.runId, runId));
     return new Set(rows.map((row) => row.id));
+}
+
+/**
+ * Benchmark details of the run's cells where a judge call failed on at
+ * least one task (a provider refusal, a spending cap, an answer cut off).
+ * Resuming the run scores these cells again.
+ */
+export async function getBenchmarkDetailsToRetry(
+    runId: string,
+): Promise<Map<string, IBenchmarkCellDetails>> {
+    const rows = await db
+        .select({ id: cellScores.runCellId, details: cellScores.detailsJson })
+        .from(cellScores)
+        .innerJoin(runCells, eq(runCells.id, cellScores.runCellId))
+        .where(
+            and(
+                eq(runCells.runId, runId),
+                eq(cellScores.scorerType, "benchmark"),
+                sql`jsonb_path_exists(${cellScores.detailsJson}, '$.tasks[*] ? (exists(@.error))')`,
+            ),
+        );
+    return new Map(
+        rows.map((row) => [row.id, row.details as IBenchmarkCellDetails]),
+    );
 }
 
 export async function getRunProgress(runId: string) {
@@ -268,8 +300,16 @@ export async function getScoresForCells(cellIds: string[]) {
 
 /**
  * Prior succeeded/cached generation for the same item × model × prompt version ×
- * transport × maxTokens, from any run. Schema-violating cells are never reused.
+ * route (transport, provider model id) × maxTokens × thinking level × temperature, from any run. Schema-violating cells are never reused.
  * The run snapshot supplies the immutable transport selected for the cached run.
+ *
+ * With data rules, only answers from runs made under the very same rules
+ * (`config_snapshot.dataPolicy`, hosts as a set) are reused. A saved answer
+ * doesn't record which host served it, but the cached run had the same route
+ * (transport, model) and the gateway enforced the same rules on it, so the
+ * answer was produced under rules at least as strict as this run's. A cached
+ * run with other rules or none might have been served by a host this run
+ * forbids, so it never matches. Without rules, any saved answer is reused.
  */
 export async function findCachedCell(
     datasetItemId: string,
@@ -278,8 +318,14 @@ export async function findCachedCell(
     maxTokens: number,
     contentFingerprint: string,
     schemaHash: string | undefined,
-    transport: ProviderTransport | undefined,
+    route: ICachedCellRoute,
+    reasoningEffort?: string,
+    /** The run's temperature; undefined matches only answers sent without one. */
+    temperature?: number,
+    /** The run's data rules; when set, only runs under the same rules match. */
+    dataPolicy?: IRunDataPolicy,
 ) {
+    const rules = normalizedDataPolicy(dataPolicy);
     const rows = await db
         .select({
             outputJson: runCells.outputJson,
@@ -288,6 +334,7 @@ export async function findCachedCell(
             costSource: runCells.costSource,
             promptTokens: runCells.promptTokens,
             completionTokens: runCells.completionTokens,
+            reasoningTokens: runCells.reasoningTokens,
             providerMetadata: runCells.providerMetadata,
         })
         .from(runCells)
@@ -299,6 +346,9 @@ export async function findCachedCell(
                 eq(runModels.modelId, modelId),
                 eq(runModels.promptVersionId, promptVersionId),
                 eq(runCells.maxTokens, maxTokens),
+                temperature === undefined
+                    ? isNull(runModels.temperature)
+                    : eq(runModels.temperature, temperature),
                 eq(runCells.contentFingerprint, contentFingerprint),
                 schemaHash === undefined
                     ? sql`${runCells.schemaHash} is null`
@@ -308,8 +358,12 @@ export async function findCachedCell(
                     from jsonb_array_elements(${runs.configSnapshot}->'models') as cached_model
                     where cached_model->>'modelId' = ${modelId}
                       and cached_model->>'promptVersionId' = ${promptVersionId}
-                      and cached_model->>'transport' is not distinct from ${transport ?? null}
+                      and ${cachedRouteMatches(sql`cached_model`, runCells.providerMetadata, route)}
+                      and cached_model->'reasoningConfig'->>'effort' is not distinct from ${reasoningEffort ?? null}
                 )`,
+                rules
+                    ? snapshotHasDataPolicy(runs.configSnapshot, rules)
+                    : undefined,
                 eq(runCells.schemaViolation, false),
                 inArray(runCells.status, ["succeeded", "cached"]),
             ),

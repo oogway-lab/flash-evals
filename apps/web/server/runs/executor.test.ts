@@ -1,4 +1,9 @@
+import { PgDialect } from "drizzle-orm/pg-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as RunStopModule from "./runStop";
+import type * as JudgeCostModule from "./judgeCost";
+import type * as BenchmarkModule from "../scoring/benchmark";
+import type * as TransliterationModule from "../audio/transliteration";
 
 const executionMocks = vi.hoisted(() => ({
     run: undefined as any,
@@ -8,9 +13,22 @@ const executionMocks = vi.hoisted(() => ({
     runStatus: "pending",
     recoverScoring: false,
     scoredCellIds: new Set<string>(),
+    benchmarkToRetry: new Map<string, Record<string, any>>(),
     getOrCreateAudioTranscriptArtifact: vi.fn(),
     runTranscriptEvaluator: vi.fn(),
     executeCell: vi.fn(),
+    scoreInserts: [] as Array<Record<string, any>>,
+    scoreAgainstBenchmark: vi.fn(),
+    labels: new Map<string, Record<string, unknown>>(),
+    // Cancel requested after this many stop checks (undefined: never).
+    cancelAfterChecks: undefined as number | undefined,
+    stopChecks: 0,
+    stopReason: undefined as string | undefined,
+    spendAfterChecks: undefined as number | undefined,
+    recordJudgeCost: vi.fn(async () => undefined),
+    existingScores: [] as Array<Record<string, any>>,
+    /** What the transcription cost now (0: reused from the cache). */
+    transcriptIncurredCostUsd: undefined as number | undefined,
 }));
 
 vi.mock("../db/client", () => {
@@ -24,7 +42,10 @@ vi.mock("../db/client", () => {
         value: unknown,
         seen = new WeakSet<object>(),
     ): string | undefined {
-        if (typeof value === "string" && value.startsWith("cell-"))
+        if (
+            typeof value === "string" &&
+            executionMocks.cells.some((cell) => cell.id === value)
+        )
             return value;
         if (!value || typeof value !== "object" || seen.has(value))
             return undefined;
@@ -36,9 +57,40 @@ vi.mock("../db/client", () => {
         return undefined;
     }
     const noOpWhere = { where: vi.fn(async () => undefined) };
+    const update = vi.fn((table: object) => ({
+        set: vi.fn((payload: Record<string, unknown>) => ({
+            where: vi.fn(async (condition: unknown) => {
+                // Only a finished run (see markLateAnswerUnscored).
+                const lateAnswer =
+                    tableName(table) === "runs" &&
+                    new PgDialect()
+                        .sqlToQuery(condition as never)
+                        .params.includes("completed") &&
+                    !["completed", "failed"].includes(executionMocks.runStatus);
+                if (
+                    tableName(table) === "runs" &&
+                    payload.status &&
+                    !lateAnswer
+                )
+                    executionMocks.runStatus = String(payload.status);
+                if (tableName(table) === "run_cells") {
+                    const id = cellId(condition);
+                    const cell = executionMocks.cells.find(
+                        (candidate) => candidate.id === id,
+                    );
+                    if (cell) Object.assign(cell, payload);
+                }
+            }),
+        })),
+    }));
     const transactionDb = {
+        update,
         delete: vi.fn(() => noOpWhere),
-        insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
+        insert: vi.fn(() => ({
+            values: vi.fn(async (values: Record<string, any>) => {
+                executionMocks.scoreInserts.push(values);
+            }),
+        })),
     };
     return {
         db: {
@@ -51,21 +103,7 @@ vi.mock("../db/client", () => {
                     ),
                 })),
             })),
-            update: vi.fn((table: object) => ({
-                set: vi.fn((payload: Record<string, unknown>) => ({
-                    where: vi.fn(async (condition: unknown) => {
-                        if (tableName(table) === "runs" && payload.status)
-                            executionMocks.runStatus = String(payload.status);
-                        if (tableName(table) === "run_cells") {
-                            const id = cellId(condition);
-                            const cell = executionMocks.cells.find(
-                                (candidate) => candidate.id === id,
-                            );
-                            if (cell) Object.assign(cell, payload);
-                        }
-                    }),
-                })),
-            })),
+            update,
             transaction: vi.fn(
                 async (run: (tx: typeof transactionDb) => unknown) =>
                     run(transactionDb),
@@ -81,12 +119,59 @@ vi.mock("./service", async (importOriginal) => {
         getRunModels: vi.fn(async () => executionMocks.runModels),
         getRunCells: vi.fn(async () => executionMocks.cells),
         getScoredRunCellIds: vi.fn(async () => executionMocks.scoredCellIds),
+        getBenchmarkDetailsToRetry: vi.fn(
+            async () => executionMocks.benchmarkToRetry,
+        ),
         findCachedCell: vi.fn(async () => undefined),
+        getScoresForCells: vi.fn(async (ids: string[]) =>
+            executionMocks.existingScores.filter((row) =>
+                ids.includes(row.runCellId),
+            ),
+        ),
         claimRunCells: vi.fn(async () => {
             if (executionMocks.recoverScoring) return [];
             for (const cell of executionMocks.cells) cell.status = "running";
             return executionMocks.cells;
         }),
+    };
+});
+vi.mock("./runStop", async (importOriginal) => {
+    const actual = await importOriginal<typeof RunStopModule>();
+    return {
+        ...actual,
+        createRunStopGuard: (
+            runId: string,
+            options: { maxCostUsd?: number } = {},
+        ) =>
+            actual.createRunStopGuard(runId, {
+                ...options,
+                pollMs: 0,
+                // Spend reaches 1 USD after this many checks.
+                readSpend: async () =>
+                    executionMocks.stopChecks >
+                    (executionMocks.spendAfterChecks ?? Infinity)
+                        ? 1
+                        : 0,
+                read: async () => {
+                    executionMocks.stopChecks += 1;
+                    const after = executionMocks.cancelAfterChecks;
+                    return {
+                        cancelRequested:
+                            after !== undefined &&
+                            executionMocks.stopChecks > after,
+                    };
+                },
+            }),
+        releaseUnstartedCell: async (cellId: string) => {
+            const cell = executionMocks.cells.find((c) => c.id === cellId);
+            if (cell?.status === "running") cell.status = "pending";
+        },
+        finishStoppedRun: async (_runId: string, reason: string) => {
+            for (const cell of executionMocks.cells)
+                if (cell.status === "running") cell.status = "pending";
+            executionMocks.runStatus = "cancelled";
+            executionMocks.stopReason = reason;
+        },
     };
 });
 vi.mock("../judges/service", () => ({
@@ -98,7 +183,7 @@ vi.mock("../prompts/service", () => ({
 }));
 vi.mock("../datasets/service", () => ({
     getDatasetSchema: vi.fn(async () => undefined),
-    getLabelsForItems: vi.fn(async () => new Map()),
+    getLabelsForItems: vi.fn(async () => executionMocks.labels),
 }));
 vi.mock("../pipelines/service", async (importOriginal) => {
     const actual = (await importOriginal()) as object;
@@ -114,11 +199,13 @@ vi.mock("../audio/transcription", () => ({
     ) => ({
         artifact:
             await executionMocks.getOrCreateAudioTranscriptArtifact(input),
-        cacheHit: false,
+        cacheHit: executionMocks.transcriptIncurredCostUsd === 0,
         lookupLatencyMs: 0,
+        incurredCostUsd: executionMocks.transcriptIncurredCostUsd,
     }),
 }));
-vi.mock("../audio/transliteration", () => ({
+vi.mock("../audio/transliteration", async (importOriginal) => ({
+    ...(await importOriginal<typeof TransliterationModule>()),
     getOrCreateTransliteration: vi.fn(),
 }));
 vi.mock("../audio/customEvaluators", () => ({
@@ -140,6 +227,18 @@ vi.mock("../scoring/scoreOutput", () => ({
     scoreOutput: vi.fn(async () => ({})),
 }));
 vi.mock("../scoring/judge", () => ({ runJudge: vi.fn() }));
+vi.mock("../scoring/benchmark", async (importOriginal) => ({
+    benchmarkJudgeCostUsd: (await importOriginal<typeof BenchmarkModule>())
+        .benchmarkJudgeCostUsd,
+    scoreAgainstBenchmark: executionMocks.scoreAgainstBenchmark,
+}));
+vi.mock("./judgeCost", async (importOriginal) => {
+    const actual = await importOriginal<typeof JudgeCostModule>();
+    return {
+        ...actual,
+        recordJudgeCost: executionMocks.recordJudgeCost,
+    };
+});
 
 import { contentFingerprintForItem } from "./service";
 import { getJudgePromptVersion } from "../judges/service";
@@ -153,8 +252,30 @@ import {
     sttConfigForRunModel,
     structuredOutputFailureReason,
     executeRun,
+    evalConcurrency,
 } from "./executor";
 import { resolveReasoningEffort } from "../llm/reasoningConfig";
+import { scoreOutput } from "../scoring/scoreOutput";
+import {
+    getOrCreateTransliteration,
+    TransliterationFailedError,
+} from "../audio/transliteration";
+
+beforeEach(() => {
+    executionMocks.cancelAfterChecks = undefined;
+    executionMocks.stopChecks = 0;
+    executionMocks.stopReason = undefined;
+    executionMocks.spendAfterChecks = undefined;
+});
+
+describe("evalConcurrency", () => {
+    it("uses the default for an empty or malformed setting", () => {
+        expect(evalConcurrency("")).toBe(5);
+        expect(evalConcurrency("3x")).toBe(5);
+        expect(evalConcurrency(undefined)).toBe(5);
+        expect(evalConcurrency("2")).toBe(2);
+    });
+});
 
 describe("contentFingerprintForItem", () => {
     it("changes when input text changes", () => {
@@ -240,6 +361,24 @@ describe("audioFingerprintStorageKey", () => {
         });
 
         expect(raw).not.toBe(latin);
+    });
+
+    it("keeps fingerprints without levelling and separates levelled audio", () => {
+        const base = { modelId: "elevenlabs:scribe_v2" };
+        const plain = audioFingerprintStorageKey(audioItem, base);
+        expect(
+            audioFingerprintStorageKey(audioItem, {
+                ...base,
+                levelVolume: false,
+            }),
+        ).toBe(plain);
+        expect(JSON.parse(plain as string)).toHaveLength(9);
+        expect(
+            audioFingerprintStorageKey(audioItem, {
+                ...base,
+                levelVolume: true,
+            }),
+        ).not.toBe(plain);
     });
 
     it("changes downstream eval cache identity when STT config changes", () => {
@@ -368,6 +507,24 @@ describe("resolveReasoningEffort", () => {
 
     it("falls back to the default effort for reasoning models", () => {
         expect(resolveReasoningEffort("gpt-5.5")).toBe("medium");
+    });
+
+    it("sends a stored level for a Bifrost id, as its registry model takes it", () => {
+        for (const [modelId, level] of [
+            ["openrouter/anthropic/claude-sonnet-5.5", "medium"],
+            ["openrouter/openai/gpt-6-luna", "low"],
+            ["openrouter/deepseek/deepseek-v4.1-flash", "none"],
+            ["openrouter/google/gemini-3.5-flash-lite", "high"],
+            ["openrouter/anthropic/claude-haiku-5.5", "none"],
+            ["openrouter/anthropic/claude-sonnet-4.6", "medium"],
+            ["openrouter/google/gemma-4-31b-it", "medium"],
+            ["openrouter/z-ai/glm-5.2", "low"],
+            ["openrouter/minimax/minimax-m3", "high"],
+        ] as const)
+            expect(resolveReasoningEffort(modelId, level), modelId).toBe(level);
+        expect(resolveReasoningEffort("openrouter/google/gemma-4-31b-it")).toBe(
+            "none",
+        );
     });
 });
 
@@ -596,6 +753,180 @@ describe("executeRun STT variants", () => {
         executionMocks.executeCell.mockReset();
     });
 
+    it.each(["completed", "partial", "failed"])(
+        "does not execute a %s run again for a late or duplicate job",
+        async (status) => {
+            executionMocks.run = { ...runWithVariants(), status };
+            executionMocks.runStatus = status;
+
+            await executeRun("run-1");
+
+            expect(
+                executionMocks.getOrCreateAudioTranscriptArtifact,
+            ).not.toHaveBeenCalled();
+            expect(executionMocks.runStatus).toBe(status);
+            expect(
+                executionMocks.cells.every((cell) => cell.status !== "running"),
+            ).toBe(true);
+        },
+    );
+
+    it("cancels a run before claiming any cell when a cancel is already asked for", async () => {
+        executionMocks.cancelAfterChecks = 0;
+
+        await executeRun("run-1");
+
+        expect(
+            executionMocks.getOrCreateAudioTranscriptArtifact,
+        ).not.toHaveBeenCalled();
+        expect(executionMocks.runStatus).toBe("cancelled");
+        expect(executionMocks.stopReason).toBe("cancelled");
+        expect(executionMocks.cells.map((cell) => cell.status)).toEqual([
+            "pending",
+            "pending",
+        ]);
+    });
+
+    it("stops claiming new cells once cancelled and leaves unstarted cells not run", async () => {
+        executionMocks.getOrCreateAudioTranscriptArtifact.mockResolvedValue(
+            transcriptArtifact("hello", "config-hash"),
+        );
+        // One cell at a time: the start check passes, the first cell
+        // starts, then the cancel lands before the second.
+        vi.stubEnv("EVAL_CONCURRENCY", "1");
+        executionMocks.cancelAfterChecks = 2;
+
+        await executeRun("run-1");
+        vi.unstubAllEnvs();
+
+        expect(
+            executionMocks.getOrCreateAudioTranscriptArtifact,
+        ).toHaveBeenCalledTimes(1);
+        expect(executionMocks.cells.map((cell) => cell.status)).toEqual([
+            "succeeded",
+            "pending",
+        ]);
+        expect(executionMocks.runStatus).toBe("cancelled");
+        // The stopped run is not scored further (no judge spend after cancel).
+        expect(executionMocks.runTranscriptEvaluator).not.toHaveBeenCalled();
+    });
+
+    it("stops starting cells once the run's spend reaches its limit", async () => {
+        executionMocks.getOrCreateAudioTranscriptArtifact.mockResolvedValue(
+            transcriptArtifact("hello", "config-hash"),
+        );
+        const run = runWithVariants();
+        executionMocks.run = {
+            ...run,
+            configSnapshot: { ...run.configSnapshot, maxCostUsd: 0.5 },
+        };
+        vi.stubEnv("EVAL_CONCURRENCY", "1");
+        executionMocks.spendAfterChecks = 2;
+
+        await executeRun("run-1");
+        vi.unstubAllEnvs();
+
+        expect(executionMocks.cells.map((cell) => cell.status)).toEqual([
+            "succeeded",
+            "pending",
+        ]);
+        expect(executionMocks.runStatus).toBe("cancelled");
+        expect(executionMocks.stopReason).toBe("spend_cap");
+    });
+
+    it("stops starting cells and leaves the run alone once its lease is lost", async () => {
+        executionMocks.getOrCreateAudioTranscriptArtifact.mockResolvedValue(
+            transcriptArtifact("hello", "config-hash"),
+        );
+        vi.stubEnv("EVAL_CONCURRENCY", "1");
+        let lost = false;
+        executionMocks.getOrCreateAudioTranscriptArtifact.mockImplementation(
+            async () => {
+                lost = true;
+                return transcriptArtifact("hello", "config-hash");
+            },
+        );
+
+        await executeRun("run-1", { leaseLost: () => lost });
+        vi.unstubAllEnvs();
+
+        expect(executionMocks.cells.map((cell) => cell.status)).toEqual([
+            "succeeded",
+            "pending",
+        ]);
+        // Neither finished nor cancelled: the new owner finishes it.
+        expect(executionMocks.runStatus).toBe("running");
+        expect(executionMocks.runTranscriptEvaluator).not.toHaveBeenCalled();
+        // The answer came after the takeover: left for scoring.
+        expect(executionMocks.cells[0]!.error).toContain(
+            "another worker took over",
+        );
+    });
+
+    it("leaves an answer written after the new pass finished the run for Retry to score", async () => {
+        vi.stubEnv("EVAL_CONCURRENCY", "1");
+        executionMocks.getOrCreateAudioTranscriptArtifact.mockImplementation(
+            async () => {
+                // Taken over, and the new pass finished while this call ran.
+                lost = true;
+                executionMocks.runStatus = "completed";
+                return transcriptArtifact("hello", "config-hash");
+            },
+        );
+        let lost = false;
+
+        await executeRun("run-1", { leaseLost: () => lost });
+        vi.unstubAllEnvs();
+
+        expect(executionMocks.cells[0]).toMatchObject({
+            status: "succeeded",
+            error: expect.stringContaining("Retry scores it"),
+        });
+        expect(executionMocks.runStatus).toBe("partial");
+    });
+
+    it.each([
+        ["reused from the cache", 0, 0],
+        ["made now", 0.05, 0.05],
+    ])(
+        "counts a transcript %s as spend of what it cost now",
+        async (_case, incurred, spent) => {
+            executionMocks.transcriptIncurredCostUsd = incurred;
+            const artifact = transcriptArtifact("hello", "config-hash");
+            executionMocks.getOrCreateAudioTranscriptArtifact.mockResolvedValue(
+                {
+                    ...artifact,
+                    providerMetadata: {
+                        ...artifact.providerMetadata,
+                        costUsd: 0.05,
+                    },
+                },
+            );
+
+            await executeRun("run-1");
+            executionMocks.transcriptIncurredCostUsd = undefined;
+
+            for (const cell of executionMocks.cells) {
+                // The list cost stays on the cell for display.
+                expect(cell.costUsd).toBe(0.05);
+                expect(
+                    new PgDialect().sqlToQuery(cell.incurredCostUsd).params,
+                ).toEqual([spent]);
+            }
+        },
+    );
+
+    it("ignores spend when the run has no limit", async () => {
+        executionMocks.getOrCreateAudioTranscriptArtifact.mockResolvedValue(
+            transcriptArtifact("hello", "config-hash"),
+        );
+        executionMocks.spendAfterChecks = 0;
+
+        await executeRun("run-1");
+
+        expect(executionMocks.runStatus).toBe("completed");
+    });
+
     it("retains fresh transcription latency and usage in metric cells", async () => {
         const artifact = transcriptArtifact("hello", "config-hash");
         executionMocks.getOrCreateAudioTranscriptArtifact.mockResolvedValue({
@@ -643,6 +974,63 @@ describe("executeRun STT variants", () => {
             }),
         ]);
         expect(executionMocks.runStatus).toBe("partial");
+    });
+
+    it("charges transcription paid before it failed to the cell, once", async () => {
+        executionMocks.getOrCreateAudioTranscriptArtifact.mockImplementation(
+            async (input) => {
+                if (input.config?.diarization) {
+                    // Two chunks paid, then the provider fails.
+                    await input.onCostIncurred(0.02);
+                    await input.onCostIncurred(0.01);
+                    throw new Error("chunk 3 failed");
+                }
+                return transcriptArtifact("plain transcript", "plain-hash");
+            },
+        );
+
+        await executeRun("run-1");
+
+        const [failed, ok] = executionMocks.cells;
+        expect(failed).toMatchObject({ status: "failed" });
+        expect(
+            new PgDialect().sqlToQuery(failed!.incurredCostUsd).params,
+        ).toEqual([0.03]);
+        expect(new PgDialect().sqlToQuery(ok!.incurredCostUsd).params).toEqual([
+            0,
+        ]);
+    });
+
+    it("charges a paid but failed transliteration to the cell, once", async () => {
+        const run = runWithVariants();
+        run.configSnapshot.sttVariants.on.config = {
+            ...run.configSnapshot.sttVariants.on.config,
+            transcriptVariant: "latin",
+            transliteration: {
+                enabled: true,
+                targetScript: "latin",
+                modelId: "gpt-4o-mini",
+            },
+        } as never;
+        executionMocks.run = run;
+        executionMocks.getOrCreateAudioTranscriptArtifact.mockImplementation(
+            async (input) => {
+                await input.onCostIncurred(0.01);
+                return transcriptArtifact("transcript", "hash");
+            },
+        );
+        vi.mocked(getOrCreateTransliteration).mockRejectedValueOnce(
+            new TransliterationFailedError("cut off", 0.004),
+        );
+
+        await executeRun("run-1");
+
+        const [failed] = executionMocks.cells;
+        expect(failed).toMatchObject({ status: "failed" });
+        // The transcription plus the paid transliteration reply.
+        expect(
+            new PgDialect().sqlToQuery(failed!.incurredCostUsd).params,
+        ).toEqual([0.014]);
     });
 
     it("redacts API keys from the persisted cell error", async () => {
@@ -699,6 +1087,79 @@ describe("executeRun STT variants", () => {
         expect(executionMocks.runStatus).toBe("completed");
     });
 
+    function paidJudgeCosts() {
+        return (
+            executionMocks.recordJudgeCost.mock.calls as unknown as Array<
+                [unknown, string, number | undefined]
+            >
+        )
+            .filter(([, , cost]) => cost !== undefined)
+            .map(([, cellId, cost]) => [cellId, cost]);
+    }
+
+    it("charges each variant's transcript judge call to its cell", async () => {
+        executionMocks.recordJudgeCost.mockClear();
+        executionMocks.getOrCreateAudioTranscriptArtifact.mockResolvedValue(
+            transcriptArtifact("hello", "config-hash"),
+        );
+        executionMocks.runTranscriptEvaluator.mockResolvedValue({
+            score: 1,
+            details: { criteria: [] },
+            rationale: "accurate",
+            costUsd: 0.01,
+        });
+
+        await executeRun("run-1");
+
+        expect(paidJudgeCosts().sort()).toEqual([
+            ["cell-a", 0.01],
+            ["cell-b", 0.01],
+        ]);
+    });
+
+    it("charges a transcript judge shared by an item's cells once", async () => {
+        executionMocks.recordJudgeCost.mockClear();
+        executionMocks.recoverScoring = true;
+        executionMocks.runModels = [
+            runModel("rm-x", "openai/gpt-4o"),
+            runModel("rm-y", "google/gemma-4"),
+        ];
+        executionMocks.cells = [
+            {
+                ...runCell("cell-x", "rm-x"),
+                status: "succeeded",
+                outputJson: { text: "x" },
+            },
+            {
+                ...runCell("cell-y", "rm-y"),
+                status: "succeeded",
+                outputJson: { text: "y" },
+            },
+        ];
+        const run = runWithVariants();
+        executionMocks.run = {
+            ...run,
+            configSnapshot: {
+                ...run.configSnapshot,
+                sttConfig: run.configSnapshot.sttVariants.on.config,
+            },
+        };
+        executionMocks.getOrCreateAudioTranscriptArtifact.mockResolvedValue(
+            transcriptArtifact("hello", "config-hash"),
+        );
+        executionMocks.runTranscriptEvaluator.mockResolvedValue({
+            score: 1,
+            details: { criteria: [] },
+            rationale: "accurate",
+            costUsd: 0.01,
+        });
+
+        await executeRun("run-1");
+
+        expect(executionMocks.runTranscriptEvaluator).toHaveBeenCalledOnce();
+        expect(paidJudgeCosts()).toEqual([[expect.any(String), 0.01]]);
+    });
+
     it("scores generated cells left unfinished by a dead worker", async () => {
         executionMocks.recoverScoring = true;
         for (const cell of executionMocks.cells) {
@@ -713,6 +1174,498 @@ describe("executeRun STT variants", () => {
 
         expect(executionMocks.runTranscriptEvaluator).toHaveBeenCalledTimes(2);
         expect(executionMocks.runStatus).toBe("completed");
+    });
+});
+
+describe("executeRun benchmark comparison", () => {
+    const taskMap = {
+        tasks: [
+            {
+                key: "sales",
+                name: "Sales call",
+                method: "agreement" as const,
+                fields: [{ path: "$.is_sales", matcher: "exact" as const }],
+            },
+        ],
+    };
+
+    beforeEach(() => {
+        executionMocks.runModels = [
+            {
+                ...runModel("rm-bench", "anthropic/claude-sonnet-5.5"),
+                isReference: true,
+            },
+            runModel("rm-cheap", "google/gemma-4"),
+        ];
+        executionMocks.items = [
+            {
+                id: "item-1",
+                type: "text",
+                inputText: "call one",
+                storageKey: null,
+            },
+            {
+                id: "item-2",
+                type: "text",
+                inputText: "call two",
+                storageKey: null,
+            },
+        ];
+        // Generation already happened; this exercises the scoring phase only.
+        executionMocks.recoverScoring = true;
+        executionMocks.cells = [
+            {
+                ...runCell("bench-1", "rm-bench"),
+                status: "succeeded",
+                outputJson: { is_sales: true },
+            },
+            {
+                ...runCell("cheap-1", "rm-cheap"),
+                status: "succeeded",
+                outputJson: { is_sales: false },
+            },
+            {
+                ...runCell("bench-2", "rm-bench"),
+                datasetItemId: "item-2",
+                status: "failed",
+            },
+            {
+                ...runCell("cheap-2", "rm-cheap"),
+                datasetItemId: "item-2",
+                status: "succeeded",
+                outputJson: { is_sales: true },
+            },
+        ];
+        executionMocks.run = {
+            id: "run-1",
+            status: "pending",
+            teamId: "team-1",
+            datasetId: "dataset-1",
+            pipelineId: null,
+            judgeConfigId: null,
+            judgePromptVersionId: null,
+            configSnapshot: {
+                maxTokens: 1024,
+                fieldConfigs: [],
+                models: [],
+                benchmark: {
+                    taskMap,
+                    judge: {
+                        modelId: "openai/gpt-5.5",
+                        transport: "openrouter",
+                    },
+                },
+            },
+        };
+        executionMocks.scoredCellIds.clear();
+        executionMocks.benchmarkToRetry.clear();
+        executionMocks.scoreInserts = [];
+        executionMocks.existingScores = [];
+        executionMocks.labels = new Map();
+        executionMocks.runTranscriptEvaluator.mockReset();
+        executionMocks.runTranscriptEvaluator.mockResolvedValue(undefined);
+        executionMocks.scoreAgainstBenchmark.mockReset();
+        executionMocks.scoreAgainstBenchmark.mockResolvedValue({
+            score: 0,
+            details: {
+                tasks: [{ key: "sales", method: "agreement", agreement: 0 }],
+            },
+        });
+    });
+
+    it("scores non-benchmark cells against the benchmark output for the same item", async () => {
+        await executeRun("run-1");
+
+        // Only cheap-1: the benchmark cells are not compared with themselves,
+        // and item-2 has no benchmark output to compare with.
+        expect(executionMocks.scoreAgainstBenchmark).toHaveBeenCalledTimes(1);
+        expect(
+            executionMocks.scoreAgainstBenchmark.mock.calls[0]![0],
+        ).toMatchObject({
+            taskMap,
+            candidate: { is_sales: false },
+            benchmark: { is_sales: true },
+            cellId: "cheap-1",
+            inputText: "call one",
+            judge: { modelId: "openai/gpt-5.5", transport: "openrouter" },
+        });
+        expect(
+            executionMocks.scoreInserts.filter(
+                (row) => row.scorerType === "benchmark",
+            ),
+        ).toEqual([
+            {
+                runCellId: "cheap-1",
+                scorerType: "benchmark",
+                score: 0,
+                detailsJson: {
+                    tasks: [
+                        { key: "sales", method: "agreement", agreement: 0 },
+                    ],
+                },
+                rationale: null,
+            },
+        ]);
+    });
+
+    it("adds the benchmark judge's cost to the cell it scored", async () => {
+        executionMocks.recordJudgeCost.mockClear();
+        executionMocks.scoreAgainstBenchmark.mockResolvedValue({
+            score: 1,
+            details: {
+                tasks: [
+                    {
+                        key: "sales",
+                        method: "head_to_head",
+                        verdict: "win",
+                        judgeCostUsd: 0.004,
+                    },
+                    {
+                        key: "tone",
+                        method: "rubric",
+                        agreement: 1,
+                        judgeCostUsd: 0.006,
+                    },
+                ],
+            },
+            judgeCostUsd: 0.01,
+        });
+
+        await executeRun("run-1");
+
+        const paid = (
+            executionMocks.recordJudgeCost.mock.calls as unknown as Array<
+                [unknown, string, number | undefined]
+            >
+        ).filter(([, , cost]) => cost !== undefined);
+        expect(paid).toHaveLength(1);
+        expect(paid[0]![1]).toBe("cheap-1");
+        expect(paid[0]![2]).toBeCloseTo(0.01);
+    });
+
+    it("scores a cell again when its judge failed, keeping the earlier details", async () => {
+        const earlier = {
+            tasks: [{ key: "sales", method: "agreement", error: "402 budget" }],
+        };
+        executionMocks.scoredCellIds.add("cheap-1").add("cheap-2");
+        executionMocks.benchmarkToRetry.set("cheap-1", earlier);
+
+        await executeRun("run-1");
+
+        // cheap-2 was judged without errors, so it is left alone.
+        expect(executionMocks.scoreAgainstBenchmark).toHaveBeenCalledTimes(1);
+        expect(
+            executionMocks.scoreAgainstBenchmark.mock.calls[0]![0],
+        ).toMatchObject({ cellId: "cheap-1", previous: earlier });
+    });
+
+    it("keeps the answer and the judge spend when scoring crashes", async () => {
+        executionMocks.recordJudgeCost.mockClear();
+        vi.mocked(scoreOutput).mockImplementation(async (args) =>
+            (args.output as { is_sales?: boolean } | null)?.is_sales === false
+                ? { judge: { score: 1, rationale: "fine", costUsd: 0.02 } }
+                : {},
+        );
+        executionMocks.scoreAgainstBenchmark.mockRejectedValueOnce(
+            new Error("benchmark scorer crashed"),
+        );
+
+        await executeRun("run-1");
+
+        const cheap = executionMocks.cells.find(
+            (cell) => cell.id === "cheap-1",
+        );
+        expect(cheap).toMatchObject({
+            status: "succeeded",
+            outputJson: { is_sales: false },
+            error: "scoring failed: benchmark scorer crashed",
+        });
+        const paid = (
+            executionMocks.recordJudgeCost.mock.calls as unknown as Array<
+                [unknown, string, number | undefined]
+            >
+        ).filter(([, , cost]) => cost !== undefined);
+        expect(paid).toEqual([[expect.anything(), "cheap-1", 0.02]]);
+        // Not a model failure, but not fully scored either.
+        expect(executionMocks.runStatus).toBe("partial");
+        vi.mocked(scoreOutput).mockResolvedValue({});
+    });
+
+    it("scores an answer whose scoring crashed again, without generating it", async () => {
+        executionMocks.scoredCellIds.add("cheap-1").add("cheap-2");
+        executionMocks.cells[1]!.error = "scoring failed: earlier crash";
+        executionMocks.executeCell.mockClear();
+
+        await executeRun("run-1");
+
+        expect(executionMocks.executeCell).not.toHaveBeenCalled();
+        expect(
+            executionMocks.scoreAgainstBenchmark.mock.calls.map(
+                ([args]) => args.cellId,
+            ),
+        ).toEqual(["cheap-1"]);
+        expect(executionMocks.cells[1]!.error).toBeNull();
+    });
+
+    describe("retrying failed benchmark tasks", () => {
+        const judgePrompt = {
+            modelId: "openai/gpt-5.5",
+            rubricPrompt: "Rate it.",
+            declaredInputs: [],
+        };
+        const judgeRow = (score: number | null) => ({
+            runCellId: "cheap-1",
+            scorerType: "judge",
+            score,
+            detailsJson: null,
+            rationale: score === null ? "judge error: 429" : "good",
+        });
+
+        beforeEach(() => {
+            executionMocks.run.judgePromptVersionId = "judge-pv-1";
+            vi.mocked(getJudgePromptVersion).mockResolvedValue(
+                judgePrompt as never,
+            );
+            vi.mocked(scoreOutput).mockClear();
+            executionMocks.scoredCellIds
+                .add("bench-1")
+                .add("cheap-1")
+                .add("cheap-2");
+            executionMocks.benchmarkToRetry.set("cheap-1", {
+                tasks: [{ key: "sales", method: "agreement", error: "402" }],
+            });
+        });
+
+        it("keeps a judge verdict that succeeded instead of paying for it again", async () => {
+            executionMocks.existingScores = [judgeRow(0.8)];
+
+            await executeRun("run-1");
+
+            expect(vi.mocked(scoreOutput)).toHaveBeenCalledOnce();
+            expect(
+                vi.mocked(scoreOutput).mock.calls[0]![0].judgePrompt,
+            ).toBeUndefined();
+            expect(
+                executionMocks.scoreInserts.filter(
+                    (row) => row.scorerType === "judge",
+                ),
+            ).toEqual([
+                {
+                    runCellId: "cheap-1",
+                    scorerType: "judge",
+                    score: 0.8,
+                    detailsJson: null,
+                    rationale: "good",
+                },
+            ]);
+        });
+
+        it("asks a judge that failed again", async () => {
+            executionMocks.existingScores = [judgeRow(null)];
+
+            await executeRun("run-1");
+
+            expect(
+                vi.mocked(scoreOutput).mock.calls[0]![0].judgePrompt,
+            ).toMatchObject({ rubricPrompt: "Rate it." });
+        });
+    });
+
+    describe("keeping paid judge verdicts", () => {
+        const judgeRow = {
+            runCellId: "cheap-1",
+            scorerType: "judge",
+            score: 0.8,
+            detailsJson: null,
+            rationale: "good",
+        };
+
+        beforeEach(() => {
+            executionMocks.run.judgePromptVersionId = "judge-pv-1";
+            vi.mocked(getJudgePromptVersion).mockResolvedValue({
+                modelId: "openai/gpt-5.5",
+                rubricPrompt: "Rate it.",
+                declaredInputs: [],
+            } as never);
+            vi.mocked(scoreOutput).mockClear();
+            executionMocks.scoredCellIds.add("bench-1").add("cheap-1");
+        });
+
+        it("keeps a verdict when scoring crashed, instead of paying again", async () => {
+            executionMocks.cells[1]!.error = "scoring failed: earlier crash";
+            executionMocks.existingScores = [judgeRow];
+
+            await executeRun("run-1");
+
+            const calls = vi.mocked(scoreOutput).mock.calls;
+            const cheap = calls.find(
+                ([args]) =>
+                    (args.output as { is_sales?: boolean }).is_sales === false,
+            );
+            expect(cheap![0].judgePrompt).toBeUndefined();
+            expect(executionMocks.scoreInserts).toContainEqual(judgeRow);
+        });
+
+        it("asks again when the reference answer was regenerated", async () => {
+            executionMocks.recoverScoring = false;
+            executionMocks.existingScores = [judgeRow];
+            executionMocks.executeCell.mockResolvedValue({
+                outputText: "",
+                parsed: { is_sales: true },
+                schemaViolation: false,
+                usage: { promptTokens: 1, completionTokens: 1 },
+                latencyMs: 1,
+                costSource: "unavailable",
+            });
+
+            for (const rm of executionMocks.runModels)
+                rm.promptVersionId = "pv-1";
+
+            await executeRun("run-1");
+
+            const calls = vi.mocked(scoreOutput).mock.calls;
+            expect(calls.length).toBeGreaterThan(0);
+            for (const [args] of calls)
+                expect(args.judgePrompt).toMatchObject({
+                    rubricPrompt: "Rate it.",
+                });
+        });
+
+        it("saves a verdict paid before a later scoring step crashed", async () => {
+            vi.mocked(scoreOutput).mockImplementation(async (args) =>
+                (args.output as { is_sales?: boolean } | null)?.is_sales ===
+                false
+                    ? { judge: { score: 1, rationale: "fine", costUsd: 0.02 } }
+                    : {},
+            );
+            executionMocks.scoredCellIds.clear();
+            executionMocks.scoreAgainstBenchmark.mockRejectedValueOnce(
+                new Error("benchmark scorer crashed"),
+            );
+
+            await executeRun("run-1");
+            vi.mocked(scoreOutput).mockResolvedValue({});
+
+            expect(executionMocks.scoreInserts).toContainEqual({
+                runCellId: "cheap-1",
+                scorerType: "judge",
+                score: 1,
+                detailsJson: null,
+                rationale: "fine",
+            });
+            expect(executionMocks.cells[1]!.error).toBe(
+                "scoring failed: benchmark scorer crashed",
+            );
+        });
+    });
+
+    it("leaves fully judged cells alone on resume", async () => {
+        executionMocks.scoredCellIds.add("cheap-1").add("cheap-2");
+
+        await executeRun("run-1");
+
+        expect(executionMocks.scoreAgainstBenchmark).not.toHaveBeenCalled();
+    });
+
+    it("applies the run's data rules to the benchmark judge", async () => {
+        executionMocks.run.configSnapshot.dataPolicy = {
+            onlyHosts: ["vertex"],
+            zeroDataRetention: true,
+        };
+        await executeRun("run-1");
+        expect(
+            executionMocks.scoreAgainstBenchmark.mock.calls[0]![0].judge,
+        ).toMatchObject({
+            modelId: "openai/gpt-5.5",
+            transport: "openrouter",
+            dataPolicy: { onlyHosts: ["vertex"], zeroDataRetention: true },
+        });
+    });
+
+    it("scores the reference model on tasks that use stored answers", async () => {
+        const mixed = {
+            tasks: [
+                ...taskMap.tasks,
+                {
+                    key: "label",
+                    name: "Checked label",
+                    method: "agreement" as const,
+                    fields: [{ path: "$.is_sales", matcher: "exact" as const }],
+                    source: "labels" as const,
+                },
+            ],
+        };
+        executionMocks.run.configSnapshot.benchmark.taskMap = mixed;
+        executionMocks.labels = new Map([["item-1", { is_sales: true }]]);
+        executionMocks.scoreAgainstBenchmark.mockImplementation(
+            async (args: { benchmark?: unknown; storedAnswer?: unknown }) => ({
+                score: 1,
+                details: {
+                    tasks: [
+                        ...(args.benchmark !== undefined
+                            ? [{ key: "sales", method: "agreement" }]
+                            : []),
+                        ...(args.storedAnswer !== undefined
+                            ? [{ key: "label", method: "agreement" }]
+                            : []),
+                    ],
+                },
+            }),
+        );
+        await executeRun("run-1");
+
+        const calls = executionMocks.scoreAgainstBenchmark.mock.calls.map(
+            ([args]) => args,
+        );
+        // item-2 has neither a benchmark answer nor a stored one, so
+        // cheap-2 is not compared at all.
+        expect(calls).toHaveLength(2);
+        expect(calls).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    cellId: "bench-1",
+                    taskMap: mixed,
+                    storedAnswer: { is_sales: true },
+                    benchmark: undefined,
+                }),
+                expect.objectContaining({
+                    cellId: "cheap-1",
+                    benchmark: { is_sales: true },
+                    storedAnswer: { is_sales: true },
+                }),
+            ]),
+        );
+        expect(
+            executionMocks.scoreInserts
+                .filter((row) => row.scorerType === "benchmark")
+                .map((row) => row.runCellId)
+                .sort(),
+        ).toEqual(["bench-1", "cheap-1"]);
+    });
+
+    it("writes no benchmark score when no task applied to the cell", async () => {
+        executionMocks.scoreAgainstBenchmark.mockResolvedValue({
+            score: null,
+            details: { tasks: [] },
+        });
+        await executeRun("run-1");
+        expect(executionMocks.scoreAgainstBenchmark).toHaveBeenCalledTimes(1);
+        expect(
+            executionMocks.scoreInserts.some(
+                (row) => row.scorerType === "benchmark",
+            ),
+        ).toBe(false);
+    });
+
+    it("writes no benchmark scores on runs without benchmark settings", async () => {
+        delete executionMocks.run.configSnapshot.benchmark;
+        await executeRun("run-1");
+        expect(executionMocks.scoreAgainstBenchmark).not.toHaveBeenCalled();
+        expect(
+            executionMocks.scoreInserts.some(
+                (row) => row.scorerType === "benchmark",
+            ),
+        ).toBe(false);
     });
 });
 
@@ -748,6 +1701,7 @@ function runWithVariants() {
     };
     return {
         id: "run-1",
+        status: "pending",
         teamId: "team-1",
         datasetId: "dataset-1",
         pipelineId: null,

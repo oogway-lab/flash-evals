@@ -1,7 +1,8 @@
 import type { ITranscriptSegment } from "../../../db/jsonTypes";
-import type {
-    ITranscriptArtifact,
-    ITranscriptionProviderInput,
+import {
+    EmptyTranscriptError,
+    type ITranscriptArtifact,
+    type ITranscriptionProviderInput,
 } from "../types";
 import {
     audioUploadForm,
@@ -19,7 +20,9 @@ export async function transcribeWithOpenAI(
     input: ITranscriptionProviderInput,
 ): Promise<ITranscriptArtifact> {
     if (!input.openaiApiKey) {
-        throw new Error("Add OPENAI_API_KEY to run audio transcription.");
+        throw new Error(
+            "Add your OpenAI API key in Settings (or OPENAI_API_KEY in the app's .env) to run audio transcription.",
+        );
     }
 
     const form = audioUploadForm(input.bytes, input.mimeType);
@@ -45,7 +48,12 @@ export async function transcribeWithOpenAI(
 
     const parsed = (await response.json()) as Record<string, unknown>;
     const text = typeof parsed.text === "string" ? parsed.text.trim() : "";
-    if (!text) throw new Error("Audio transcription returned empty text.");
+    const durationMs = openAIDurationMs(parsed);
+    if (!text)
+        throw new EmptyTranscriptError(
+            "Audio transcription returned empty text.",
+            { durationMs },
+        );
     const diarizedSegments = isDiarize ? openAIDiarizedSegments(parsed) : [];
     const usage = openAIUsage(parsed);
     return {
@@ -61,9 +69,7 @@ export async function transcribeWithOpenAI(
         // requested solely when a timestamp granularity is configured — so cost
         // stays unpriced for a default-config OpenAI run. gpt-4o-transcribe does
         // not support verbose_json at all, so this cannot simply be forced on.
-        ...(typeof parsed.duration === "number" && parsed.duration > 0
-            ? { durationMs: Math.round(parsed.duration * 1000) }
-            : {}),
+        ...(durationMs !== undefined ? { durationMs } : {}),
         providerMetadata: {
             raw: parsed,
             ...(isDiarize ? { diarizationMode: "native" as const } : {}),
@@ -74,6 +80,12 @@ export async function transcribeWithOpenAI(
         },
         warnings: [],
     };
+}
+
+function openAIDurationMs(parsed: Record<string, unknown>): number | undefined {
+    return typeof parsed.duration === "number" && parsed.duration > 0
+        ? Math.round(parsed.duration * 1000)
+        : undefined;
 }
 
 // gpt-4o-transcribe(+mini) return a token usage block; whisper-1 and the

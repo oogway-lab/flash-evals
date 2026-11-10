@@ -1,7 +1,8 @@
 import type { ITranscriptSegment } from "../../../db/jsonTypes";
-import type {
-    ITranscriptArtifact,
-    ITranscriptionProviderInput,
+import {
+    EmptyTranscriptError,
+    type ITranscriptArtifact,
+    type ITranscriptionProviderInput,
 } from "../types";
 import {
     audioUploadForm,
@@ -21,7 +22,9 @@ export async function transcribeWithSoniox(
     input: ITranscriptionProviderInput,
 ): Promise<ITranscriptArtifact> {
     if (!input.sonioxApiKey) {
-        throw new Error("Add SONIOX_API_KEY to run Soniox transcription.");
+        throw new Error(
+            "Add your Soniox API key in Settings (or SONIOX_API_KEY in the app's .env) to run Soniox transcription.",
+        );
     }
     const fileId = await uploadSonioxFile(input);
     const transcriptionId = await createSonioxTranscription({
@@ -150,7 +153,11 @@ async function getSonioxTranscript(input: {
     );
     const parsed = await parseSonioxJson(response, "Soniox transcript fetch");
     const text = stringProperty(parsed, "text")?.trim() ?? "";
-    if (!text) throw new Error("Soniox transcription returned empty text.");
+    if (!text)
+        throw new EmptyTranscriptError(
+            "Soniox transcription returned empty text.",
+            { durationMs: sonioxDurationMs(parsed) },
+        );
     const segments = sonioxSegments(parsed);
     const language = segments.find((segment) => segment.language)?.language;
     const durationMs = sonioxDurationMs(parsed);

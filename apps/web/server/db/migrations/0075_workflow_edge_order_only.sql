@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_edges" ADD COLUMN "order_only" boolean DEFAULT false NOT NULL;

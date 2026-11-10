@@ -1,0 +1,1 @@
+ALTER TABLE "run_models" ADD COLUMN "temperature" double precision;
