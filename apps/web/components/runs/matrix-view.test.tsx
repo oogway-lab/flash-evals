@@ -95,6 +95,32 @@ describe("MatrixView live cell states", () => {
         ).not.toBeInTheDocument();
     });
 
+    it("marks pending cells of a cancelled run as not run, without skeletons", () => {
+        render(
+            <MatrixView
+                models={models}
+                items={items}
+                cells={[
+                    cell("item-1", "succeeded"),
+                    cell("item-2", "pending"),
+                    cell("item-3", "pending"),
+                ]}
+                scoresByCell={{}}
+                saveCellAnnotationAction={vi.fn()}
+                stopped
+            />,
+        );
+
+        const rows = screen.getAllByRole("row").slice(1);
+        expect(within(rows[1]).getByLabelText("Cell status: Not run")).toBe(
+            within(rows[1]).getByText("Not run"),
+        );
+        expect(rows[1].querySelectorAll('[data-slot="skeleton"]').length).toBe(
+            0,
+        );
+        expect(within(rows[0]).queryByText("Not run")).not.toBeInTheDocument();
+    });
+
     it("shows a quick-review verdict at once and reverts it with a toast if the save fails", async () => {
         let finish!: (value: { formError: string }) => void;
         const save = vi.fn(

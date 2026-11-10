@@ -110,4 +110,19 @@ describe("Pipeline canvas page", () => {
             }),
         );
     });
+
+    it("opens a prompt pipeline created through the API on the canvas", async () => {
+        mocks.getWorkflow.mockResolvedValue({
+            id: "workflow-1",
+            name: "Chain",
+            kind: "prompt",
+            nodes: [],
+            edges: [],
+        });
+
+        render(await renderPage());
+
+        expect(mocks.notFound).not.toHaveBeenCalled();
+        expect(screen.getByText("Workflow editor")).toBeInTheDocument();
+    });
 });

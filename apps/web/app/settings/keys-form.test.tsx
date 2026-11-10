@@ -29,12 +29,33 @@ const OPENAI_KEY = [
 describe("ProviderKeysForm", () => {
     it("renders accessible password labels and only supported base URL fields", () => {
         render(<ProviderKeysForm keys={[]} />);
-        expect(screen.getAllByLabelText("API key")).toHaveLength(6);
+        expect(screen.getAllByLabelText("API key")).toHaveLength(8);
         expect(screen.getAllByLabelText(/Base URL/)).toHaveLength(2);
         for (const input of screen.getAllByLabelText("API key")) {
             expect(input).toHaveAttribute("type", "password");
         }
         expect(screen.getByLabelText("Base URL (required)")).toBeRequired();
+    });
+
+    it("has an ElevenLabs slot for Scribe speech-to-text", () => {
+        render(<ProviderKeysForm keys={[]} />);
+        expect(
+            screen.getByText(
+                "Used for ElevenLabs Scribe speech-to-text models.",
+            ),
+        ).toBeInTheDocument();
+    });
+
+    it("has an Anthropic slot and says the Gemini key also runs models", () => {
+        render(<ProviderKeysForm keys={[]} />);
+        expect(
+            screen.getByText(/run Claude models on the Anthropic API directly/),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByText(
+                /run Gemini and Gemma models on the Gemini API directly, and for Gemini audio-understanding transcription/,
+            ),
+        ).toBeInTheDocument();
     });
 
     it("shows only the stored hint and provides a clear action", () => {
@@ -112,13 +133,13 @@ describe("ProviderKeysForm", () => {
         expect(
             screen.getByText("Route verification is temporarily unavailable."),
         ).toBeInTheDocument();
-        expect(screen.getAllByLabelText("API key")).toHaveLength(6);
+        expect(screen.getAllByLabelText("API key")).toHaveLength(8);
     });
 
     it("keeps a stored key's input behind Replace key", () => {
         render(<ProviderKeysForm keys={OPENAI_KEY} />);
-        // Five providers without a key show the input; OpenAI does not.
-        expect(screen.getAllByLabelText("API key")).toHaveLength(5);
+        // Six providers without a key show the input; OpenAI does not.
+        expect(screen.getAllByLabelText("API key")).toHaveLength(7);
         expect(
             screen.getByRole("button", { name: "Replace key" }),
         ).toBeInTheDocument();
@@ -127,7 +148,7 @@ describe("ProviderKeysForm", () => {
     it("opens the form focused on Replace key and returns focus on Cancel", async () => {
         render(<ProviderKeysForm keys={OPENAI_KEY} />);
         fireEvent.click(screen.getByRole("button", { name: "Replace key" }));
-        expect(screen.getAllByLabelText("API key")).toHaveLength(6);
+        expect(screen.getAllByLabelText("API key")).toHaveLength(8);
         const input = document.getElementById("openai-key");
         expect(input).toHaveFocus();
         expect(
@@ -171,7 +192,7 @@ describe("ProviderKeysForm", () => {
         render(<ProviderKeysForm keys={[]} />);
         expect(
             screen.getAllByRole("button", { name: "Show key" }),
-        ).toHaveLength(6);
+        ).toHaveLength(8);
     });
 
     it("shows a probe transcript as its own labelled block", async () => {

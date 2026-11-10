@@ -1,8 +1,50 @@
 import { describe, expect, it } from "vitest";
 import {
+    formatPossiblyPartialCost,
     sttVariantDisplay,
     sttVariantDisplaysForTranscript,
+    transcriptCostIncomplete,
 } from "./stt-variant-display";
+
+describe("partial transcription cost", () => {
+    const format = (costUsd: number | undefined) =>
+        costUsd === undefined ? "-" : `$${costUsd.toFixed(2)}`;
+
+    it("detects a transcription spend with an unknown part", () => {
+        expect(
+            transcriptCostIncomplete({
+                providerMetadata: {
+                    transcriptionSpend: {
+                        costUsd: 0.1,
+                        costSource: "unavailable",
+                    },
+                },
+            }),
+        ).toBe(true);
+        expect(
+            transcriptCostIncomplete({
+                providerMetadata: {
+                    transcriptionSpend: {
+                        costUsd: 0.1,
+                        costSource: "computed",
+                    },
+                },
+            }),
+        ).toBe(false);
+        expect(transcriptCostIncomplete({})).toBe(false);
+    });
+
+    it("formats the known part as a lower bound", () => {
+        expect(formatPossiblyPartialCost(0.1, false, format)).toBe("$0.10");
+        expect(formatPossiblyPartialCost(0.1, true, format)).toBe(
+            "at least $0.10",
+        );
+        expect(formatPossiblyPartialCost(undefined, true, format)).toBe(
+            "Unavailable",
+        );
+        expect(formatPossiblyPartialCost(0, true, format)).toBe("Unavailable");
+    });
+});
 
 describe("sttVariantDisplay", () => {
     it("labels a variant and generically surfaces every differing config key", () => {
@@ -39,6 +81,7 @@ describe("sttVariantDisplay", () => {
                 "future setting: strict",
                 "language: hi",
             ],
+            settingLabels: [],
         });
     });
 
@@ -58,6 +101,43 @@ describe("sttVariantDisplay", () => {
                 configJson: {},
             }).map((display) => display.label),
         ).toEqual(["First", "Copy"]);
+    });
+
+    it("shows volume levelling and matches transcripts by it", () => {
+        const base = { modelId: "elevenlabs:scribe_v2", config: {} };
+        const snapshot = {
+            sttVariants: {
+                plain: { variantKey: "plain", label: "Plain", config: base },
+                loud: {
+                    variantKey: "loud",
+                    label: "Levelled",
+                    config: { ...base, levelVolume: true },
+                },
+            },
+        };
+
+        expect(
+            sttVariantDisplay(snapshot, "stt:elevenlabs:scribe_v2#loud"),
+        ).toMatchObject({ diffBadges: [], settingLabels: ["Volume levelled"] });
+        expect(
+            sttVariantDisplay(snapshot, "stt:elevenlabs:scribe_v2#plain"),
+        ).toMatchObject({ diffBadges: [], settingLabels: [] });
+        const transcript = {
+            sttModelId: base.modelId,
+            language: "",
+            configJson: {},
+        };
+        expect(
+            sttVariantDisplaysForTranscript(snapshot, transcript).map(
+                (display) => display.label,
+            ),
+        ).toEqual(["Plain"]);
+        expect(
+            sttVariantDisplaysForTranscript(snapshot, {
+                ...transcript,
+                providerMetadata: { volumeLevelled: true },
+            }).map((display) => display.label),
+        ).toEqual(["Levelled"]);
     });
 
     it("preserves legacy display behavior without a variant key", () => {

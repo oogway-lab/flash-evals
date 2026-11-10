@@ -112,6 +112,36 @@ describe("SttRunLaunch", () => {
         ).toBe(first);
     });
 
+    it("offers text datasets to a prompt pipeline", () => {
+        const prompt = {
+            ...workflow,
+            kind: "prompt",
+            nodes: [],
+        } as IPromptWorkflow;
+        const { container } = render(
+            <SttRunLaunch
+                workflow={prompt}
+                datasets={[
+                    ...datasets,
+                    {
+                        id: "text-1",
+                        name: "Calls as text",
+                        itemCount: 4,
+                        labeledItemCount: 4,
+                        purpose: "evaluation",
+                        modality: "text",
+                    },
+                ]}
+                action={vi.fn(async () => ({}))}
+            />,
+        );
+        expect(screen.getByText("Text dataset")).toBeInTheDocument();
+        expect(
+            container.querySelector<HTMLInputElement>('input[name="datasetId"]')
+                ?.value,
+        ).toBe("text-1");
+    });
+
     it("retains the legacy audio selector for STT workflows", () => {
         const legacy = {
             ...workflow,
@@ -173,6 +203,75 @@ describe("SttRunLaunch", () => {
         fireEvent.click(repair);
         expect(listener).toHaveBeenCalled();
 
-        document.removeEventListener("flash-evals:repair-workflow-node", listener);
+        document.removeEventListener(
+            "flash-evals:repair-workflow-node",
+            listener,
+        );
+    });
+
+    it("submits a spend limit and data rules set under the closed settings", async () => {
+        const action = vi.fn(
+            async (_state: IActionState, _data: FormData) => ({}),
+        );
+        const { container } = render(
+            <SttRunLaunch
+                workflow={workflow}
+                datasets={datasets}
+                action={action}
+            />,
+        );
+
+        fireEvent.click(
+            screen.getByRole("button", { name: "Spend limit and data rules" }),
+        );
+        fireEvent.change(screen.getByLabelText("Spend limit (USD)"), {
+            target: { value: "3.50" },
+        });
+        fireEvent.change(
+            screen.getByLabelText("Only these hosting companies"),
+            { target: { value: "vertex, bedrock" } },
+        );
+        // Closed again: the fields stay in the form and still submit.
+        fireEvent.click(
+            screen.getByRole("button", { name: "Spend limit and data rules" }),
+        );
+        fireEvent.submit(container.querySelector("form")!);
+
+        await waitFor(() => expect(action).toHaveBeenCalled());
+        const submitted = action.mock.calls[0]![1];
+        expect(submitted.get("maxCostUsd")).toBe("3.50");
+        expect(JSON.parse(String(submitted.get("dataPolicy")))).toEqual({
+            onlyHosts: ["vertex", "bedrock"],
+        });
+    });
+
+    it("shows a spend limit error next to the field", async () => {
+        const { container } = render(
+            <SttRunLaunch
+                workflow={workflow}
+                datasets={datasets}
+                action={vi.fn(async () => ({
+                    fieldErrors: {
+                        maxCostUsd: ["Enter a spend limit above $0."],
+                    },
+                }))}
+            />,
+        );
+        fireEvent.submit(container.querySelector("form")!);
+
+        expect(
+            await screen.findByText("Enter a spend limit above $0."),
+        ).toBeInTheDocument();
+        expect(screen.getByLabelText("Spend limit (USD)")).toHaveAttribute(
+            "aria-invalid",
+            "true",
+        );
+        await waitFor(() =>
+            expect(
+                screen.getByRole("button", {
+                    name: "Spend limit and data rules",
+                }),
+            ).toHaveAttribute("aria-expanded", "true"),
+        );
     });
 });

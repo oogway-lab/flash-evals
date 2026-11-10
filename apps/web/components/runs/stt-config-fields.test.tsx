@@ -11,6 +11,7 @@ import {
     configForSttModel,
     configForSttSnapshot,
     sttConfigForModel,
+    sttConfigWithLevelVolume,
 } from "./stt-config-fields";
 
 afterEach(cleanup);
@@ -192,6 +193,31 @@ describe("SttConfigFields", () => {
                 whisper,
             ),
         ).toEqual({ modelId: "whisper-1", language: "en" });
+    });
+
+    it("keeps level volume first across a model switch and drops it when off", () => {
+        const whisper = model("whisper-1");
+        expect(
+            sttConfigForModel(
+                { modelId: "soniox:stt-async-v5", levelVolume: true },
+                whisper,
+            ),
+        ).toEqual({ modelId: "whisper-1", levelVolume: true });
+        expect(
+            sttConfigForModel(
+                { modelId: "soniox:stt-async-v5", levelVolume: false },
+                whisper,
+            ),
+        ).toEqual({ modelId: "whisper-1" });
+        expect(
+            sttConfigWithLevelVolume(
+                { modelId: "whisper-1", levelVolume: true },
+                false,
+            ),
+        ).toEqual({ modelId: "whisper-1" });
+        expect(
+            sttConfigWithLevelVolume({ modelId: "whisper-1" }, true),
+        ).toEqual({ modelId: "whisper-1", levelVolume: true });
     });
 
     it("normalizes numeric canvas fields for persistence", () => {

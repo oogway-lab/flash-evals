@@ -18,6 +18,7 @@ import type {
     WorkflowLlmGenerationControl,
     WorkflowLlmTransport,
 } from "@flash-evals/api-contract";
+import { providerKeyForWorkflowTransport } from "@flash-evals/api-contract";
 import { REASONING_EFFORT_LEVELS } from "@flash-evals/llm-core";
 import {
     clearWorkflowLlmDefaultAction,
@@ -1014,7 +1015,9 @@ function keyForTransport(
     keys: IProviderKeyMetadata[],
     transport: WorkflowLlmTransport,
 ): IProviderKeyMetadata | undefined {
-    return keys.find((key) => key.provider === transport);
+    // Direct Gemini API routes use the saved Gemini key.
+    const provider = providerKeyForWorkflowTransport(transport);
+    return keys.find((key) => key.provider === provider);
 }
 
 function routeVersions(

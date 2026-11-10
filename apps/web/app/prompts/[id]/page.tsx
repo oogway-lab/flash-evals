@@ -33,7 +33,8 @@ export default async function PromptViewPage({
     const detail = await serverApiClient()
         .getPromptDetail(p.teamId, p.projectId, id)
         .catch((err: unknown) => {
-            if (err instanceof FlashEvalsApiError && err.status === 404) notFound();
+            if (err instanceof FlashEvalsApiError && err.status === 404)
+                notFound();
             throw err;
         });
     const { prompt, latestVersion: version, schemaVersion, versions } = detail;
@@ -65,7 +66,10 @@ export default async function PromptViewPage({
                 <SectionTitle
                     actions={
                         version ? (
-                            <PromptStatusBadge status={version.status} />
+                            <PromptStatusBadge
+                                status={version.status}
+                                modelCheck={version.modelCheck}
+                            />
                         ) : undefined
                     }
                     description={

@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as PipelineService from "@/server/pipelines/service";
 import type * as DatasetImport from "@/server/datasets/import";
+import { redirect } from "next/navigation";
 
 const mockApiClient = vi.hoisted(() => ({
+    countItemFilterMatches: vi.fn(),
     createDataset: vi.fn(),
     createDatasetItem: vi.fn(),
     createDatasetItemFromForm: vi.fn(),
     createRun: vi.fn(),
     createRunFromSelection: vi.fn(),
+    createSetupComparison: vi.fn(),
+    cancelSetupComparison: vi.fn(),
     generateJudgeForRun: vi.fn(),
     importGoldenAnswers: vi.fn(),
     importAudioAnswers: vi.fn(),
@@ -49,10 +53,13 @@ import {
     duplicateDatasetAction,
     editItemAction,
     createRunAction,
+    createSetupComparisonAction,
+    cancelSetupComparisonAction,
     createJudgeAction,
     deleteRunAction,
     deletePromptAction,
     duplicatePromptVersionAction,
+    countItemFilterMatchesAction,
     generateJudgeForRunAction,
     generateSchemaFromPromptAction,
     importGoldenAnswersAction,
@@ -72,7 +79,10 @@ import {
 import * as datasetService from "@/server/datasets/service";
 import * as pipelinesService from "@/server/pipelines/service";
 import * as promptsService from "@/server/prompts/service";
-import { MAX_TEXT_IMPORT_BYTES, FlashEvalsApiError } from "@flash-evals/api-contract";
+import {
+    MAX_TEXT_IMPORT_BYTES,
+    FlashEvalsApiError,
+} from "@flash-evals/api-contract";
 import { assertSameTeam } from "@/server/auth/session";
 import { requireActiveProject } from "@/server/projects/activeProject";
 
@@ -751,7 +761,10 @@ describe("createRunAction", () => {
 
     it("returns a form error when no runnable prompt is chosen", async () => {
         mockApiClient.createRunFromSelection.mockRejectedValue(
-            new FlashEvalsApiError("Choose a runnable prompt version first.", 400),
+            new FlashEvalsApiError(
+                "Choose a runnable prompt version first.",
+                400,
+            ),
         );
 
         await expect(
@@ -786,6 +799,101 @@ describe("createRunAction", () => {
             "Select at least one model before starting a run.",
         );
         expect(mockApiClient.createRunFromSelection).not.toHaveBeenCalled();
+    });
+
+    it("sends the spend limit, and refuses one that is not above zero", async () => {
+        const stt = {
+            datasetId: "dataset-1",
+            audioRunMode: "stt_metrics",
+            models: "",
+            sttConfig: JSON.stringify({
+                modelId: "gpt-4o-transcribe",
+                transcriptVariant: "raw",
+            }),
+        };
+        await createRunAction(formData({ ...stt, maxCostUsd: "12.50" }));
+        expect(
+            mockApiClient.createRunFromSelection.mock.calls[0]?.[0],
+        ).toMatchObject({ maxCostUsd: 12.5 });
+
+        mockApiClient.createRunFromSelection.mockClear();
+        await createRunAction(formData({ ...stt, maxCostUsd: "" }));
+        expect(
+            mockApiClient.createRunFromSelection.mock.calls[0]?.[0],
+        ).not.toHaveProperty("maxCostUsd");
+
+        mockApiClient.createRunFromSelection.mockClear();
+        const result = await createRunAction(
+            formData({ ...stt, maxCostUsd: "0" }),
+        );
+        expect(result.fieldErrors?.maxCostUsd?.[0]).toContain(
+            "spend limit above $0",
+        );
+        expect(mockApiClient.createRunFromSelection).not.toHaveBeenCalled();
+    });
+
+    it("passes a variant's level volume first setting to the run request", async () => {
+        const variants = [
+            {
+                variantKey: "v1",
+                label: "Plain",
+                config: { modelId: "elevenlabs:scribe_v2" },
+            },
+            {
+                variantKey: "v2",
+                label: "Levelled",
+                config: { modelId: "elevenlabs:scribe_v2", levelVolume: true },
+            },
+        ];
+        await createRunAction(
+            formData({
+                datasetId: "dataset-1",
+                audioRunMode: "stt_metrics",
+                models: "",
+                sttVariants: JSON.stringify(variants),
+                sttEvaluation: JSON.stringify({ transcriptVariant: "raw" }),
+            }),
+        );
+
+        const payload = mockApiClient.createRunFromSelection.mock.calls[0]?.[0];
+        expect(payload).toMatchObject({
+            audioRunMode: "stt_metrics",
+            sttVariants: variants,
+        });
+        expect(payload?.sttVariants?.[0]?.config).not.toHaveProperty(
+            "levelVolume",
+        );
+    });
+
+    it("passes the single STT config's level volume first setting through", async () => {
+        const base = {
+            datasetId: "dataset-1",
+            audioRunMode: "stt_metrics",
+            models: "",
+        };
+        await createRunAction(
+            formData({
+                ...base,
+                sttConfig: JSON.stringify({
+                    modelId: "gpt-4o-transcribe",
+                    levelVolume: true,
+                }),
+            }),
+        );
+        expect(
+            mockApiClient.createRunFromSelection.mock.calls[0]?.[0]?.sttConfig,
+        ).toEqual({ modelId: "gpt-4o-transcribe", levelVolume: true });
+
+        mockApiClient.createRunFromSelection.mockClear();
+        await createRunAction(
+            formData({
+                ...base,
+                sttConfig: JSON.stringify({ modelId: "gpt-4o-transcribe" }),
+            }),
+        );
+        expect(
+            mockApiClient.createRunFromSelection.mock.calls[0]?.[0]?.sttConfig,
+        ).not.toHaveProperty("levelVolume");
     });
 
     it("submits STT metrics runs without prompt-only fields", async () => {
@@ -827,6 +935,22 @@ describe("createRunAction", () => {
         expect(payload).not.toHaveProperty("judgeRubric");
         expect(payload).not.toHaveProperty("judgePromptVersionId");
         expect(payload).not.toHaveProperty("referenceModel");
+    });
+
+    it("keeps the pilot size on STT metrics runs", async () => {
+        await createRunAction(
+            formData({
+                datasetId: "dataset-1",
+                audioRunMode: "stt_metrics",
+                models: "",
+                sttConfig: JSON.stringify({ modelId: "gpt-4o-transcribe" }),
+                itemLimit: "5",
+            }),
+        );
+
+        expect(
+            mockApiClient.createRunFromSelection.mock.calls[0]?.[0],
+        ).toMatchObject({ audioRunMode: "stt_metrics", itemLimit: 5 });
     });
 
     it("always prefers the serialized STT variants payload over a scalar config", async () => {
@@ -1411,6 +1535,40 @@ describe("createRunAction", () => {
         ]);
     });
 
+    it("passes per-model temperatures to the run, and none when the form sets none", async () => {
+        vi.mocked(pipelinesService.getPipeline).mockResolvedValue(
+            pipeline([
+                {
+                    field: "answer",
+                    kind: "factual",
+                    spec: { matcher: "exact" },
+                },
+            ]),
+        );
+        const fields = {
+            datasetId: "dataset-1",
+            pipelineId: "pipe-1",
+            promptVersionId: "pv-1",
+            models: "gpt-4o\ngpt-4o-mini",
+        };
+
+        await createRunAction(
+            formData({
+                ...fields,
+                temperatureAssignments: JSON.stringify([
+                    { modelId: "gpt-4o", temperature: 0.3 },
+                ]),
+            }),
+        );
+        await createRunAction(formData(fields));
+
+        const calls = mockApiClient.createRunFromSelection.mock.calls;
+        expect(calls[0]?.[0].temperatureAssignments).toEqual([
+            { modelId: "gpt-4o", temperature: 0.3 },
+        ]);
+        expect(calls[1]?.[0]).not.toHaveProperty("temperatureAssignments");
+    });
+
     it("rejects non-runnable prompt versions before creating a run", async () => {
         mockApiClient.createRunFromSelection.mockRejectedValue(
             new FlashEvalsApiError(
@@ -1454,6 +1612,246 @@ describe("createRunAction", () => {
             formError: expect.stringContaining("Field config"),
         });
     });
+
+    it("forwards the benchmark settings with the reference model", async () => {
+        const benchmark = {
+            taskMap: {
+                tasks: [
+                    {
+                        key: "answer",
+                        name: "Answer",
+                        method: "head_to_head",
+                        paths: ["$.answer"],
+                    },
+                ],
+            },
+            judge: { modelId: "gpt-4o", transport: "openai" },
+            policy: { minWinOrTieRate: 0.8, maxRelativeCost: 0.5 },
+        };
+
+        await createRunAction(
+            formData({
+                datasetId: "dataset-1",
+                promptVersionId: "pv-1",
+                models: "gpt-4o\ngpt-4o-mini",
+                referenceModel: "gpt-4o",
+                benchmark: JSON.stringify(benchmark),
+            }),
+        );
+
+        expect(
+            mockApiClient.createRunFromSelection.mock.calls[0]?.[0],
+        ).toMatchObject({ referenceModel: "gpt-4o", benchmark });
+    });
+
+    it("starts a setup comparison with the chosen pipelines", async () => {
+        mockApiClient.createSetupComparison.mockResolvedValue({
+            setupComparisonId: "comparison-1",
+            evalRunId: "run-1",
+            workflowRunIds: ["wf-run-1"],
+        });
+        const data = formData({
+            datasetId: "dataset-1",
+            promptVersionId: "pv-1",
+            models: "gpt-4o",
+            referenceModel: "gpt-4o",
+            maxCostUsd: "5",
+        });
+        data.append("comparisonPipelineId", "wf-1");
+        data.append("comparisonPipelineId", "wf-2");
+
+        await createSetupComparisonAction(data);
+
+        expect(mockApiClient.createRunFromSelection).not.toHaveBeenCalled();
+        expect(
+            mockApiClient.createSetupComparison.mock.calls[0]?.[0],
+        ).toMatchObject({
+            teamId: "team-1",
+            datasetId: "dataset-1",
+            modelIds: ["gpt-4o"],
+            referenceModel: "gpt-4o",
+            maxCostUsd: 5,
+            pipelineIds: ["wf-1", "wf-2"],
+        });
+        expect(redirect).toHaveBeenCalledWith("/comparisons/comparison-1");
+    });
+
+    it("starts a plain run from the comparison form when no pipeline is chosen", async () => {
+        await createSetupComparisonAction(
+            formData({
+                datasetId: "dataset-1",
+                promptVersionId: "pv-1",
+                models: "gpt-4o",
+            }),
+        );
+
+        expect(mockApiClient.createSetupComparison).not.toHaveBeenCalled();
+        expect(mockApiClient.createRunFromSelection).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows a pipeline's rejection on the pipelines step", async () => {
+        mockApiClient.createSetupComparison.mockRejectedValue(
+            new FlashEvalsApiError(
+                'Pipeline "Chain": Select the dataset configured by the workflow input block.',
+                400,
+            ),
+        );
+        const data = formData({
+            datasetId: "dataset-1",
+            promptVersionId: "pv-1",
+            models: "gpt-4o",
+        });
+        data.append("comparisonPipelineId", "wf-1");
+
+        await expect(createSetupComparisonAction(data)).resolves.toMatchObject({
+            fieldErrors: {
+                pipelines: [
+                    'Pipeline "Chain": Select the dataset configured by the workflow input block.',
+                ],
+            },
+        });
+    });
+
+    it("cancels a setup comparison", async () => {
+        mockApiClient.cancelSetupComparison.mockResolvedValue({
+            setupComparisonId: "comparison-1",
+            status: "running",
+        });
+
+        await expect(
+            cancelSetupComparisonAction(
+                {},
+                formData({ setupComparisonId: "comparison-1" }),
+            ),
+        ).resolves.toEqual({ ok: true });
+        expect(mockApiClient.cancelSetupComparison).toHaveBeenCalledWith({
+            teamId: "team-1",
+            projectId: "project-1",
+            setupComparisonId: "comparison-1",
+        });
+    });
+
+    it("sends a labelled-subset filter when the form sets one", async () => {
+        await createRunAction(
+            formData({
+                datasetId: "dataset-1",
+                promptVersionId: "pv-1",
+                models: "gpt-4o",
+                itemFilterTaskKey: "call_type",
+                itemFilterEquals: "sales",
+            }),
+        );
+        expect(
+            mockApiClient.createRunFromSelection.mock.calls[0]?.[0],
+        ).toMatchObject({
+            itemFilter: { taskKey: "call_type", equals: "sales" },
+        });
+    });
+
+    it("sends a path filter kept from the repeated run", async () => {
+        await createRunAction(
+            formData({
+                datasetId: "dataset-1",
+                promptVersionId: "pv-1",
+                models: "gpt-4o",
+                itemFilterPath: "$.call_type",
+                itemFilterEquals: "sales",
+            }),
+        );
+        expect(
+            mockApiClient.createRunFromSelection.mock.calls[0]?.[0],
+        ).toMatchObject({
+            itemFilter: { path: "$.call_type", equals: "sales" },
+        });
+    });
+
+    it("sends a path filter on a speech-to-text metrics run", async () => {
+        await createRunAction(
+            formData({
+                datasetId: "dataset-1",
+                audioRunMode: "stt_metrics",
+                sttModelId: "gpt-4o-mini-transcribe",
+                itemFilterPath: "$.language",
+                itemFilterEquals: "hindi",
+            }),
+        );
+        expect(
+            mockApiClient.createRunFromSelection.mock.calls[0]?.[0],
+        ).toMatchObject({
+            audioRunMode: "stt_metrics",
+            itemFilter: { path: "$.language", equals: "hindi" },
+        });
+    });
+
+    it("sends no benchmark when the form leaves it out", async () => {
+        await createRunAction(
+            formData({
+                datasetId: "dataset-1",
+                promptVersionId: "pv-1",
+                models: "gpt-4o",
+            }),
+        );
+
+        expect(
+            mockApiClient.createRunFromSelection.mock.calls[0]?.[0],
+        ).not.toHaveProperty("benchmark");
+    });
+
+    it("shows benchmark rejections on the benchmark section", async () => {
+        mockApiClient.createRunFromSelection.mockRejectedValue(
+            new FlashEvalsApiError(
+                "benchmark: Choose a judge model for the head-to-head tasks.",
+                400,
+            ),
+        );
+
+        await expect(
+            createRunAction(
+                formData({
+                    datasetId: "dataset-1",
+                    promptVersionId: "pv-1",
+                    models: "gpt-4o\ngpt-4o-mini",
+                    benchmark: JSON.stringify({ taskMap: { tasks: [] } }),
+                }),
+            ),
+        ).resolves.toMatchObject({
+            fieldErrors: {
+                benchmark: [
+                    "benchmark: Choose a judge model for the head-to-head tasks.",
+                ],
+            },
+        });
+    });
+});
+
+describe("countItemFilterMatchesAction", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("counts the filter's items in the active project", async () => {
+        mockApiClient.countItemFilterMatches.mockResolvedValue({
+            matching: 3,
+            total: 9,
+        });
+        expect(
+            await countItemFilterMatchesAction("ds-1", "$.call_type", "sales"),
+        ).toEqual({ ok: true, matching: 3, total: 9 });
+        expect(mockApiClient.countItemFilterMatches).toHaveBeenCalledWith({
+            teamId: "team-1",
+            projectId: "project-1",
+            datasetId: "ds-1",
+            path: "$.call_type",
+            equals: "sales",
+        });
+    });
+
+    it("returns the API's refusal as an error", async () => {
+        mockApiClient.countItemFilterMatches.mockRejectedValue(
+            new FlashEvalsApiError("Dataset not found", 404),
+        );
+        expect(
+            await countItemFilterMatchesAction("ds-x", "$.call_type", "sales"),
+        ).toMatchObject({ ok: false });
+    });
 });
 
 describe("generateJudgeForRunAction", () => {
@@ -1481,7 +1879,10 @@ describe("generateJudgeForRunAction", () => {
 
     it("returns an API error when the prompt version is not runnable yet", async () => {
         mockApiClient.generateJudgeForRun.mockRejectedValue(
-            new FlashEvalsApiError("Select a runnable prompt version first.", 400),
+            new FlashEvalsApiError(
+                "Select a runnable prompt version first.",
+                400,
+            ),
         );
 
         const result = await generateJudgeForRunAction("pv-1", "dataset-1");
@@ -2708,6 +3109,16 @@ describe("delete actions", () => {
             },
             { teamId: "team-1", actorId: "user-1" },
         );
+    });
+
+    it("says when there was nothing to retry because the run still waits", async () => {
+        mockApiClient.retryRun.mockResolvedValueOnce({
+            runId: "run-1",
+            enqueueStatus: "queued",
+            requeued: false,
+        });
+        const nothing = await retryRunAction({}, formData({ runId: "run-1" }));
+        expect(nothing.formError).toContain("check that the worker is running");
     });
 
     it("returns rate-limited retries as a form error", async () => {

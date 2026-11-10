@@ -115,6 +115,73 @@ describe("RunProgressCard", () => {
         expect(screen.getByText("Updating live")).toBeInTheDocument();
     });
 
+    it("names a run stopped at its spend limit and how many cells did not run", () => {
+        vi.stubGlobal("fetch", vi.fn());
+        render(
+            <RunProgressCard
+                progressUrl="/p"
+                initial={{
+                    ...running,
+                    status: "cancelled",
+                    stopReason: "spend_cap",
+                }}
+                maxCostUsd={2}
+            />,
+        );
+        expect(screen.getByText("Stopped at spend limit")).toBeInTheDocument();
+        expect(screen.getByRole("status")).toHaveTextContent(
+            "reached its $2.00 limit",
+        );
+        expect(screen.getByRole("status")).toHaveTextContent(
+            "8 cells did not run.",
+        );
+    });
+
+    it("shows why a run failed before it started", () => {
+        vi.stubGlobal("fetch", vi.fn());
+        render(
+            <RunProgressCard
+                progressUrl="/p"
+                initial={{
+                    ...running,
+                    status: "failed",
+                    done: 0,
+                    error: "The stored workflow credential was deleted.",
+                }}
+            />,
+        );
+        expect(screen.getByRole("alert")).toHaveTextContent(
+            "The stored workflow credential was deleted.",
+        );
+    });
+
+    it("offers the retry control when no worker has taken a pending run", () => {
+        vi.stubGlobal("fetch", vi.fn());
+        render(
+            <RunProgressCard
+                progressUrl="/p"
+                initial={{
+                    ...running,
+                    status: "pending",
+                    done: 0,
+                    enqueueStatus: "queued",
+                    pendingSince: new Date(
+                        Date.now() - 5 * 60_000,
+                    ).toISOString(),
+                }}
+                retryAction={<button type="button">Retry run</button>}
+            />,
+        );
+        expect(
+            screen.getByText(
+                "The worker hasn't picked this run up. Is it running?",
+            ),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole("button", { name: "Retry run" }),
+        ).toBeInTheDocument();
+    });
+
     it("uses the indeterminate bar while an active run has no cells yet", () => {
         vi.stubGlobal("fetch", vi.fn());
         render(

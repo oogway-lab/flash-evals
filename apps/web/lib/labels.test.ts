@@ -42,5 +42,20 @@ describe("labels", () => {
     it("uses one transport vocabulary everywhere", () => {
         expect(transportLabel("gateway")).toBe(TRANSPORT_LABELS.gateway);
         expect(transportLabel("bifrost")).toBe("Bifrost");
+        expect(transportLabel("anthropic")).toBe("Anthropic");
+        expect(transportLabel("google")).toBe("Gemini API");
+    });
+
+    it("offers the makers' own APIs to workflow steps too", () => {
+        expect(TRANSPORT_LABELS.anthropic).toBe("Anthropic");
+        expect(TRANSPORT_LABELS.google).toBe("Gemini API");
+        expect(Object.keys(TRANSPORT_LABELS)).toEqual([
+            "openai",
+            "gateway",
+            "openrouter",
+            "bifrost",
+            "anthropic",
+            "google",
+        ]);
     });
 });

@@ -134,19 +134,72 @@ function renderForm(overrides: Partial<Parameters<typeof NewRunForm>[0]> = {}) {
 }
 
 describe("NewRunForm model selection", () => {
-    it("shows transport only when a selected model has multiple routes", () => {
-        const { getByLabelText, queryByLabelText } = renderForm({
+    it("shows each selected model's provider with its price, keyless providers unavailable", () => {
+        const { getByLabelText } = renderForm({
             availableModels: [
                 modelOption({
                     id: "gpt-4o",
-                    transports: ["openai", "openrouter"],
+                    transports: ["gateway"],
+                    providers: [
+                        {
+                            transport: "gateway",
+                            modelId: "openai/gpt-4o",
+                            inputPerMillion: 2.5,
+                            outputPerMillion: 10,
+                            keySaved: true,
+                        },
+                        {
+                            transport: "openrouter",
+                            modelId: "openai/gpt-4o",
+                            inputPerMillion: 2.5,
+                            outputPerMillion: 10,
+                            keySaved: false,
+                        },
+                    ],
                 }),
-                modelOption({ id: "gpt-4o-mini", transports: ["openai"] }),
             ],
+            defaultModels: ["gpt-4o"],
         });
-        expect(getByLabelText("Transport for gpt-4o")).not.toBeNull();
-        expect(queryByLabelText("Transport for gpt-4o-mini")).toBeNull();
+        expect(getByLabelText("Provider for gpt-4o").textContent).toContain(
+            "Vercel AI Gateway · $2.50 / $10.00",
+        );
     });
+
+    it("blocks the run and names the missing key when no provider has one", () => {
+        const { container } = renderForm({
+            availableModels: [
+                modelOption({
+                    id: "zai/glm-5.2",
+                    label: "GLM 5.2",
+                    transports: [],
+                    available: false,
+                    disabledReason: "No key for OpenRouter.",
+                    providers: [
+                        {
+                            transport: "openrouter",
+                            modelId: "z-ai/glm-5.2",
+                            inputPerMillion: 0.006,
+                            outputPerMillion: 6.8,
+                            keySaved: false,
+                        },
+                    ],
+                }),
+            ],
+            defaultModels: ["zai/glm-5.2"],
+            savedKeyProviders: [],
+        });
+        expect(container.textContent).toContain("No key for OpenRouter.");
+        expect(container.textContent).toContain(
+            "OpenRouter · $0.006 / $6.80 · no key",
+        );
+        expect(container.textContent).toContain(
+            "No provider has a key, so no model can run",
+        );
+        expect(
+            rtlScreen.getByRole("button", { name: /Run evaluation/ }),
+        ).toBeDisabled();
+    });
+
     it("defaults to gpt-4o + gpt-4o-mini and reflects the count", () => {
         const { modelsValue, container } = renderForm();
         expect(modelsValue()).toBe("gpt-4o\ngpt-4o-mini");
@@ -414,6 +467,39 @@ describe("NewRunForm model selection", () => {
         expect(submitted.get("judgeRubric")).toBe("");
     });
 
+    it("sends a temperature only for models given one, and none for OpenAI reasoning models", () => {
+        const { container, getByLabelText, queryByLabelText, getByText } =
+            renderForm({
+                availableModels: [
+                    modelOption({ id: "gpt-4o", label: "GPT-4o" }),
+                    modelOption({ id: "gpt-4o-mini", label: "GPT-4o mini" }),
+                    modelOption({
+                        id: "gpt-5.5",
+                        label: "GPT-5.5",
+                        family: "gpt-5",
+                        reasoning: true,
+                    }),
+                ],
+                defaultModels: ["gpt-4o", "gpt-4o-mini", "gpt-5.5"],
+            });
+        const temperatures = () =>
+            (
+                container.querySelector(
+                    'input[name="temperatureAssignments"]',
+                ) as HTMLInputElement | null
+            )?.value;
+
+        expect(temperatures()).toBeUndefined();
+        fireEvent.change(getByLabelText("Temperature for gpt-4o"), {
+            target: { value: "0.3" },
+        });
+        expect(JSON.parse(temperatures() ?? "[]")).toEqual([
+            { modelId: "gpt-4o", temperature: 0.3 },
+        ]);
+        expect(queryByLabelText("Temperature for gpt-5.5")).toBeNull();
+        expect(getByText("No temperature")).toBeTruthy();
+    });
+
     it("pre-fills reasoning effort per model from the selected prompt version", () => {
         const { reasoningConfigsValue } = renderForm({
             availableModels: [
@@ -653,6 +739,43 @@ describe("NewRunForm model selection", () => {
         });
     });
 
+    it("sends level volume first only for the variant that turns it on", () => {
+        const { getAllByRole, getByLabelText, getByRole, container } =
+            renderForm({
+                datasets: [
+                    {
+                        id: "d1",
+                        name: "Calls",
+                        itemCount: 2,
+                        labeledItemCount: 2,
+                        purpose: "golden",
+                        modality: "audio",
+                    },
+                ],
+            });
+        const serialized = () =>
+            JSON.parse(
+                (
+                    container.querySelector(
+                        'input[name="sttVariants"]',
+                    ) as HTMLInputElement
+                ).value,
+            ) as Array<{ config: Record<string, unknown> }>;
+
+        expect(getByLabelText("Level volume first")).not.toBeChecked();
+        expect(serialized()[0]?.config).not.toHaveProperty("levelVolume");
+        fireEvent.click(getByRole("button", { name: "Add variant" }));
+        const toggles = getAllByRole("checkbox", {
+            name: /Level volume first/,
+        });
+        expect(toggles).toHaveLength(2);
+        fireEvent.click(toggles[1]!);
+
+        const variants = serialized();
+        expect(variants[0]?.config).not.toHaveProperty("levelVolume");
+        expect(variants[1]?.config).toMatchObject({ levelVolume: true });
+    });
+
     it("drops disabled STT template values after a V1 model switch", () => {
         const { getByLabelText, getByRole, container } = renderForm({
             datasets: [
@@ -771,6 +894,83 @@ describe("NewRunForm model selection", () => {
         expect(submitted.get("audioRunMode")).toBe("prompt_eval");
         expect(submitted.get("promptVersionId")).toBe("v1");
         expect(String(submitted.get("models"))).toContain("gpt-4o");
+    });
+
+    it("sends level volume first for the STT model under test only when ticked", () => {
+        const { getByText, getByRole, container } = renderForm({
+            datasets: [
+                {
+                    id: "d1",
+                    name: "Calls",
+                    itemCount: 2,
+                    labeledItemCount: 2,
+                    purpose: "golden",
+                    modality: "audio",
+                },
+            ],
+        });
+        fireEvent.click(getByText("STT + prompt eval"));
+        const sttConfig = () =>
+            JSON.parse(
+                (
+                    container.querySelector(
+                        'input[name="sttConfig"]',
+                    ) as HTMLInputElement
+                ).value,
+            ) as Record<string, unknown>;
+        const toggle = getByRole("checkbox", { name: /Level volume first/ });
+
+        expect(toggle).not.toBeChecked();
+        expect(sttConfig()).not.toHaveProperty("levelVolume");
+        expect(getByText(/STT model under test:/).textContent).not.toContain(
+            "Volume levelled",
+        );
+        fireEvent.click(toggle);
+        expect(sttConfig()).toMatchObject({ levelVolume: true });
+        expect(getByText(/STT model under test:/).textContent).toContain(
+            "Volume levelled",
+        );
+        fireEvent.click(toggle);
+        expect(sttConfig()).not.toHaveProperty("levelVolume");
+    });
+
+    it("restores level volume first when rerunning an STT plus prompt run", async () => {
+        const createRunAction = vi.fn(
+            async (_state: unknown, _form: FormData) => ({}),
+        );
+        const { getByRole, container } = renderForm({
+            createRunAction,
+            datasets: [
+                {
+                    id: "d1",
+                    name: "Calls",
+                    itemCount: 2,
+                    labeledItemCount: 2,
+                    purpose: "golden",
+                    modality: "audio",
+                },
+            ],
+            initialRunConfig: {
+                audioRunMode: "prompt_eval",
+                sttConfig: {
+                    modelId: "gpt-4o-mini-transcribe",
+                    language: "en",
+                    levelVolume: true,
+                },
+            },
+        });
+
+        expect(
+            getByRole("checkbox", { name: /Level volume first/ }),
+        ).toBeChecked();
+        fireEvent.submit(container.querySelector("form")!);
+        await waitFor(() => expect(createRunAction).toHaveBeenCalled());
+        const form = createRunAction.mock.calls[0]![1];
+        expect(JSON.parse(String(form.get("sttConfig")))).toMatchObject({
+            modelId: "gpt-4o-mini-transcribe",
+            language: "en",
+            levelVolume: true,
+        });
     });
 
     it("shows provider-aware STT metadata for audio datasets", () => {
@@ -900,5 +1100,196 @@ describe("NewRunForm model selection", () => {
             ]);
         });
         expect(container.textContent).toContain("gpt-5.4");
+    });
+});
+
+describe("NewRunForm benchmark comparison", () => {
+    const OUTPUT_SCHEMA = {
+        type: "object",
+        properties: {
+            x: { type: "string", enum: ["a", "b"] },
+            summary: { type: "string", description: "Short recap" },
+        },
+    };
+
+    function renderBenchmarkForm(
+        overrides: Partial<Parameters<typeof NewRunForm>[0]> = {},
+    ) {
+        return renderForm({
+            versionOptions: [
+                {
+                    id: "v1",
+                    label: "Prompt v1",
+                    fieldConfigs: [],
+                    outputSchema: OUTPUT_SCHEMA,
+                },
+            ],
+            ...overrides,
+        });
+    }
+
+    const submitButton = (
+        getByRole: (role: string, options: object) => HTMLElement,
+    ) => getByRole("button", { name: /Run evaluation/ }) as HTMLButtonElement;
+
+    it("sends no benchmark while the section is off", async () => {
+        const createRunAction = vi.fn(
+            async (_prevState: unknown, _formData: FormData) => ({}),
+        );
+        const { container, queryByLabelText } = renderBenchmarkForm({
+            createRunAction,
+        });
+        expect(queryByLabelText("Benchmark model")).toBeNull();
+        fireEvent.submit(container.querySelector("form")!);
+        await waitFor(() => expect(createRunAction).toHaveBeenCalled());
+        const submitted = createRunAction.mock.calls[0][1] as FormData;
+        expect(submitted.has("benchmark")).toBe(false);
+        expect(submitted.get("referenceModel")).toBe("gpt-4o");
+    });
+
+    it("proposes tasks from the output schema and submits them with the benchmark and judge", async () => {
+        const createRunAction = vi.fn(
+            async (_prevState: unknown, _formData: FormData) => ({}),
+        );
+        const { container, getByLabelText, getByRole } = renderBenchmarkForm({
+            createRunAction,
+        });
+        fireEvent.click(getByLabelText("Compare with a benchmark model"));
+
+        // One task per top-level property: a label compares exactly, free
+        // text goes head to head (which needs the judge).
+        expect(
+            (
+                getByLabelText("Name", {
+                    selector: "#benchmark-task-0-name",
+                }) as HTMLInputElement
+            ).value,
+        ).toBe("X");
+        expect(getByRole("group", { name: "Task: Summary" })).not.toBeNull();
+
+        fireEvent.click(getByLabelText("Benchmark model"));
+        pickOption(
+            await rtlScreen.findByRole("option", { name: "gpt-4o-mini" }),
+        );
+        fireEvent.change(getByLabelText("Maximum cost (% of benchmark)"), {
+            target: { value: "40" },
+        });
+
+        expect(submitButton(getByRole).disabled).toBe(false);
+        fireEvent.submit(container.querySelector("form")!);
+        await waitFor(() => expect(createRunAction).toHaveBeenCalled());
+        const submitted = createRunAction.mock.calls[0][1] as FormData;
+        expect(submitted.get("referenceModel")).toBe("gpt-4o-mini");
+        expect(JSON.parse(String(submitted.get("benchmark")))).toEqual({
+            taskMap: {
+                tasks: [
+                    {
+                        key: "x",
+                        name: "X",
+                        method: "agreement",
+                        fields: [{ path: "$.x", matcher: "exact" }],
+                    },
+                    {
+                        key: "summary",
+                        name: "Summary",
+                        description: "Short recap",
+                        method: "head_to_head",
+                        paths: ["$.summary"],
+                    },
+                ],
+            },
+            judge: { modelId: "gpt-4o", transport: "openai" },
+            policy: {
+                minAgreement: 0.9,
+                minWinOrTieRate: 0.9,
+                maxDropBelowReference: 0.02,
+                maxRelativeCost: 0.4,
+            },
+        });
+    });
+
+    it("shows task map errors inline and blocks submit until they are fixed", () => {
+        const { container, getByLabelText, getByRole } = renderBenchmarkForm();
+        fireEvent.click(getByLabelText("Compare with a benchmark model"));
+        fireEvent.change(
+            getByLabelText("Output field", {
+                selector: "#benchmark-task-0-field-0-path",
+            }),
+            {
+                target: { value: "$.missing" },
+            },
+        );
+        expect(container.textContent).toContain(
+            'X: "$.missing" is not in the output schema.',
+        );
+        expect(submitButton(getByRole).disabled).toBe(true);
+
+        fireEvent.change(
+            getByLabelText("Output field", {
+                selector: "#benchmark-task-0-field-0-path",
+            }),
+            {
+                target: { value: "$.x" },
+            },
+        );
+        expect(container.textContent).not.toContain("Fix these before");
+        expect(submitButton(getByRole).disabled).toBe(false);
+    });
+
+    it("starts on with the previous settings when rerunning a benchmark run", () => {
+        const { getByLabelText, container } = renderBenchmarkForm({
+            initialRunConfig: {
+                benchmark: {
+                    taskMap: {
+                        tasks: [
+                            {
+                                key: "label",
+                                name: "Label",
+                                method: "agreement",
+                                fields: [{ path: "$.x", matcher: "exact" }],
+                            },
+                        ],
+                    },
+                    policy: { minAgreement: 0.75 },
+                },
+            },
+        });
+        expect(
+            (
+                getByLabelText(
+                    "Compare with a benchmark model",
+                ) as HTMLInputElement
+            ).checked,
+        ).toBe(true);
+        expect(
+            (getByLabelText("Minimum agreement (%)") as HTMLInputElement).value,
+        ).toBe("75");
+        const hidden = container.querySelector(
+            'input[name="benchmark"]',
+        ) as HTMLInputElement;
+        expect(JSON.parse(hidden.value)).toMatchObject({
+            taskMap: { tasks: [{ key: "label" }] },
+            policy: { minAgreement: 0.75 },
+        });
+    });
+
+    it("asks for a second model and re-proposes tasks on demand", () => {
+        const { container, chip, getByLabelText, getByRole } =
+            renderBenchmarkForm();
+        fireEvent.click(getByLabelText("Compare with a benchmark model"));
+        fireEvent.click(getByRole("button", { name: "Remove task X" }));
+        fireEvent.click(getByRole("button", { name: "Remove task Summary" }));
+        expect(container.textContent).toContain("Add at least one task.");
+
+        fireEvent.click(
+            getByRole("button", { name: "Propose from output schema" }),
+        );
+        expect(container.textContent).not.toContain("Add at least one task.");
+
+        fireEvent.click(chip("gpt-4o-mini")!);
+        expect(container.textContent).toContain(
+            "Select at least two models: the benchmark and one to compare with it.",
+        );
+        expect(submitButton(getByRole).disabled).toBe(true);
     });
 });

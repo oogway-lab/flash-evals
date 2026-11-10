@@ -10,5 +10,5 @@ const cloudflareConfig = defineCloudflareConfig({
 export default {
     ...cloudflareConfig,
     // Use Next's supported Webpack mode for the OpenNext production build.
-    buildCommand: "pnpm exec next build --webpack",
+    buildCommand: "bunx next build --webpack",
 };

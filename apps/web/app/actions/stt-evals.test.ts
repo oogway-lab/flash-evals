@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
     createWorkflow: vi.fn(),
     updateWorkflow: vi.fn(),
     createWorkflowRun: vi.fn(),
+    retryWorkflowRun: vi.fn(),
+    cancelWorkflowRun: vi.fn(),
     revalidatePath: vi.fn(),
     redirect: vi.fn(),
 }));
@@ -21,6 +23,8 @@ vi.mock("@/server/api/client", () => ({
         createWorkflow: mocks.createWorkflow,
         updateWorkflow: mocks.updateWorkflow,
         createWorkflowRun: mocks.createWorkflowRun,
+        retryWorkflowRun: mocks.retryWorkflowRun,
+        cancelWorkflowRun: mocks.cancelWorkflowRun,
     }),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
@@ -30,8 +34,10 @@ vi.mock("next/navigation", () => ({
 }));
 
 import {
+    cancelWorkflowRunAction,
     createSttEvalAction,
     createSttEvalRunAction,
+    retryWorkflowRunAction,
     saveSttEvalAction,
 } from "./stt-evals";
 
@@ -144,7 +150,29 @@ describe("STT eval actions", () => {
         });
     });
 
-    it.each(["multi", "stt"] as const)(
+    it("sends the canvas's final answer, and null to remove it", async () => {
+        const finalAnswer = {
+            fields: [{ path: "$.mom", stepKey: "notes", stepPath: "$.mom" }],
+        };
+        const data = new FormData();
+        data.set("workflowId", "workflow-1");
+        data.set("name", "Flow");
+        data.set("kind", "multi");
+        data.set("nodes", "[]");
+        data.set("edges", "[]");
+        data.set("finalAnswer", JSON.stringify(finalAnswer));
+        await saveSttEvalAction({}, data);
+        expect(mocks.updateWorkflow).toHaveBeenLastCalledWith(
+            expect.objectContaining({ finalAnswer }),
+        );
+        data.set("finalAnswer", "null");
+        await saveSttEvalAction({}, data);
+        expect(mocks.updateWorkflow).toHaveBeenLastCalledWith(
+            expect.objectContaining({ finalAnswer: null }),
+        );
+    });
+
+    it.each(["multi", "stt", "prompt"] as const)(
         "preserves %s kind when saving",
         async (kind) => {
             const data = new FormData();
@@ -164,7 +192,8 @@ describe("STT eval actions", () => {
     );
 
     it("returns node-addressable routing errors with remediation", async () => {
-        const { FlashEvalsApiError } = await import("@flash-evals/api-contract");
+        const { FlashEvalsApiError } =
+            await import("@flash-evals/api-contract");
         mocks.createWorkflowRun.mockRejectedValue(
             new FlashEvalsApiError(
                 'Workflow node "Prompt Root" has no LLM route selection.',
@@ -198,5 +227,103 @@ describe("STT eval actions", () => {
         expect(mocks.createWorkflowRun).toHaveBeenCalledWith(
             expect.objectContaining({ idempotencyKey: "browser-run-1" }),
         );
+    });
+
+    it("sends the spend limit and data rules with the run", async () => {
+        const data = new FormData();
+        data.set("workflowId", "workflow-1");
+        data.set("datasetId", "dataset-1");
+        data.set("maxCostUsd", "4.5");
+        data.set(
+            "dataPolicy",
+            JSON.stringify({ onlyHosts: ["vertex"], zeroDataRetention: true }),
+        );
+
+        await createSttEvalRunAction({}, data);
+
+        expect(mocks.createWorkflowRun).toHaveBeenCalledWith(
+            expect.objectContaining({
+                maxCostUsd: 4.5,
+                dataPolicy: { onlyHosts: ["vertex"], zeroDataRetention: true },
+            }),
+        );
+    });
+
+    it("sends the eval run to compare with, and nothing when none is chosen", async () => {
+        const data = new FormData();
+        data.set("workflowId", "workflow-1");
+        data.set("datasetId", "dataset-1");
+        data.set("compareWithRunId", "run-9");
+
+        await createSttEvalRunAction({}, data);
+        expect(mocks.createWorkflowRun).toHaveBeenCalledWith(
+            expect.objectContaining({ compareWithRunId: "run-9" }),
+        );
+
+        mocks.createWorkflowRun.mockClear();
+        data.set("compareWithRunId", "");
+        await createSttEvalRunAction({}, data);
+        const [request] = mocks.createWorkflowRun.mock.calls[0]!;
+        expect(request).not.toHaveProperty("compareWithRunId");
+    });
+
+    it("leaves the limit and rules out when they are empty, and rejects a bad limit", async () => {
+        const data = new FormData();
+        data.set("workflowId", "workflow-1");
+        data.set("datasetId", "dataset-1");
+        data.set("maxCostUsd", "");
+        data.set("dataPolicy", "");
+
+        await createSttEvalRunAction({}, data);
+        const [request] = mocks.createWorkflowRun.mock.calls[0]!;
+        expect(request).not.toHaveProperty("maxCostUsd");
+        expect(request).not.toHaveProperty("dataPolicy");
+
+        data.set("maxCostUsd", "-2");
+        mocks.createWorkflowRun.mockClear();
+        await expect(createSttEvalRunAction({}, data)).resolves.toMatchObject({
+            fieldErrors: { maxCostUsd: [expect.stringContaining("above $0")] },
+        });
+        expect(mocks.createWorkflowRun).not.toHaveBeenCalled();
+    });
+
+    it("cancels a pipeline run and refreshes its page", async () => {
+        mocks.cancelWorkflowRun.mockResolvedValue({
+            workflowRunId: "run-1",
+            status: "running",
+            stopReason: "cancelled",
+        });
+        const data = new FormData();
+        data.set("workflowId", "workflow-1");
+        data.set("runId", "run-1");
+
+        await expect(cancelWorkflowRunAction({}, data)).resolves.toEqual({
+            ok: true,
+        });
+        expect(mocks.cancelWorkflowRun).toHaveBeenCalledWith({
+            teamId: "team-1",
+            projectId: "project-1",
+            workflowId: "workflow-1",
+            workflowRunId: "run-1",
+        });
+        expect(mocks.revalidatePath).toHaveBeenCalledWith(
+            "/multiworkflow/workflow-1/runs/run-1",
+        );
+    });
+
+    it("says when a retry had nothing to queue", async () => {
+        mocks.retryWorkflowRun.mockResolvedValue({
+            workflowRunId: "run-1",
+            enqueueStatus: "queued",
+            retriedCellCount: 0,
+            requeued: false,
+        });
+        const data = new FormData();
+        data.set("workflowId", "workflow-1");
+        data.set("runId", "run-1");
+
+        await expect(retryWorkflowRunAction({}, data)).resolves.toEqual({
+            formError: expect.stringContaining("still waiting in the queue"),
+        });
     });
 });
