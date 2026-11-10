@@ -5,6 +5,7 @@ import {
     parseSetWorkflowLlmProjectDefaultRequest,
     parseWorkflowLlmRouteCandidate,
     parseWorkflowLlmRouteCandidatesResponse,
+    parseWorkflowLlmSelection,
 } from "./llmRoutingSchemas.js";
 
 const ID = "11111111-1111-4111-8111-111111111111";
@@ -69,6 +70,52 @@ describe("LLM routing HTTP schemas", () => {
                 routeId: ID,
             }),
         ).toMatchObject({ routeId: ID });
+    });
+
+    it("accepts direct Anthropic and Gemini API routes with no routing controls", () => {
+        for (const transport of ["anthropic", "google"] as const) {
+            const request = {
+                projectId: ID,
+                name: `Direct ${transport}`,
+                config: {
+                    modelId: "anthropic/claude-sonnet-4.6",
+                    transportConfig: { transport },
+                    generation: { maxOutputTokens: 256 },
+                    structuredOutput: { mode: "text" as const },
+                    retry: {
+                        owner: "flash-evals" as const,
+                        maxAttempts: 2,
+                        timeoutMs: 60_000,
+                        retryableErrorClasses: ["rate_limit" as const],
+                    },
+                    cache: {
+                        flashEvalsReuse: "force_fresh" as const,
+                        providerCaching: "allow" as const,
+                    },
+                },
+            };
+            expect(parseCreateWorkflowLlmRouteVersionRequest(request)).toEqual(
+                request,
+            );
+            expect(() =>
+                parseCreateWorkflowLlmRouteVersionRequest({
+                    ...request,
+                    config: {
+                        ...request.config,
+                        transportConfig: {
+                            transport,
+                            upstreamPolicy: { mode: "auto" },
+                        },
+                    },
+                }),
+            ).toThrow(/config\.transportConfig\.upstreamPolicy/);
+            expect(
+                parseWorkflowLlmSelection({ mode: "simple", transport }),
+            ).toEqual({ mode: "simple", transport });
+        }
+        expect(() =>
+            parseWorkflowLlmSelection({ mode: "simple", transport: "gemini" }),
+        ).toThrow();
     });
 
     it("rejects dependency and authenticated-context fields on semantic route requests", () => {

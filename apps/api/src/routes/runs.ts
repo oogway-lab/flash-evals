@@ -13,31 +13,35 @@ import type {
     IRunDetailResponse,
     IRunListRow,
     IRunNote,
+    IRunConfigSnapshot,
     ISideMetrics,
+    IThinkingOutcome,
     ReviewVerdict,
     RunStatus,
+    RunStopReason,
+    ScorerType,
     WorkflowKind,
 } from "@flash-evals/api-contract";
 import {
+    benchmarkUsesSource,
     buildLeaderboardRows,
     buildSttShipGate,
     pickBestModel,
     sharedQualitySource,
     sideQuality,
 } from "@flash-evals/api-contract";
-import {
-    getEvalProvider,
-    type IEvalCompletionProvider,
-} from "@flash-evals/llm-core";
 import type { IApiConfig } from "../config.js";
 import type { IDb } from "../db.js";
 import { ApiBadRequestError, ApiNotFoundError } from "../errors.js";
-import { registryEntryFor } from "../modelRegistry.js";
-import {
-    resolveApiKeys,
-    teamBaseUrlProviderOptions,
-} from "../secrets/resolveApiKeys.js";
+import { registryModelFor } from "../modelRegistry.js";
 import { RUN_NOTE_TITLE_SQL } from "./runNoteTitle.js";
+import { benchmarkComparisonForRun } from "./runs/benchmark.js";
+export { proposeBenchmarkTaskMapPayload } from "./runs/benchmarkProposal.js";
+export { countItemFilterMatchesPayload } from "./runs/itemFilter.js";
+import {
+    evalProvider,
+    loadRunnablePromptContext,
+} from "./runs/promptContext.js";
 import {
     createRunFromSelectionPayload,
     createRunPayload,
@@ -45,6 +49,7 @@ import {
     runSetupPayload,
 } from "./runs/creation.js";
 import {
+    cancelRunPayload,
     deleteRunPayload,
     retryRunPayload,
     runProgressPayload,
@@ -57,6 +62,7 @@ import {
 } from "./runs/transcripts.js";
 
 export {
+    cancelRunPayload,
     createRunFromSelectionPayload,
     createRunPayload,
     deleteRunPayload,
@@ -73,6 +79,8 @@ interface IRunDetailDbRow {
     project_id: string;
     dataset_id: string;
     status: RunStatus;
+    stop_reason?: RunStopReason | null;
+    error?: string | null;
     config_snapshot: Record<string, unknown>;
     created_at: Date | string;
 }
@@ -83,6 +91,7 @@ interface IRunModelDbRow {
     prompt_version_id: string | null;
     is_reference: boolean;
     reasoning_config: IReasoningConfig | null;
+    temperature: number | null;
 }
 
 interface IRunCellDbRow {
@@ -93,9 +102,13 @@ interface IRunCellDbRow {
     output_json: unknown;
     latency_ms: number | null;
     cost_usd: number | null;
+    judge_cost_usd?: number | string | null;
     prompt_tokens: number | null;
     completion_tokens: number | null;
+    reasoning_tokens?: number | null;
+    thinking?: IThinkingOutcome | null;
     error: string | null;
+    served_by: string | null;
 }
 
 interface IRunItemDbRow {
@@ -108,8 +121,7 @@ interface IRunItemDbRow {
 
 interface ICellScoreDbRow {
     run_cell_id: string;
-    scorer_type:
-        "field_diff" | "judge" | "transcript_metric" | "transcript_judge";
+    scorer_type: ScorerType;
     score: number | null;
     rationale: string | null;
     details_json: unknown;
@@ -135,6 +147,7 @@ interface IRunListDbRow {
     workflow_score?: number | string | null;
     id: string;
     status: RunStatus;
+    stop_reason?: RunStopReason | null;
     created_at: Date | string;
     dataset_id: string;
     dataset_name: string;
@@ -178,24 +191,6 @@ interface IComparableRunDbRow {
     models: string[] | null;
 }
 
-interface IGenerateJudgePromptVersionRow {
-    id: string;
-    prompt_id: string;
-    content: string;
-    schema_version_id: string | null;
-    status: "legacy" | "runnable";
-}
-
-interface IGenerateJudgePromptRow {
-    id: string;
-    team_id: string;
-    project_id: string;
-}
-
-interface IGenerateJudgeSchemaRow {
-    json_schema: Record<string, unknown>;
-}
-
 interface IGenerateJudgeDatasetRow {
     team_id: string;
     project_id: string;
@@ -208,45 +203,7 @@ export async function generateJudgeForRunPayload(
     config: IApiConfig,
     input: IGenerateJudgeForRunRequest,
 ): Promise<IGenerateJudgeForRunResponse> {
-    const versionResult = await db.query<IGenerateJudgePromptVersionRow>(
-        `select id, prompt_id, content, schema_version_id, status
-        from prompt_versions
-        where id = $1
-        limit 1`,
-        [input.promptVersionId],
-    );
-    const version = versionResult.rows[0];
-    if (!version?.schema_version_id || version.status !== "runnable") {
-        throw new ApiBadRequestError("Select a runnable prompt version first.");
-    }
-
-    const promptResult = await db.query<IGenerateJudgePromptRow>(
-        `select id, team_id, project_id
-        from prompts
-        where id = $1
-        limit 1`,
-        [version.prompt_id],
-    );
-    const prompt = promptResult.rows[0];
-    if (
-        !prompt ||
-        prompt.team_id !== input.teamId ||
-        prompt.project_id !== input.projectId
-    ) {
-        throw new ApiNotFoundError("Prompt not found.");
-    }
-
-    const schemaResult = await db.query<IGenerateJudgeSchemaRow>(
-        `select json_schema
-        from prompt_schema_versions
-        where id = $1
-        limit 1`,
-        [version.schema_version_id],
-    );
-    const schemaVersion = schemaResult.rows[0];
-    if (!schemaVersion) {
-        throw new ApiNotFoundError("Prompt schema not found.");
-    }
+    const promptContext = await loadRunnablePromptContext(db, input);
 
     const datasetResult = await db.query<IGenerateJudgeDatasetRow>(
         `select team_id, project_id, modality, purpose
@@ -265,8 +222,8 @@ export async function generateJudgeForRunPayload(
     }
 
     return generateJudgeFromContext(db, config, input.teamId, {
-        taskPrompt: version.content,
-        outputSchema: schemaVersion.json_schema,
+        taskPrompt: promptContext.content,
+        outputSchema: promptContext.outputSchema,
         modality: dataset.modality,
         hasGolden: dataset.purpose === "golden",
         generatorModelId: input.generatorModelId,
@@ -329,6 +286,7 @@ async function runListRows(
         `with listed_runs as (select
             r.id,
             r.status,
+            r.stop_reason,
             r.created_at,
             null::uuid as workflow_id,
             null::text as workflow_kind,
@@ -351,14 +309,45 @@ async function runListRows(
                     'field', ms.field
                 ) order by ms.model_id), '[]'::json)
                 from (
+                    -- A failed cell counts as a zero golden or judge score when
+                    -- another cell on the same item got that score (the rule in
+                    -- buildLeaderboardRows), so a crashing model can't rank first.
                     select
                         rm2.model_id,
-                        avg(cs.score) filter (where cs.scorer_type = 'judge')::float8 as judge,
+                        (coalesce(sum(cs.score) filter (where cs.scorer_type = 'judge'), 0)
+                            / nullif(
+                                count(cs.score) filter (where cs.scorer_type = 'judge')
+                                + count(distinct rc2.id) filter (
+                                    where rc2.status = 'failed' and exists (
+                                        select 1 from run_cells other
+                                        inner join cell_scores os on os.run_cell_id = other.id
+                                        where other.run_id = r.id
+                                            and other.dataset_item_id = rc2.dataset_item_id
+                                            and os.scorer_type = 'judge'
+                                            and os.score is not null
+                                    )
+                                ),
+                                0
+                            ))::float8 as judge,
                         avg(cs.score) filter (
                             where cs.scorer_type = 'transcript_metric'
                             and coalesce(cs.details_json->>'metricKind', '') <> 'llm_judge'
                         )::float8 as transcript,
-                        avg(cs.score) filter (where cs.scorer_type = 'field_diff')::float8 as field
+                        (coalesce(sum(cs.score) filter (where cs.scorer_type = 'field_diff'), 0)
+                            / nullif(
+                                count(cs.score) filter (where cs.scorer_type = 'field_diff')
+                                + count(distinct rc2.id) filter (
+                                    where rc2.status = 'failed' and exists (
+                                        select 1 from run_cells other
+                                        inner join cell_scores os on os.run_cell_id = other.id
+                                        where other.run_id = r.id
+                                            and other.dataset_item_id = rc2.dataset_item_id
+                                            and os.scorer_type = 'field_diff'
+                                            and os.score is not null
+                                    )
+                                ),
+                                0
+                            ))::float8 as field
                     from run_models rm2
                     left join run_cells rc2
                         on rc2.run_model_id = rm2.id and rc2.run_id = r.id
@@ -378,7 +367,7 @@ async function runListRows(
         ${
             includeWorkflows
                 ? `union all
-        select r.id, r.status, r.created_at, r.workflow_id,
+        select r.id, r.status, null::text as stop_reason, r.created_at, r.workflow_id,
             coalesce(r.workflow_snapshot->>'kind', w.kind) as workflow_kind,
             r.dataset_id, d.name as dataset_name,
             coalesce((select array_agg(distinct model_id order by model_id) filter(where model_id is not null)
@@ -432,6 +421,7 @@ function runListPayloadRow(row: IRunListDbRow): IRunListRow {
     return {
         id: row.id,
         status: row.status,
+        ...(row.stop_reason ? { stopReason: row.stop_reason } : {}),
         createdAt:
             row.created_at instanceof Date
                 ? row.created_at.toISOString()
@@ -467,7 +457,7 @@ async function getTeamRun(
     runId: string,
 ): Promise<IRunDetailDbRow | undefined> {
     const result = await db.query<IRunDetailDbRow>(
-        `select id, team_id, project_id, dataset_id, status, config_snapshot, created_at
+        `select id, team_id, project_id, dataset_id, status, stop_reason, error, config_snapshot, created_at
         from runs
         where id = $1 and team_id = $2 and project_id = $3
         limit 1`,
@@ -544,6 +534,8 @@ export async function runDetailPayload(
             teamId: run.team_id,
             datasetId: run.dataset_id,
             status: run.status,
+            ...(run.stop_reason ? { stopReason: run.stop_reason } : {}),
+            ...(run.error ? { error: run.error } : {}),
             createdAt: isoDate(run.created_at),
             configSnapshot: run.config_snapshot,
         },
@@ -559,7 +551,40 @@ export async function runDetailPayload(
         comparableRuns,
         baselineRunId,
         comparison,
+        ...(await benchmarkComparisonField(
+            db,
+            run.config_snapshot as IRunConfigSnapshot,
+            matrix,
+        )),
     };
+}
+
+async function benchmarkComparisonField(
+    db: IDb,
+    snapshot: IRunConfigSnapshot,
+    matrix: Pick<
+        IRunDetailResponse,
+        "models" | "items" | "cells" | "scoresByCell"
+    >,
+): Promise<Pick<IRunDetailResponse, "benchmarkComparison">> {
+    const labeledItemIds =
+        snapshot.benchmark &&
+        benchmarkUsesSource(snapshot.benchmark, "labels") &&
+        matrix.items.length > 0
+            ? (
+                  await db.query<{ dataset_item_id: string }>(
+                      `select dataset_item_id from labels
+                      where dataset_item_id = any($1::uuid[])`,
+                      [matrix.items.map((item) => item.id)],
+                  )
+              ).rows.map((row) => row.dataset_item_id)
+            : undefined;
+    const benchmarkComparison = benchmarkComparisonForRun({
+        benchmark: snapshot.benchmark,
+        labeledItemIds,
+        ...matrix,
+    });
+    return benchmarkComparison ? { benchmarkComparison } : {};
 }
 
 export async function runSummaryPayload(
@@ -815,7 +840,8 @@ async function runContextPayload(
 async function runMatrixPayload(db: IDb, runId: string) {
     const [modelsResult, cellsResult] = await Promise.all([
         db.query<IRunModelDbRow>(
-            `select id, model_id, prompt_version_id, is_reference, reasoning_config
+            `select id, model_id, prompt_version_id, is_reference, reasoning_config,
+                temperature
             from run_models
             where run_id = $1`,
             [runId],
@@ -829,9 +855,13 @@ async function runMatrixPayload(db: IDb, runId: string) {
                 output_json,
                 latency_ms,
                 cost_usd,
+                judge_cost_usd,
                 prompt_tokens,
                 completion_tokens,
-                error
+                reasoning_tokens,
+                provider_metadata->'thinking' as thinking,
+                error,
+                provider_metadata->>'servedBy' as served_by
             from run_cells
             where run_id = $1`,
             [runId],
@@ -887,6 +917,9 @@ async function runMatrixPayload(db: IDb, runId: string) {
             modelId: row.model_id,
             promptVersionId: row.prompt_version_id,
             isReference: row.is_reference,
+            ...(row.temperature != null
+                ? { temperature: Number(row.temperature) }
+                : {}),
         })),
         items: itemsResult.rows.map((row): IRunDetailItem => ({
             id: row.id,
@@ -903,8 +936,16 @@ async function runMatrixPayload(db: IDb, runId: string) {
             outputJson: row.output_json,
             latencyMs: row.latency_ms,
             costUsd: row.cost_usd,
+            ...(row.judge_cost_usd != null
+                ? { judgeCostUsd: Number(row.judge_cost_usd) }
+                : {}),
             promptTokens: row.prompt_tokens,
             completionTokens: row.completion_tokens,
+            ...(row.reasoning_tokens != null
+                ? { reasoningTokens: row.reasoning_tokens }
+                : {}),
+            ...(row.thinking ? { thinking: row.thinking } : {}),
+            ...(row.served_by ? { servedBy: row.served_by } : {}),
             annotation: annotationsByCell.get(row.id),
             error: row.error,
         })),
@@ -1143,7 +1184,7 @@ async function generateJudgeFromContext(
         process.env.PROMPT_OPTIMIZER_MODEL ??
         "gpt-6-luna";
     const provider = await evalProvider(db, config, teamId);
-    const reasoning = registryEntryFor(generatorModelId)?.reasoning ?? false;
+    const reasoning = registryModelFor(generatorModelId)?.reasoning ?? false;
     const result = await provider.complete({
         model: generatorModelId,
         system: JUDGE_GENERATOR_SYSTEM,
@@ -1191,18 +1232,6 @@ function judgeGeneratorInstructions(input: {
         "",
         "Return the rubric text only.",
     ].join("\n");
-}
-
-async function evalProvider(
-    db: IDb,
-    config: IApiConfig,
-    teamId: string,
-): Promise<IEvalCompletionProvider> {
-    const resolved = await resolveApiKeys(db, config, teamId);
-    return getEvalProvider(resolved.apiKeys, {
-        provider: config.flashEvalsLlmProvider,
-        ...teamBaseUrlProviderOptions(resolved),
-    });
 }
 
 function scoresByCellRecord(

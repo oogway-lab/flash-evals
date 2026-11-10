@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+    cancelRunPayload: vi.fn(),
     createRunFromSelectionPayload: vi.fn(),
     deleteRunPayload: vi.fn(),
     listRunCellsPagePayload: vi.fn(),
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../routes/runs.js", () => ({
+    cancelRunPayload: mocks.cancelRunPayload,
     createRunFromSelectionPayload: mocks.createRunFromSelectionPayload,
     deleteRunPayload: mocks.deleteRunPayload,
     listRunsPayload: vi.fn(),
@@ -41,7 +43,7 @@ describe("MCP run lifecycle tools", () => {
 
     it("retries through the shared payload before enqueueing", async () => {
         const { tools, runtime } = registerTools();
-        mocks.retryRunPayload.mockResolvedValue(undefined);
+        mocks.retryRunPayload.mockResolvedValue({ requeued: true });
         mocks.publishRunEnqueue.mockResolvedValue({
             runId: RUN_ID,
             enqueueStatus: "queued",
@@ -52,11 +54,12 @@ describe("MCP run lifecycle tools", () => {
             runId: RUN_ID,
         });
 
-        expect(mocks.retryRunPayload).toHaveBeenCalledWith(runtime.db, {
-            teamId: "team-1",
-            projectId: PROJECT_ID,
-            runId: RUN_ID,
-        });
+        expect(mocks.retryRunPayload).toHaveBeenCalledWith(
+            runtime.db,
+            { teamId: "team-1", projectId: PROJECT_ID, runId: RUN_ID },
+            // A retry is held to the team daily cap like a new run.
+            { teamDailySpendCapUsd: runtime.config.teamDailySpendCapUsd },
+        );
         expect(mocks.publishRunEnqueue).toHaveBeenCalledWith(
             runtime.db,
             runtime.config,
@@ -65,6 +68,44 @@ describe("MCP run lifecycle tools", () => {
         expect(mocks.retryRunPayload.mock.invocationCallOrder[0]).toBeLessThan(
             mocks.publishRunEnqueue.mock.invocationCallOrder[0]!,
         );
+    });
+
+    it("says when there was nothing to retry", async () => {
+        const { tools } = registerTools();
+        mocks.retryRunPayload.mockResolvedValue({ requeued: false });
+        mocks.publishRunEnqueue.mockResolvedValue({
+            runId: RUN_ID,
+            enqueueStatus: "queued",
+        });
+
+        const result = await tools.get("retry_run")!.handler({
+            projectId: PROJECT_ID,
+            runId: RUN_ID,
+        });
+
+        expect(JSON.stringify(result)).toContain("Nothing to retry");
+    });
+
+    it("cancels through the shared payload without enqueueing anything", async () => {
+        const { tools, runtime } = registerTools();
+        mocks.cancelRunPayload.mockResolvedValue({
+            runId: RUN_ID,
+            status: "running",
+            stopReason: "cancelled",
+        });
+
+        const result = await tools.get("cancel_run")!.handler({
+            projectId: PROJECT_ID,
+            runId: RUN_ID,
+        });
+
+        expect(mocks.cancelRunPayload).toHaveBeenCalledWith(runtime.db, {
+            teamId: "team-1",
+            projectId: PROJECT_ID,
+            runId: RUN_ID,
+        });
+        expect(mocks.publishRunEnqueue).not.toHaveBeenCalled();
+        expect(JSON.stringify(result)).toContain("Cancel requested");
     });
 
     it("preserves retry keys and exposes a durable ID when publication is deferred", async () => {
@@ -107,6 +148,185 @@ describe("MCP run lifecycle tools", () => {
             },
         });
         expect(JSON.stringify(result)).not.toContain("Internal server error");
+    });
+
+    it("passes a labelled-subset filter from create_eval_run to the run", async () => {
+        const { tools, runtime } = registerTools();
+        mocks.createRunFromSelectionPayload.mockResolvedValue({
+            runId: RUN_ID,
+            enqueueStatus: "pending_enqueue",
+        });
+        mocks.publishRunEnqueue.mockResolvedValue({
+            runId: RUN_ID,
+            enqueueStatus: "queued",
+        });
+        const tool = tools.get("create_eval_run")!;
+        const itemFilter = { taskKey: "call_type", equals: "sales" };
+        await tool.handler(
+            tool.config.inputSchema!.parse({
+                projectId: PROJECT_ID,
+                datasetId: RUN_ID,
+                promptVersionId: RUN_ID,
+                maxTokens: 100,
+                judgeModelId: "gpt-4o",
+                modelIds: ["gpt-4o"],
+                fieldConfigs: [],
+                itemFilter,
+            }) as Record<string, unknown>,
+        );
+        expect(mocks.createRunFromSelectionPayload).toHaveBeenCalledWith(
+            runtime.db,
+            expect.objectContaining({ itemFilter }),
+            runtime.config,
+        );
+        expect(() =>
+            tool.config.inputSchema!.parse({
+                projectId: PROJECT_ID,
+                datasetId: RUN_ID,
+                promptVersionId: RUN_ID,
+                maxTokens: 100,
+                judgeModelId: "gpt-4o",
+                modelIds: ["gpt-4o"],
+                fieldConfigs: [],
+                itemFilter: { taskKey: "call_type", equals: { a: 1 } },
+            }),
+        ).toThrow();
+    });
+
+    it("passes data rules from create_eval_run to the run", async () => {
+        const { tools, runtime } = registerTools();
+        mocks.createRunFromSelectionPayload.mockResolvedValue({
+            runId: RUN_ID,
+            enqueueStatus: "pending_enqueue",
+        });
+        mocks.publishRunEnqueue.mockResolvedValue({
+            runId: RUN_ID,
+            enqueueStatus: "queued",
+        });
+        const tool = tools.get("create_eval_run")!;
+        const dataPolicy = {
+            onlyHosts: ["vertex"],
+            zeroDataRetention: true,
+        };
+        await tool.handler(
+            tool.config.inputSchema!.parse({
+                projectId: PROJECT_ID,
+                datasetId: RUN_ID,
+                promptVersionId: RUN_ID,
+                maxTokens: 100,
+                judgeModelId: "gpt-4o",
+                modelIds: ["gpt-4o"],
+                fieldConfigs: [],
+                dataPolicy,
+            }) as Record<string, unknown>,
+        );
+        expect(mocks.createRunFromSelectionPayload).toHaveBeenCalledWith(
+            runtime.db,
+            expect.objectContaining({ dataPolicy }),
+            runtime.config,
+        );
+    });
+
+    it("passes per-model temperatures from create_eval_run and refuses one outside 0 to 2", async () => {
+        const { tools, runtime } = registerTools();
+        mocks.createRunFromSelectionPayload.mockResolvedValue({
+            runId: RUN_ID,
+            enqueueStatus: "pending_enqueue",
+        });
+        mocks.publishRunEnqueue.mockResolvedValue({
+            runId: RUN_ID,
+            enqueueStatus: "queued",
+        });
+        const tool = tools.get("create_eval_run")!;
+        const base = {
+            projectId: PROJECT_ID,
+            datasetId: RUN_ID,
+            promptVersionId: RUN_ID,
+            maxTokens: 100,
+            judgeModelId: "gpt-4o",
+            modelIds: ["gpt-4o"],
+            fieldConfigs: [],
+        };
+        const temperatureAssignments = [
+            { modelId: "gpt-4o", temperature: 0.2 },
+        ];
+        await tool.handler(
+            tool.config.inputSchema!.parse({
+                ...base,
+                temperatureAssignments,
+            }) as Record<string, unknown>,
+        );
+        expect(mocks.createRunFromSelectionPayload).toHaveBeenCalledWith(
+            runtime.db,
+            expect.objectContaining({ temperatureAssignments }),
+            runtime.config,
+        );
+        expect(
+            tool.config.inputSchema!.safeParse({
+                ...base,
+                temperatureAssignments: [
+                    { modelId: "gpt-4o", temperature: 2.5 },
+                ],
+            }).success,
+        ).toBe(false);
+    });
+
+    it("accepts a benchmark task map on create_eval_run and rejects a malformed one", () => {
+        const schema = registerTools().tools.get("create_eval_run")!.config
+            .inputSchema as {
+            safeParse: (value: unknown) => { success: boolean };
+        };
+        const base = {
+            projectId: PROJECT_ID,
+            datasetId: RUN_ID,
+            promptVersionId: RUN_ID,
+            maxTokens: 1000,
+            judgeModelId: "anthropic/claude-opus-4.8",
+            referenceModel: "anthropic/claude-opus-4.8",
+            modelIds: ["anthropic/claude-opus-4.8", "openai/gpt-5.5-mini"],
+            fieldConfigs: [],
+        };
+        const tasks = [
+            {
+                key: "competitors",
+                name: "Competitor mentions",
+                method: "agreement",
+                fields: [{ path: "$.competitors", matcher: "set_overlap" }],
+                judgeDisagreements: true,
+            },
+            {
+                key: "summary",
+                name: "Summary",
+                method: "head_to_head",
+                paths: ["$.summary"],
+            },
+        ];
+
+        expect(
+            schema.safeParse({
+                ...base,
+                benchmark: {
+                    taskMap: { tasks },
+                    judge: { modelId: "anthropic/claude-opus-4.8" },
+                },
+            }).success,
+        ).toBe(true);
+        expect(
+            schema.safeParse({
+                ...base,
+                benchmark: {
+                    taskMap: {
+                        tasks: [
+                            {
+                                key: "summary",
+                                name: "Summary",
+                                method: "vibes",
+                            },
+                        ],
+                    },
+                },
+            }).success,
+        ).toBe(false);
     });
 
     it("requires confirmation and annotations for run deletion", () => {

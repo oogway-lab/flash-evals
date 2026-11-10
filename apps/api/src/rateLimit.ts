@@ -54,6 +54,7 @@ const MCP_TOOL_CATEGORY: Record<string, RateLimitCategory> = {
     optimize_prompt: "llm",
     test_judge_draft: "llm",
     generate_judge_for_run: "llm",
+    propose_benchmark_task_map: "llm",
     create_stt_route_probe: "llm",
     create_eval_run: "runs",
     retry_run: "runs",

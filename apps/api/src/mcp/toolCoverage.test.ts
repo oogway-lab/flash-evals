@@ -126,9 +126,11 @@ const routeMocks = vi.hoisted(() => {
         ),
         runs: createModule(
             [
+                "cancelRunPayload",
                 "createRunFromSelectionPayload",
                 "deleteRunPayload",
                 "generateJudgeForRunPayload",
+                "proposeBenchmarkTaskMapPayload",
                 "listRunCellsPagePayload",
                 "listRunsPayload",
                 "listRunSummariesPagePayload",
@@ -168,10 +170,16 @@ const routeMocks = vi.hoisted(() => {
                     runId: "22222222-2222-4222-8222-222222222222",
                     enqueueStatus: "queued",
                 }),
+                cancelRunPayload: async () => ({
+                    runId: "22222222-2222-4222-8222-222222222222",
+                    status: "cancelled",
+                    stopReason: "cancelled",
+                }),
             },
         ),
         workflows: createModule(
             [
+                "cancelWorkflowRunPayload",
                 "createWorkflowPayload",
                 "createWorkflowRunPayload",
                 "deleteWorkflowPayload",
@@ -180,6 +188,7 @@ const routeMocks = vi.hoisted(() => {
                 "listWorkflowRunsPayload",
                 "listWorkflowSummariesPagePayload",
                 "listWorkflowsPayload",
+                "retryWorkflowRunPayload",
                 "saveWorkflowRunCellAnnotationPayload",
                 "saveWorkflowRunNotePayload",
                 "selectWorkflowLlmModelPayload",
@@ -222,6 +231,15 @@ const routeMocks = vi.hoisted(() => {
                 createWorkflowRunPayload: async () => ({
                     workflowRunId: "33333333-3333-4333-8333-333333333333",
                     enqueueStatus: "queued",
+                }),
+                cancelWorkflowRunPayload: async () => ({
+                    workflowRunId: "33333333-3333-4333-8333-333333333333",
+                    status: "cancelled",
+                    stopReason: "cancelled",
+                }),
+                retryWorkflowRunPayload: async () => ({
+                    retriedCellCount: 0,
+                    requeued: true,
                 }),
             },
         ),
@@ -288,6 +306,16 @@ const routeMocks = vi.hoisted(() => {
             "updateWorkspacePayload",
         ]),
         dashboard: createModule(["dashboardPayload"]),
+        setupComparisons: createModule([
+            "cancelSetupComparisonPayload",
+            "createSetupComparisonPayload",
+            "listSetupComparisonPipelinesPayload",
+            "publishSetupComparisonEnqueues",
+            "setupComparisonPayload",
+        ]),
+        workflowRunComparison: createModule([
+            "listPipelineComparisonRunsPayload",
+        ]),
         sttProbes: createModule(["createSttRouteProbePayload"]),
         publishRunEnqueue: vi.fn(async () => ({})),
         publishWorkflowRunEnqueue: vi.fn(async () => ({})),
@@ -310,6 +338,11 @@ vi.mock("../routes/llmRouting.js", () => routeMocks.llmRouting);
 vi.mock("../routes/projects.js", () => routeMocks.projects);
 vi.mock("../routes/workspaces.js", () => routeMocks.workspaces);
 vi.mock("../routes/dashboard.js", () => routeMocks.dashboard);
+vi.mock("../routes/setupComparisons.js", () => routeMocks.setupComparisons);
+vi.mock(
+    "../routes/workflowRunComparison.js",
+    () => routeMocks.workflowRunComparison,
+);
 vi.mock("../routes/sttProbes.js", () => routeMocks.sttProbes);
 vi.mock("../runEnqueue.js", () => ({
     publishRunEnqueue: routeMocks.publishRunEnqueue,
@@ -341,6 +374,7 @@ const expectedReadTools = [
     "get_run",
     "get_run_progress",
     "get_run_summary",
+    "get_setup_comparison",
     "get_workflow",
     "get_workflow_llm_default",
     "get_workflow_run",
@@ -350,12 +384,14 @@ const expectedReadTools = [
     "list_dataset_summaries_page",
     "list_datasets",
     "list_eval_context",
+    "list_pipeline_comparison_runs",
     "list_projects",
     "list_prompts",
     "list_provider_keys",
     "list_run_cells",
     "list_run_summaries_page",
     "list_runs",
+    "list_setup_comparison_pipelines",
     "list_workflow_llm_capabilities",
     "list_workflow_llm_provider_models",
     "list_workflow_llm_route_history",
@@ -605,7 +641,7 @@ describe("MCP complete tool call coverage over stdio", () => {
         const harness = await connect();
         close = harness.close;
         const { tools } = await harness.client.listTools();
-        expect(tools).toHaveLength(88);
+        expect(tools).toHaveLength(97);
 
         const outcomes: Array<{ name: string; result: string }> = [];
         const invalidOutcomes: string[] = [];
@@ -884,7 +920,7 @@ describe("MCP complete tool call coverage over HTTP", () => {
             name: string;
             inputSchema?: Record<string, unknown>;
         }>;
-        expect(tools).toHaveLength(88);
+        expect(tools).toHaveLength(97);
 
         const invalidNames = new Set<string>();
         const failedPositive: string[] = [];

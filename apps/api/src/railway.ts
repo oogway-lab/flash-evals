@@ -47,8 +47,13 @@ export function startRailwayBackend(): void {
         children.push(
             spawnManaged(
                 "worker",
-                "pnpm",
-                ["--filter", "@flash-evals/web", "worker"],
+                "bun",
+                [
+                    "run",
+                    "--cwd",
+                    fileURLToPath(new URL("../../web/", import.meta.url)),
+                    "worker",
+                ],
                 () => shuttingDown,
                 exitUnexpectedly,
             ),

@@ -71,6 +71,47 @@ describe("resolveApiKeys", () => {
         expect(resolved.sttProviderKeys.openai).toBe("db-openai");
     });
 
+    it("takes direct maker keys from Settings only", async () => {
+        const fromEnv = {
+            ...config(),
+            geminiApiKey: "env-gemini",
+        } as IApiConfig;
+        const none = await resolveApiKeys(dbRows([]), fromEnv, TEAM_ID);
+        expect(none.apiKeys.anthropic).toBeUndefined();
+        // The .env Gemini key still serves speech-to-text, not model runs.
+        expect(none.apiKeys.google).toBeUndefined();
+        expect(none.sttProviderKeys.gemini).toBe("env-gemini");
+
+        const saved = await resolveApiKeys(
+            dbRows([
+                row("anthropic", "db-anthropic"),
+                row("gemini", "db-gemini"),
+            ]),
+            fromEnv,
+            TEAM_ID,
+        );
+        expect(saved.apiKeys).toMatchObject({
+            anthropic: "db-anthropic",
+            google: "db-gemini",
+        });
+        expect(saved.sttProviderKeys.gemini).toBe("db-gemini");
+    });
+
+    it("takes the ElevenLabs key from Settings first, then .env", async () => {
+        const fromEnv = {
+            ...config(),
+            elevenlabsApiKey: "env-elevenlabs",
+        } as IApiConfig;
+        const env = await resolveApiKeys(dbRows([]), fromEnv, TEAM_ID);
+        expect(env.sttProviderKeys.elevenlabs).toBe("env-elevenlabs");
+        const saved = await resolveApiKeys(
+            dbRows([row("elevenlabs", "db-elevenlabs")]),
+            fromEnv,
+            TEAM_ID,
+        );
+        expect(saved.sttProviderKeys.elevenlabs).toBe("db-elevenlabs");
+    });
+
     it("preserves environment fallback when the team has no key", async () => {
         const resolved = await resolveApiKeys(dbRows([]), config(), TEAM_ID);
         expect(resolved.apiKeys).toMatchObject({
@@ -128,7 +169,7 @@ describe("resolveApiKeys", () => {
         expect(resolveHost).not.toHaveBeenCalled();
     });
 
-    it("falls back to environment router URLs when stored rows omit them", async () => {
+    it("never pairs a saved key with the .env router URL", async () => {
         const resolved = await resolveApiKeys(
             dbRows([
                 row("openrouter", "db-openrouter"),
@@ -141,12 +182,15 @@ describe("resolveApiKeys", () => {
             },
             TEAM_ID,
         );
-        expect(resolved.apiKeys.openrouterBaseUrl).toBe(
-            "https://env-openrouter.example/v1",
-        );
-        expect(resolved.apiKeys.bifrostBaseUrl).toBe(
-            "https://env-bifrost.example/v1",
-        );
+        // OpenRouter's saved key goes to the public default, not .env's URL.
+        expect(resolved.apiKeys.openrouter).toBe("db-openrouter");
+        expect(resolved.apiKeys.openrouterBaseUrl).toBeUndefined();
+        expect(resolved.sttProviderKeys.openrouterBaseUrl).toBeUndefined();
+        // Bifrost has no public default: neither key is used.
+        expect(resolved.apiKeys.bifrost).toBeUndefined();
+        expect(resolved.apiKeys.bifrostBaseUrl).toBeUndefined();
+        expect(resolved.sttProviderKeys.bifrost).toBeUndefined();
+        expect(resolved.apiKeys.unusable?.bifrost).toMatch(/no base URL/);
     });
 });
 

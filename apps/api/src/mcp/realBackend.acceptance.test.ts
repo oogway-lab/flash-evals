@@ -349,7 +349,7 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
 
     it("creates and reads tenant-owned workspaces, projects, and datasets through tools/call", async () => {
         const tools = await rpc("tools/list", {});
-        expect(tools.result?.tools).toHaveLength(88);
+        expect(tools.result?.tools).toHaveLength(89);
 
         const workspace = data(
             await tool("create_workspace", { name: "Acceptance workspace" }),
@@ -1221,6 +1221,27 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
             expect(generatedJudge.rubricPrompt).toContain(
                 "Synthetic rubric: score correctness and completeness.",
             );
+
+            const proposedTaskMap = data(
+                await tool("propose_benchmark_task_map", {
+                    projectId,
+                    promptVersionId: runnable.promptVersionId,
+                    generatorModelId: "gpt-4o-mini",
+                }),
+            );
+            expect(proposedTaskMap).toMatchObject({
+                source: "model",
+                rejected: [],
+                taskMap: {
+                    tasks: [
+                        {
+                            key: "class",
+                            method: "agreement",
+                            fields: [{ path: "$.class", matcher: "exact" }],
+                        },
+                    ],
+                },
+            });
 
             const probe = data(
                 await tool("create_stt_route_probe", {
@@ -2454,12 +2475,29 @@ async function syntheticProviderFetch(
                     })
                   : schemaName === "prompt_output"
                     ? JSON.stringify({ class: "synthetic" })
-                    : JSON.stringify({
-                          type: "object",
-                          additionalProperties: false,
-                          properties: { class: { type: "string" } },
-                          required: ["class"],
-                      });
+                    : schemaName === "benchmark_task_map"
+                      ? JSON.stringify({
+                            tasks: [
+                                {
+                                    key: "class",
+                                    name: "Class",
+                                    description: "The class label.",
+                                    method: "agreement",
+                                    fields: [
+                                        { path: "$.class", matcher: "exact" },
+                                    ],
+                                    judgeDisagreements: false,
+                                    rubric: null,
+                                    why: "A single label with one right answer.",
+                                },
+                            ],
+                        })
+                      : JSON.stringify({
+                            type: "object",
+                            additionalProperties: false,
+                            properties: { class: { type: "string" } },
+                            required: ["class"],
+                        });
         const text = schemaName
             ? output
             : requestText.includes("Produce a JSON Schema")

@@ -396,6 +396,122 @@ describe("handleRequest", () => {
         );
     });
 
+    it("lists eval runs a pipeline can be compared with, by dataset", async () => {
+        const datasetId = "11111111-1111-4111-8111-111111111111";
+        const db = dbWithRows([
+            [
+                {
+                    id: "22222222-2222-4222-8222-222222222222",
+                    datasetId,
+                    status: "completed",
+                    createdAt: "2026-11-01T00:00:00.000Z",
+                    configSnapshot: {
+                        benchmark: {
+                            source: "model",
+                            taskMap: {
+                                tasks: [
+                                    {
+                                        key: "summary",
+                                        name: "Summary",
+                                        method: "head_to_head",
+                                        paths: ["$.summary"],
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                    noteTitle: "Acme snacks baseline",
+                    referenceRunModelId: "rm-ref",
+                    referenceModelId: "openai/big-model",
+                },
+            ],
+        ]);
+        const response = await handleRequest(
+            new Request(
+                `https://api.example.com/api/workflow-comparison-runs?teamId=team-1&projectId=project-1&datasetId=${datasetId}`,
+                {
+                    headers: {
+                        "x-flash-evals-internal-token": "internal-secret",
+                    },
+                },
+            ),
+            { config, db },
+        );
+
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual([
+            {
+                id: "22222222-2222-4222-8222-222222222222",
+                datasetId,
+                status: "completed",
+                createdAt: "2026-11-01T00:00:00.000Z",
+                noteTitle: "Acme snacks baseline",
+                referenceModelId: "openai/big-model",
+                taskCount: 1,
+            },
+        ]);
+        expect(db.query).toHaveBeenCalledWith(
+            expect.stringContaining("r.config_snapshot ? 'benchmark'"),
+            ["team-1", "project-1", ["completed", "partial"], datasetId],
+        );
+    });
+
+    it("serves a setup comparison and refuses a cancel for another comparison", async () => {
+        const comparisonId = "33333333-3333-4333-8333-333333333333";
+        const db = dbWithRows([
+            [
+                {
+                    id: comparisonId,
+                    datasetId: "dataset-1",
+                    datasetName: "Snack calls",
+                    createdAt: "2026-11-06T10:00:00.000Z",
+                    maxCostUsd: null,
+                    config: {},
+                    cancelRequestedAt: null,
+                },
+            ],
+        ]);
+        const response = await handleRequest(
+            new Request(
+                `https://api.example.com/api/setup-comparisons/${comparisonId}?teamId=team-1&projectId=project-1`,
+                {
+                    headers: {
+                        "x-flash-evals-internal-token": "internal-secret",
+                    },
+                },
+            ),
+            { config, db },
+        );
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toMatchObject({
+            id: comparisonId,
+            datasetName: "Snack calls",
+            status: "pending",
+            spentUsd: 0,
+            members: [],
+        });
+
+        const mismatch = await handleRequest(
+            new Request(
+                `https://api.example.com/api/setup-comparisons/${comparisonId}/cancel`,
+                {
+                    method: "POST",
+                    headers: {
+                        "x-flash-evals-internal-token": "internal-secret",
+                        "content-type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        teamId: "team-1",
+                        projectId: "project-1",
+                        setupComparisonId: "other",
+                    }),
+                },
+            ),
+            { config, db: dbWithRows() },
+        );
+        expect(mismatch.status).toBe(400);
+    });
+
     it("rejects a workflow update whose body ID differs from the route", async () => {
         const db = dbWithRows();
         const response = await handleRequest(
@@ -679,7 +795,9 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/dashboard?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-flash-evals-internal-token": "internal-secret" },
+                    headers: {
+                        "x-flash-evals-internal-token": "internal-secret",
+                    },
                 },
             ),
             {
@@ -713,7 +831,9 @@ describe("handleRequest", () => {
             new Request(
                 `https://api.example.com/api/images/${key}?teamId=team-1&projectId=project-1`,
                 {
-                    headers: { "x-flash-evals-internal-token": "internal-secret" },
+                    headers: {
+                        "x-flash-evals-internal-token": "internal-secret",
+                    },
                 },
             ),
             {
@@ -800,7 +920,11 @@ describe("handleRequest", () => {
         const response = await handleRequest(
             new Request(
                 `https://api.example.com/api/images/${key}?teamId=team-1&projectId=project-2`,
-                { headers: { "x-flash-evals-internal-token": "internal-secret" } },
+                {
+                    headers: {
+                        "x-flash-evals-internal-token": "internal-secret",
+                    },
+                },
             ),
             {
                 config,
@@ -824,7 +948,9 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/runs/run-1/progress?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-flash-evals-internal-token": "internal-secret" },
+                    headers: {
+                        "x-flash-evals-internal-token": "internal-secret",
+                    },
                 },
             ),
             {
@@ -851,7 +977,9 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/runs?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-flash-evals-internal-token": "internal-secret" },
+                    headers: {
+                        "x-flash-evals-internal-token": "internal-secret",
+                    },
                 },
             ),
             {
@@ -899,7 +1027,9 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/runs/setup?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-flash-evals-internal-token": "internal-secret" },
+                    headers: {
+                        "x-flash-evals-internal-token": "internal-secret",
+                    },
                 },
             ),
             {
@@ -924,7 +1054,9 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/datasets?teamId=team-1&projectId=project-1&includeArchived=true",
                 {
-                    headers: { "x-flash-evals-internal-token": "internal-secret" },
+                    headers: {
+                        "x-flash-evals-internal-token": "internal-secret",
+                    },
                 },
             ),
             {
@@ -967,7 +1099,9 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/datasets/dataset-1?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-flash-evals-internal-token": "internal-secret" },
+                    headers: {
+                        "x-flash-evals-internal-token": "internal-secret",
+                    },
                 },
             ),
             {
@@ -1015,7 +1149,9 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/prompts?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-flash-evals-internal-token": "internal-secret" },
+                    headers: {
+                        "x-flash-evals-internal-token": "internal-secret",
+                    },
                 },
             ),
             {
@@ -1061,7 +1197,9 @@ describe("handleRequest", () => {
             new Request(
                 "https://api.example.com/api/prompts/prompt-1?teamId=team-1&projectId=project-1",
                 {
-                    headers: { "x-flash-evals-internal-token": "internal-secret" },
+                    headers: {
+                        "x-flash-evals-internal-token": "internal-secret",
+                    },
                 },
             ),
             {

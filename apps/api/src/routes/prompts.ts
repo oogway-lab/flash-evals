@@ -20,6 +20,7 @@ import type {
     IPromptWorkbenchSetupResponse,
     IRecordPromptValidationAttemptRequest,
     ISaveRunnablePromptRequest,
+    PromptModelCheck,
     ISaveRunnablePromptResponse,
     ISchemaCompatibilityIssue,
     ITestJudgeDraftRequest,
@@ -35,7 +36,9 @@ import type {
 import {
     completionCostFields,
     getBareModelName,
+    bifrostModelIdFor,
     getEvalProvider,
+    registryEntryForBifrostModel,
     guidanceForModel,
     listAvailableModelMetadata,
     registryEntryForLiveGatewayModel,
@@ -49,7 +52,11 @@ import {
     ApiConflictError,
     ApiNotFoundError,
 } from "../errors.js";
-import { availableModelOptions, registryEntryFor } from "../modelRegistry.js";
+import {
+    availableModelOptions,
+    registryEntryFor,
+    registryModelFor,
+} from "../modelRegistry.js";
 import {
     resolveApiKeys,
     teamBaseUrlListingGuard,
@@ -66,6 +73,7 @@ interface IPromptRow {
     latest_status: "legacy" | "runnable" | null;
     latest_created_at: Date | string | null;
     latest_optimizer_attempt_id: string | null;
+    latest_model_check?: PromptModelCheck | null;
 }
 
 interface IPromptDetailRow {
@@ -83,6 +91,7 @@ interface IPromptVersionRow {
     created_at: Date | string;
     schema_version_id: string | null;
     optimizer_attempt_id: string | null;
+    model_check?: PromptModelCheck | null;
 }
 
 interface ISchemaVersionRow {
@@ -224,13 +233,16 @@ export async function listPromptsPayload(
             latest.version as latest_version,
             latest.status as latest_status,
             latest.created_at as latest_created_at,
-            latest.optimizer_attempt_id as latest_optimizer_attempt_id
+            latest.optimizer_attempt_id as latest_optimizer_attempt_id,
+            latest.model_check as latest_model_check
         from prompts p
         left join lateral (
-            select version, status, created_at, optimizer_attempt_id
-            from prompt_versions
-            where prompt_id = p.id
-            order by version desc
+            select v.version, v.status, v.created_at, v.optimizer_attempt_id,
+                ${MODEL_CHECK_SQL} as model_check
+            from prompt_versions v
+            left join prompt_validation_attempts a on a.id = v.validation_attempt_id
+            where v.prompt_id = p.id
+            order by v.version desc
             limit 1
         ) latest on true
         where p.team_id = $1 and p.project_id = $2
@@ -256,6 +268,9 @@ export async function listPromptsPayload(
                               ? row.latest_created_at.toISOString()
                               : new Date(row.latest_created_at).toISOString(),
                       optimizedWithAi: Boolean(row.latest_optimizer_attempt_id),
+                      ...(row.latest_model_check
+                          ? { modelCheck: row.latest_model_check }
+                          : {}),
                   }
                 : undefined,
     }));
@@ -611,7 +626,12 @@ export async function duplicatePromptVersionPayload(
         [sourceVersion.validation_attempt_id],
     );
     const sourceAttempt = sourceAttemptResult.rows[0];
-    if (!sourceAttempt || sourceAttempt.status !== "passed") {
+    // A copy keeps whether the source was checked on a model.
+    if (
+        !sourceAttempt ||
+        (sourceAttempt.status !== "passed" &&
+            sourceAttempt.status !== "unchecked")
+    ) {
         throw new ApiBadRequestError(
             "Source prompt validation evidence was not found.",
         );
@@ -680,7 +700,7 @@ export async function duplicatePromptVersionPayload(
             latency_ms,
             created_by
         )
-        values ($1, $2, $3, $4, $5, 'passed', $6, $7, $8, $9, $10, $11)
+        values ($1, $2, $3, $4, $5, $12, $6, $7, $8, $9, $10, $11)
         returning id`,
         [
             input.teamId,
@@ -694,6 +714,7 @@ export async function duplicatePromptVersionPayload(
             sourceAttempt.parsed_output,
             sourceAttempt.latency_ms,
             input.createdBy,
+            sourceAttempt.status,
         ],
     );
     const validationAttemptId = attemptResult.rows[0]!.id;
@@ -775,6 +796,47 @@ export async function recordPromptValidationAttemptPayload(
     );
 }
 
+function contentHash(content: string): string {
+    return createHash("sha256").update(content).digest("hex");
+}
+
+/**
+ * Attaches the passed check `validate` recorded to the saved version, when
+ * it is for this team, project, model, schema and exact content and no
+ * version has used it yet. Undefined otherwise.
+ */
+async function claimValidationAttempt(
+    db: IDb,
+    input: ISaveRunnablePromptRequest,
+    saved: { promptId: string; schemaVersionId: string; schemaHash: string },
+): Promise<string | undefined> {
+    if (
+        !input.validationAttemptId ||
+        !UUID_PATTERN.test(input.validationAttemptId)
+    )
+        return undefined;
+    const claimed = await db.query<IIdRow>(
+        `update prompt_validation_attempts
+        set prompt_id = $1, schema_version_id = $2
+        where id = $3 and team_id = $4 and project_id = $5
+          and status = 'passed' and prompt_id is null
+          and target_model_id = $6 and schema_hash = $7
+          and evidence->>'contentHash' = $8
+        returning id`,
+        [
+            saved.promptId,
+            saved.schemaVersionId,
+            input.validationAttemptId,
+            input.teamId,
+            input.projectId,
+            input.targetModelId,
+            saved.schemaHash,
+            contentHash(input.content),
+        ],
+    );
+    return claimed.rows[0]?.id;
+}
+
 export async function saveRunnablePromptPayload(
     db: IDb,
     input: ISaveRunnablePromptRequest,
@@ -812,32 +874,41 @@ export async function saveRunnablePromptPayload(
         ],
     );
     const schemaVersionId = schemaVersion.rows[0]!.id;
-    const attempt = await db.query<IIdRow>(
-        `insert into prompt_validation_attempts (
-            team_id,
-            project_id,
-            prompt_id,
-            schema_version_id,
-            target_model_id,
-            status,
-            schema_hash,
-            evidence,
-            created_by
-        )
-        values ($1, $2, $3, $4, $5, 'passed', $6, $7, $8)
-        returning id`,
-        [
-            input.teamId,
-            input.projectId,
+    const validationAttemptId =
+        (await claimValidationAttempt(db, input, {
             promptId,
             schemaVersionId,
-            input.targetModelId,
-            schemaHashValue,
-            input.validationEvidence,
-            input.createdBy,
-        ],
-    );
-    const validationAttemptId = attempt.rows[0]!.id;
+            schemaHash: schemaHashValue,
+        })) ??
+        (
+            await db.query<IIdRow>(
+                // No passed check from validate for this exact prompt:
+                // saved runnable, but recorded as not checked on a model.
+                `insert into prompt_validation_attempts (
+                    team_id,
+                    project_id,
+                    prompt_id,
+                    schema_version_id,
+                    target_model_id,
+                    status,
+                    schema_hash,
+                    evidence,
+                    created_by
+                )
+                values ($1, $2, $3, $4, $5, 'unchecked', $6, $7, $8)
+                returning id`,
+                [
+                    input.teamId,
+                    input.projectId,
+                    promptId,
+                    schemaVersionId,
+                    input.targetModelId,
+                    schemaHashValue,
+                    input.validationEvidence,
+                    input.createdBy,
+                ],
+            )
+        ).rows[0]!.id;
     const promptVersionNumber = await nextPromptVersion(db, promptId);
     const version = await db.query<IVersionInsertRow>(
         `insert into prompt_versions (
@@ -1062,7 +1133,28 @@ export async function validateRunnablePromptPayload(
         input,
     );
     if (validation.passed) {
-        return validation;
+        // Record the passed check so the runnable save can show the version
+        // was checked on a model (see claimValidationAttempt).
+        const recorded = await db.query<IIdRow>(
+            `insert into prompt_validation_attempts (
+                team_id, project_id, target_model_id, status, schema_hash,
+                evidence, created_by
+            )
+            values ($1, $2, $3, 'passed', $4, $5, $6)
+            returning id`,
+            [
+                input.teamId,
+                input.projectId,
+                input.targetModelId,
+                schemaHash(input.jsonSchema),
+                {
+                    ...validation.evidence,
+                    contentHash: contentHash(input.prompt),
+                },
+                input.createdBy,
+            ],
+        );
+        return { ...validation, validationAttemptId: recorded.rows[0]!.id };
     }
 
     await recordPromptValidationAttemptPayload(db, {
@@ -1433,7 +1525,7 @@ async function runPromptOptimizer(
             name: "prompt_optimization",
             schema: OPTIMIZER_OUTPUT_SCHEMA,
         },
-        maxTokens: registryEntryFor(input.optimizerModelId)?.reasoning
+        maxTokens: registryModelFor(input.optimizerModelId)?.reasoning
             ? 3200
             : 1200,
         reasoningEffort: resolveReasoningEffort(input.optimizerModelId, "low"),
@@ -1463,7 +1555,7 @@ async function runSchemaGenerator(
 ): Promise<IGeneratePromptSchemaResponse> {
     const provider = await evalProvider(db, config, input.teamId);
     const reasoning =
-        registryEntryFor(input.generatorModelId)?.reasoning ?? false;
+        registryModelFor(input.generatorModelId)?.reasoning ?? false;
     const result = await provider.complete({
         model: input.generatorModelId,
         system: "You design strict JSON Schemas for OpenAI structured outputs. Return only the JSON Schema object — no prose, no Markdown fences.",
@@ -1800,7 +1892,7 @@ function promptTestCost(
     costUsd?: number;
     costSource: "computed" | "unavailable";
 } {
-    const pricing = livePricing ?? registryEntryFor(modelId)?.pricing;
+    const pricing = livePricing ?? registryModelFor(modelId)?.pricing;
     return completionCostFields(completion, pricing);
 }
 
@@ -1875,7 +1967,9 @@ function validateDataAgainstSchema(
     };
 }
 
-function staticPromptChecks(prompt: string): ISchemaCompatibilityIssue[] {
+export function staticPromptChecks(
+    prompt: string,
+): ISchemaCompatibilityIssue[] {
     const checks: ISchemaCompatibilityIssue[] = [];
     const normalized = prompt.toLowerCase();
     const positiveOutputInstructions = normalized.replace(
@@ -1895,9 +1989,10 @@ function staticPromptChecks(prompt: string): ISchemaCompatibilityIssue[] {
     if (
         /\bthen explain\b/.test(positiveOutputInstructions) ||
         /\bexplain (below|after)\b/.test(positiveOutputInstructions) ||
-        /\b(use|include|return|respond in|format as) markdown\b/.test(
-            positiveOutputInstructions,
-        )
+        (!asksForJsonOnly(normalized) &&
+            /\b(use|include|return|respond in|format as) markdown\b/.test(
+                positiveOutputInstructions,
+            ))
     ) {
         checks.push({
             path: "$",
@@ -1908,6 +2003,16 @@ function staticPromptChecks(prompt: string): ISchemaCompatibilityIssue[] {
     }
 
     return checks;
+}
+
+/**
+ * "Respond with only JSON" means the whole reply is JSON, so Markdown asked
+ * for in the same prompt is the content of a field, not a wrapper.
+ */
+function asksForJsonOnly(normalizedPrompt: string): boolean {
+    return /\bonly (valid |raw |a |one )?json\b|\bjson only\b/.test(
+        normalizedPrompt,
+    );
 }
 
 function parseStrictJsonOnlyWithIssue(
@@ -2207,6 +2312,19 @@ async function evalProvider(
     });
 }
 
+/**
+ * A Bifrost call's model: a registry id goes as its Bifrost id, a Bifrost
+ * id as it is, priced at the registry model behind it.
+ */
+function bifrostTransportModel(modelId: string): {
+    id: string;
+    pricing?: IModelPricing;
+} {
+    const behind = registryEntryForBifrostModel(modelId);
+    const pricing = behind?.pricingByTransport?.bifrost ?? behind?.pricing;
+    return { id: bifrostModelIdFor(modelId), ...(pricing ? { pricing } : {}) };
+}
+
 async function resolveTransportModel(
     db: IDb,
     config: IApiConfig,
@@ -2215,6 +2333,7 @@ async function resolveTransportModel(
     transport: ProviderTransport | undefined,
 ): Promise<{ id?: string; pricing?: IModelPricing }> {
     if (!transport) return {};
+    if (transport === "bifrost") return bifrostTransportModel(modelId);
     const registered = registryEntryFor(modelId);
     const registeredModelId = registered?.transports[transport];
     if (registeredModelId) {
@@ -2260,7 +2379,7 @@ function resolveReasoningEffort(
     modelId: string,
     requested?: ReasoningEffort,
 ): ReasoningEffort | undefined {
-    const capability = registryEntryFor(modelId)?.reasoningEffort;
+    const capability = registryModelFor(modelId)?.reasoningEffort;
     if (!capability) return undefined;
     if (requested && capability.supportedLevels.includes(requested))
         return requested;
@@ -2423,16 +2542,18 @@ async function listPromptDetailVersions(
 ): Promise<IPromptDetailVersion[]> {
     const result = await db.query<IPromptVersionRow>(
         `select
-            id,
-            version,
-            status,
-            content,
-            created_at,
-            schema_version_id,
-            optimizer_attempt_id
-        from prompt_versions
-        where prompt_id = $1
-        order by version desc`,
+            v.id,
+            v.version,
+            v.status,
+            v.content,
+            v.created_at,
+            v.schema_version_id,
+            v.optimizer_attempt_id,
+            ${MODEL_CHECK_SQL} as model_check
+        from prompt_versions v
+        left join prompt_validation_attempts a on a.id = v.validation_attempt_id
+        where v.prompt_id = $1
+        order by v.version desc`,
         [promptId],
     );
 
@@ -2448,8 +2569,24 @@ async function listPromptDetailVersions(
                 : new Date(row.created_at).toISOString(),
         schemaVersionId: row.schema_version_id,
         optimizerAttemptId: row.optimizer_attempt_id,
+        ...(row.model_check ? { modelCheck: row.model_check } : {}),
     }));
 }
+
+/**
+ * Whether a runnable eval version (`v`, its attempt `a`) was checked on a
+ * model: its attempt passed with at least one sample run that passed.
+ * Versions saved without that (the direct save endpoint) are "not_checked".
+ * Null for legacy and judge versions.
+ */
+const MODEL_CHECK_SQL = `case
+    when v.status <> 'runnable' or v.validation_attempt_id is null then null
+    when a.status = 'passed' and exists (
+        select 1 from jsonb_array_elements(coalesce(a.evidence->'sampleResults', '[]'::jsonb)) sample
+        where sample->>'status' = 'passed'
+    ) then 'checked'
+    else 'not_checked'
+end`;
 
 async function getPromptDetailSchema(
     db: IDb,

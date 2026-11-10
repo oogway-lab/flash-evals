@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as LlmCore from "@flash-evals/llm-core";
 import { Buffer } from "node:buffer";
 import { encryptSecret } from "@flash-evals/secrets";
-import { getEvalProvider, listAvailableModelMetadata } from "@flash-evals/llm-core";
+import {
+    getEvalProvider,
+    listAvailableModelMetadata,
+} from "@flash-evals/llm-core";
 
 const llmCoreMocks = vi.hoisted(() => ({
     complete: vi.fn(),
@@ -50,6 +53,7 @@ import {
     promptWorkbenchSetupPayload,
     recordPromptValidationAttemptPayload,
     saveRunnablePromptPayload,
+    staticPromptChecks,
     testPromptDraftPayload,
     validateRunnablePromptPayload,
 } from "./prompts.js";
@@ -61,6 +65,24 @@ import { resolveApiFeatureFlags } from "../featureFlags.js";
 
 beforeEach(() => {
     llmCoreMocks.complete.mockReset();
+});
+
+describe("staticPromptChecks", () => {
+    it("allows Markdown inside fields when the reply must be only JSON", () => {
+        expect(
+            staticPromptChecks(
+                "Write the notes field as a list. Use markdown formatting with headings.\nRespond with ONLY valid JSON.",
+            ),
+        ).toEqual([]);
+    });
+
+    it("still flags Markdown when JSON-only is not required", () => {
+        expect(
+            staticPromptChecks("Return JSON. Use markdown for the answer."),
+        ).toContainEqual(
+            expect.objectContaining({ code: "prompt_conflicting_json" }),
+        );
+    });
 });
 
 it("validates outputs against generated schemas that declare Draft 7", async () => {
@@ -661,6 +683,7 @@ describe("duplicatePromptVersionPayload", () => {
                 { answer: "yes" },
                 12,
                 "user-1",
+                "passed",
             ],
         );
         expect(db.query).toHaveBeenLastCalledWith(
@@ -962,6 +985,80 @@ describe("prompt persistence payloads", () => {
         expect(vi.mocked(db.query).mock.calls.at(-1)?.[0]).toContain(
             "project_id = $5",
         );
+        // No check from validate: recorded as not checked on a model.
+        expect(vi.mocked(db.query).mock.calls[4]?.[0]).toContain("'unchecked'");
+    });
+
+    it("attaches the check validate recorded for the same prompt", async () => {
+        const db = dbWithRows([
+            [{ id: "project-1" }],
+            [{ id: "prompt-1" }],
+            [{ version: null }],
+            [{ id: "schema-1", schema_hash: "hash-1" }],
+            [{ id: "validation-1" }],
+            [{ version: null }],
+            [{ id: "pv-1", version: 1 }],
+        ]);
+        await saveRunnablePromptPayload(db, {
+            teamId: "team-1",
+            projectId: "project-1",
+            name: "Extract answer",
+            targetModelId: "gpt-4o",
+            content: "Return JSON.",
+            jsonSchema: { type: "object" },
+            fieldConfigs: [],
+            validationEvidence,
+            validationAttemptId: "11111111-1111-4111-8111-111111111111",
+            fitTags: [],
+            createdBy: "user-1",
+        });
+        const [claimSql, claimParams] = vi.mocked(db.query).mock.calls[4]!;
+        expect(claimSql).toContain("update prompt_validation_attempts");
+        expect(claimSql).toContain("evidence->>'contentHash' = $8");
+        expect(claimParams).toEqual(
+            expect.arrayContaining([
+                "11111111-1111-4111-8111-111111111111",
+                "gpt-4o",
+            ]),
+        );
+        expect(vi.mocked(db.query).mock.calls[6]?.[1]).toContain(
+            "validation-1",
+        );
+        expect(
+            vi
+                .mocked(db.query)
+                .mock.calls.some(([sql]) =>
+                    String(sql).includes("'unchecked'"),
+                ),
+        ).toBe(false);
+    });
+
+    it("shows versions saved without a model check as not checked", async () => {
+        const db = dbWithRows([
+            [{ id: "prompt-1", name: "P", description: null, kind: "eval" }],
+            [
+                {
+                    id: "pv-2",
+                    version: 2,
+                    status: "runnable",
+                    content: "x",
+                    created_at: "2026-11-07T00:00:00.000Z",
+                    schema_version_id: null,
+                    optimizer_attempt_id: null,
+                    model_check: "not_checked",
+                },
+            ],
+        ]);
+        const detail = await promptDetailPayload(
+            db,
+            "team-1",
+            "project-1",
+            "prompt-1",
+        );
+        expect(detail.latestVersion?.modelCheck).toBe("not_checked");
+        expect(vi.mocked(db.query).mock.calls[1]?.[0]).toContain(
+            "sample->>'status' = 'passed'",
+        );
     });
 });
 
@@ -1077,8 +1174,9 @@ it.each([
     "keeps missing provider credentials in prompt validation results (%j)",
     async ({ samples }) => {
         const message = "Please add your OpenRouter API key to run evals.";
-        const actual =
-            await vi.importActual<typeof LlmCore>("@flash-evals/llm-core");
+        const actual = await vi.importActual<typeof LlmCore>(
+            "@flash-evals/llm-core",
+        );
         vi.mocked(getEvalProvider).mockImplementationOnce(
             actual.getEvalProvider,
         );

@@ -343,6 +343,53 @@ describe("MCP provider-key tools", () => {
         });
     });
 
+    it("lists Gemini API models with the saved Gemini key and creates a direct route", async () => {
+        const { tools, runtime } = registerTools();
+        mocks.listProviderKeysPayload.mockResolvedValue([
+            { id: "key-1", provider: "gemini" },
+        ]);
+        mocks.listWorkflowLlmRouteCandidatesPayload.mockResolvedValue({
+            transport: "google",
+            coverage: "provider_model_listing",
+            candidates: [],
+        });
+
+        const response = await tools
+            .get("list_workflow_llm_provider_models")!
+            .handler({ projectId: TEST_PROJECT_ID, transport: "google" });
+        expect(response).toMatchObject({
+            structuredContent: {
+                data: [{ provider: "google", label: "Gemini API" }],
+            },
+        });
+
+        const routeVersionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        mocks.createWorkflowLlmRouteForModelPayload.mockResolvedValue({
+            id: "route-1",
+            latestVersion: { id: routeVersionId },
+        });
+        mocks.getWorkflowLlmProjectDefaultPayload.mockResolvedValue({});
+        await tools.get("create_workflow_llm_route_for_model")!.handler({
+            projectId: TEST_PROJECT_ID,
+            transport: "anthropic",
+            modelId: "anthropic/claude-sonnet-4.6",
+            name: "Claude direct",
+        });
+        expect(
+            mocks.createWorkflowLlmRouteForModelPayload,
+        ).toHaveBeenCalledWith(
+            runtime.db,
+            runtime.config,
+            expect.objectContaining({
+                config: expect.objectContaining({
+                    transportConfig: { transport: "anthropic" },
+                    retry: expect.objectContaining({ owner: "flash-evals" }),
+                }),
+            }),
+            { teamId: TEST_TEAM_ID, actorId: "user-1" },
+        );
+    });
+
     it("rejects an unconfigured provider without live discovery", async () => {
         const { tools } = registerTools();
         mocks.listProviderKeysPayload.mockResolvedValue([

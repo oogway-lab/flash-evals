@@ -97,7 +97,7 @@ describe("configured Railway worker launch", () => {
                     (item) => item.event === "worker.ready",
                 )!;
                 workerPid = ready.pid;
-                // exec leaves the TLS wrapper as Railway's direct child; pnpm
+                // exec leaves the TLS wrapper as Railway's direct child; bun
                 // and an intermediate launch shell must not absorb the signal.
                 expect(ready.parentPid).toBe(child.pid);
                 expect(ready.extraCaCerts).toBe(

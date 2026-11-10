@@ -14,7 +14,10 @@ import {
     testPromptDraftPayload,
     validateRunnablePromptPayload,
 } from "../../routes/prompts.js";
-import { generateJudgeForRunPayload } from "../../routes/runs.js";
+import {
+    generateJudgeForRunPayload,
+    proposeBenchmarkTaskMapPayload,
+} from "../../routes/runs.js";
 import { ok } from "../responses.js";
 import { withMcpIdempotency } from "../idempotency.js";
 import {
@@ -226,6 +229,9 @@ export function registerPromptTools(
                 ...input,
                 fieldConfigs: input.fieldConfigs as IPipelineFieldConfig[],
                 validationEvidence: validation.evidence,
+                ...(validation.validationAttemptId
+                    ? { validationAttemptId: validation.validationAttemptId }
+                    : {}),
                 fitTags: input.fitTags ?? [],
                 teamId: principal.teamId,
                 projectId,
@@ -283,6 +289,36 @@ export function registerPromptTools(
                     ...input,
                     teamId: principal.teamId,
                 }),
+            ),
+    );
+
+    server.registerTool(
+        "propose_benchmark_task_map",
+        {
+            title: "Propose benchmark task map",
+            description:
+                "Have a model read a runnable prompt version and draft a Task Map for a benchmark run: the separate jobs in the prompt's output and how to score each against the benchmark model. Returns a draft for a person to review; nothing is saved. Falls back to a schema-based proposal, listing the problems, when the model's draft is invalid.",
+            inputSchema: z.object({
+                projectId: ProjectId,
+                promptVersionId: z.string().uuid(),
+                generatorModelId: z.string().min(1).optional(),
+            }),
+        },
+        async (input) =>
+            ok(
+                "Drafted a benchmark task map for review.",
+                await proposeBenchmarkTaskMapPayload(
+                    runtime.db,
+                    runtime.config,
+                    {
+                        ...input,
+                        teamId: principal.teamId,
+                        projectId: await resolveProjectId(
+                            context,
+                            input.projectId,
+                        ),
+                    },
+                ),
             ),
     );
 

@@ -12,8 +12,8 @@ function usage(): never {
     console.error(
         [
             "Usage:",
-            '  pnpm --filter @flash-evals/api mcp:token:create -- --email user@example.com --name "Claude Desktop"',
-            "  pnpm --filter @flash-evals/api mcp:token:revoke -- --token mcp_... | --token-id uuid",
+            '  bun run --filter @flash-evals/api mcp:token:create --email user@example.com --name "Claude Desktop"',
+            "  bun run --filter @flash-evals/api mcp:token:revoke --token mcp_... | --token-id uuid",
         ].join("\n"),
     );
     process.exit(1);

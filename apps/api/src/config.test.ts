@@ -20,6 +20,7 @@ describe("getApiConfig", () => {
             OPENAI_API_KEY: "sk-test",
             INTERNAL_API_TOKEN: "internal",
             SONIOX_API_KEY: "soniox-test",
+            ELEVENLABS_API_KEY: "elevenlabs-test",
             OPENROUTER_API_KEY: "openrouter-test",
             OPENROUTER_BASE_URL: "https://openrouter.example/api",
             BIFROST_API_KEY: "bifrost-test",
@@ -36,6 +37,7 @@ describe("getApiConfig", () => {
         expect(config.flashEvalsLlmProvider).toBe("auto");
         expect(config.openaiApiKey).toBe("sk-test");
         expect(config.sonioxApiKey).toBe("soniox-test");
+        expect(config.elevenlabsApiKey).toBe("elevenlabs-test");
         expect(config.openrouterApiKey).toBe("openrouter-test");
         expect(config.openrouterBaseUrl).toBe("https://openrouter.example/api");
         expect(config.bifrostApiKey).toBe("bifrost-test");
@@ -536,9 +538,17 @@ describe("getApiConfig", () => {
             getApiConfig({ ...baseEnv, FLASH_EVALS_LLM_PROVIDER: "other" }),
         ).toThrowError(
             new ConfigError(
-                'Invalid FLASH_EVALS_LLM_PROVIDER value "other". Expected one of: auto, vercel-ai, openai, gateway, openrouter, bifrost.',
+                'Invalid FLASH_EVALS_LLM_PROVIDER value "other". Expected one of: auto, vercel-ai-gateway, openrouter, openai, bifrost (legacy: gateway, vercel-ai).',
             ),
         );
+    });
+
+    it("accepts vercel-ai-gateway and the old gateway name for Vercel", () => {
+        for (const value of ["vercel-ai-gateway", "gateway"])
+            expect(
+                getApiConfig({ ...baseEnv, FLASH_EVALS_LLM_PROVIDER: value })
+                    .flashEvalsLlmProvider,
+            ).toBe("gateway");
     });
 
     it("resolves MCP OAuth config only when required env is complete", () => {

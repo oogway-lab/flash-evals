@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("Railway build config", () => {
-    it("uses Railpack so the workspace pnpm version pin is honored", () => {
+    it("uses Railpack so the workspace bun version pin is honored", () => {
         const config = JSON.parse(
             readFileSync(
                 new URL("../../../railway.json", import.meta.url),
@@ -37,7 +37,7 @@ describe("Railway build config", () => {
 
         expect(worker.build.builder).toBe("RAILPACK");
         expect(worker.build.buildCommand).toBe(
-            "pnpm --filter @flash-evals/api build",
+            "bun run --filter @flash-evals/api build",
         );
         expect(worker.deploy.startCommand).toBe(
             "cd apps/web && exec node ../../scripts/node-with-supabase-ca.mjs --import tsx scripts/worker.ts",
@@ -46,8 +46,10 @@ describe("Railway build config", () => {
         expect(worker.deploy.preDeployCommand).toBeUndefined();
         // The worker drains for 20 seconds plus a 5-second shutdown buffer.
         expect(worker.deploy.drainingSeconds).toBeGreaterThanOrEqual(25);
+        // Node runs directly so Railway's SIGTERM reaches the process that
+        // drains, not a package-manager wrapper.
         expect(api.deploy.startCommand).toBe(
-            "pnpm --filter @flash-evals/api start:railway",
+            "cd apps/api && NODE_ENV=production exec node ../../scripts/node-with-supabase-ca.mjs dist/railway.js",
         );
         expect(api.deploy.healthcheckPath).toBe("/health");
     });

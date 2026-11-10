@@ -160,6 +160,7 @@ export function registerContextTools(
                         runtime.db,
                         principal.teamId,
                         resolvedProjectId,
+                        runtime.config,
                     ),
                     listWorkflowLlmRoutesPayload(
                         runtime.db,

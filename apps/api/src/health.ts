@@ -111,6 +111,8 @@ function configWithStoredProviderKeys(
         aiGatewayApiKey:
             config.aiGatewayApiKey ?? storedKey(providers, "gateway"),
         sonioxApiKey: config.sonioxApiKey ?? storedKey(providers, "soniox"),
+        elevenlabsApiKey:
+            config.elevenlabsApiKey ?? storedKey(providers, "elevenlabs"),
         geminiApiKey: config.geminiApiKey ?? storedKey(providers, "gemini"),
         openrouterApiKey:
             config.openrouterApiKey ?? storedKey(providers, "openrouter"),
@@ -133,6 +135,7 @@ function sttHealthStatus(
         ["openai", Boolean(config.openaiApiKey)],
         ["vercel-gateway", Boolean(config.aiGatewayApiKey)],
         ["soniox", Boolean(config.sonioxApiKey)],
+        ["elevenlabs", Boolean(config.elevenlabsApiKey)],
         ["gemini", Boolean(config.geminiApiKey)],
         ["openrouter", Boolean(config.openrouterApiKey)],
         ["bifrost", Boolean(config.bifrostApiKey)],

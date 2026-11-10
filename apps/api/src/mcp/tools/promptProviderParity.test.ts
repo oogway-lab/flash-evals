@@ -29,6 +29,11 @@ function registerTools(defaultProvider = "openrouter") {
             return { rows: [{ id: TEST_PROJECT_ID }] } as never;
         }
         if (sql.includes("max(version)")) return { rows: [] } as never;
+        // The save claims the check validate recorded.
+        if (sql.trimStart().startsWith("update prompt_validation_attempts"))
+            return {
+                rows: [{ id: "33333333-3333-4333-8333-333333333333" }],
+            } as never;
         if (sql.trimStart().startsWith("insert into")) {
             return {
                 rows: [
