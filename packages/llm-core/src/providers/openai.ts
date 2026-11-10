@@ -1,3 +1,4 @@
+import { hasDataPolicy } from "../types.js";
 import OpenAI from "openai";
 import type {
     ICompletionActualRoute,
@@ -9,16 +10,24 @@ import type {
     UsageData,
 } from "../types.js";
 import { openRouterAttributionHeaders } from "./attribution.js";
+import { openAIClientEndpoint } from "./endpoints.js";
+import { bifrostRoutesViaOpenRouter, bifrostUpstream } from "./bifrost.js";
+import { computeCostFromUsageWithPricing } from "../cost.js";
+import {
+    bifrostListPricing,
+    bifrostModelListKey,
+    bifrostOutputLimitWarning,
+    loadBifrostModelInfo,
+} from "./bifrostModelInfo.js";
 import { parseStructuredOutput } from "./structuredOutput.js";
-
-function isReasoningModel(model: string): boolean {
-    return /^o\d/.test(model) || /^gpt-5/.test(model);
-}
+import { rejectsSamplingSettings, thinkingPlanFor } from "./thinking.js";
 
 export class OpenAIEvalProvider implements IEvalCompletionProvider {
     private client: OpenAI;
     private providerLabel: string;
     private transport: CompletionTransport;
+    /** Names this Bifrost (address and key) for its cached model list. */
+    private modelListKey: string;
 
     constructor(
         apiKey: string,
@@ -33,13 +42,49 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
             options.client ??
             new OpenAI({
                 apiKey,
-                ...(options.baseURL ? { baseURL: options.baseURL } : {}),
+                ...openAIClientEndpoint(options.baseURL),
                 defaultHeaders: openRouterAttributionHeaders(options.baseURL),
                 timeout: 120_000,
                 maxRetries: 2,
             });
         this.providerLabel = options.providerLabel ?? "OpenAI";
         this.transport = options.transport ?? "openai";
+        this.modelListKey = bifrostModelListKey(options.baseURL, apiKey);
+    }
+
+    /**
+     * Bifrost's model list says which models take thinking and how many
+     * output tokens they can give (OpenRouter's metadata for openrouter/
+     * ids). Fetched at most once per ten minutes; a failed fetch leaves the
+     * model registry to decide.
+     */
+    private async loadBifrostModelList(): Promise<void> {
+        if (this.transport !== "bifrost") return;
+        await loadBifrostModelInfo(this.modelListKey, async () => {
+            const models: unknown[] = [];
+            for await (const model of this.client.models.list())
+                models.push(model);
+            return models;
+        });
+    }
+
+    /**
+     * A Bifrost call whose cost wasn't reported, priced at the price
+     * Bifrost's model list gives the id it was sent as (before the caller
+     * falls back to the registry's list price).
+     */
+    private bifrostListCost(
+        model: string,
+        usage: UsageData,
+    ): { usd: number; source: "bifrost_list_price" } | undefined {
+        if (this.transport !== "bifrost") return undefined;
+        const pricing = bifrostListPricing(this.modelListKey, model);
+        const usd = pricing
+            ? computeCostFromUsageWithPricing(usage, pricing)
+            : undefined;
+        return usd !== undefined && Number.isFinite(usd) && usd >= 0
+            ? { usd, source: "bifrost_list_price" }
+            : undefined;
     }
 
     // eslint-disable-next-line complexity -- provider completion maps transport-specific response states.
@@ -70,11 +115,32 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
                       strict: req.responseSchema.strict ?? true,
                   },
               } satisfies OpenAI.Chat.Completions.ChatCompletionCreateParams["response_format"])
-            : undefined;
+            : req.jsonMode
+              ? ({
+                    type: "json_object",
+                } satisfies OpenAI.Chat.Completions.ChatCompletionCreateParams["response_format"])
+              : undefined;
 
         // `max_completion_tokens` is the current param and works for both gpt-4o
         // and reasoning models; `max_tokens` is deprecated and rejected by o-series.
-        const reasoning = isReasoningModel(req.model);
+        const reasoning = rejectsSamplingSettings(req.model);
+        await this.loadBifrostModelList();
+        const outputLimitWarning =
+            this.transport === "bifrost"
+                ? bifrostOutputLimitWarning(
+                      this.modelListKey,
+                      req.model,
+                      req.maxTokens,
+                  )
+                : undefined;
+        const thinking = thinkingPlanFor(
+            req.model,
+            this.transport,
+            req.reasoningEffort,
+            this.transport === "bifrost"
+                ? { bifrostModelList: this.modelListKey }
+                : undefined,
+        );
         const createParams: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming =
             {
                 model: req.model,
@@ -86,20 +152,42 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
                 response_format: responseFormat,
                 stream: false,
             };
+        // Bifrost passes extra body fields on to the provider when asked
+        // (x-bf-passthrough-extra-params), so a model it forwards to
+        // OpenRouter can follow the rules through OpenRouter's own settings.
+        const bifrostPassthrough =
+            this.transport === "bifrost" &&
+            ((hasDataPolicy(req.dataPolicy) &&
+                bifrostRoutesViaOpenRouter(req.model)) ||
+                thinking?.bifrostPassthrough === true);
+        if (this.transport === "bifrost" && hasDataPolicy(req.dataPolicy)) {
+            if (!bifrostPassthrough)
+                throw new Error(
+                    `Bifrost sends ${req.model} to ${bifrostUpstream(req.model) ?? "its default provider"}, not OpenRouter, so it can't pass on the data rules. Choose a Bifrost model ID that starts with openrouter/.`,
+                );
+            Object.assign(createParams, {
+                provider: openRouterProviderOptions(req),
+            });
+        } else if (
+            this.transport !== "openrouter" &&
+            hasDataPolicy(req.dataPolicy)
+        )
+            throw new Error(
+                `${this.providerLabel} can't limit which hosting companies serve ${req.model} or what they keep. Run it through Vercel AI Gateway or OpenRouter instead.`,
+            );
         if (this.transport === "openrouter") {
             Object.assign(createParams, {
                 provider: openRouterProviderOptions(req),
-                ...(req.reasoningEffort
-                    ? { reasoning: { effort: req.reasoningEffort } }
-                    : {}),
             });
         }
-        if (reasoning && req.reasoningEffort) {
-            createParams.reasoning_effort = req.reasoningEffort;
-        }
+        if (thinking?.body) Object.assign(createParams, thinking.body);
 
         const start = performance.now();
-        const response = await this.createCompletion(req, createParams);
+        const response = await this.createCompletion(
+            req,
+            createParams,
+            bifrostPassthrough,
+        );
         const latencyMs = performance.now() - start;
 
         if (response.choices[0]?.finish_reason === "length") {
@@ -119,14 +207,12 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
                     ? ""
                     : JSON.stringify(sdkParsed)));
 
+        // OpenRouter reports the call's cost in usage.cost; Bifrost may pass
+        // it through. Without it the caller prices the call at list prices.
         const reportedCost =
-            this.transport === "openrouter"
+            this.transport === "openrouter" || this.transport === "bifrost"
                 ? openRouterReportedCost(response.usage)
                 : undefined;
-        const cost =
-            reportedCost === undefined
-                ? undefined
-                : { usd: reportedCost, source: "provider_reported" as const };
         const usage: UsageData = {
             promptTokens: response.usage?.prompt_tokens,
             completionTokens: response.usage?.completion_tokens,
@@ -136,6 +222,10 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
                 response.usage?.prompt_tokens_details?.cached_tokens,
             totalTokens: response.usage?.total_tokens,
         };
+        const cost =
+            reportedCost === undefined
+                ? this.bifrostListCost(req.model, usage)
+                : { usd: reportedCost, source: "provider_reported" as const };
 
         const parsedResult =
             sdkParsed === undefined || sdkParsed === null
@@ -162,6 +252,10 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
                   }
                 : observedRoute;
 
+        const servedBy =
+            "upstreamProvider" in actualRoute
+                ? actualRoute.upstreamProvider
+                : undefined;
         return {
             text,
             parsed: parsedResult.parsed,
@@ -171,23 +265,26 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
             latencyMs,
             actualRoute,
             cache,
+            ...(servedBy ? { providerMetadata: { servedBy } } : {}),
+            ...(thinking ? { thinking: thinking.outcome } : {}),
+            ...(outputLimitWarning ? { warnings: [outputLimitWarning] } : {}),
         };
     }
 
     private async createCompletion(
         req: CompletionRequest,
         createParams: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+        bifrostPassthrough = false,
     ) {
         try {
+            const options = requestOptions(
+                req,
+                this.transport,
+                bifrostPassthrough,
+            );
             const request = req.responseSchema
-                ? this.client.chat.completions.parse(
-                      createParams,
-                      requestOptions(req, this.transport),
-                  )
-                : this.client.chat.completions.create(
-                      createParams,
-                      requestOptions(req, this.transport),
-                  );
+                ? this.client.chat.completions.parse(createParams, options)
+                : this.client.chat.completions.create(createParams, options);
             if (this.transport !== "openrouter") return await request;
             const wrapped = await request.withResponse();
             return Object.assign(wrapped.data, {
@@ -209,9 +306,15 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
     }
 }
 
-function openRouterProviderOptions(req: CompletionRequest) {
+export function openRouterProviderOptions(req: CompletionRequest) {
     const policy = req.route?.upstreamPolicy;
+    const data = req.dataPolicy;
     return {
+        ...(data?.onlyHosts?.length
+            ? { only: data.onlyHosts, allow_fallbacks: false }
+            : {}),
+        ...(data?.zeroDataRetention ? { zdr: true } : {}),
+        ...(data?.disallowPromptTraining ? { data_collection: "deny" } : {}),
         ...(policy?.mode === "preference"
             ? {
                   order: policy.order,
@@ -230,11 +333,15 @@ function openRouterProviderOptions(req: CompletionRequest) {
 function requestOptions(
     req: CompletionRequest,
     transport: CompletionTransport,
+    bifrostPassthrough: boolean,
 ) {
     return {
         signal: req.signal,
         ...(req.timeoutMs !== undefined ? { timeout: req.timeoutMs } : {}),
         maxRetries: req.maxRetries ?? 2,
+        ...(bifrostPassthrough
+            ? { headers: { "x-bf-passthrough-extra-params": "true" } }
+            : {}),
         ...(transport === "openrouter"
             ? {
                   headers: {
@@ -258,10 +365,17 @@ function actualRouteFrom(
         typeof record.model === "string" && record.model
             ? record.model
             : requestedModel;
-    const upstreamProvider =
+    const reportedProvider =
         typeof record.provider === "string" && record.provider.length <= 100
             ? record.provider
             : undefined;
+    // Through Bifrost, a top-level provider naming Bifrost's own upstream
+    // (e.g. "openrouter") says nothing about the hosting company.
+    const upstreamProvider =
+        transport === "bifrost" &&
+        reportedProvider?.toLowerCase() === bifrostUpstream(requestedModel)
+            ? undefined
+            : reportedProvider;
     const headerGenerationId = record.__flashEvalsOpenRouterGenerationId;
     const generationId =
         typeof headerGenerationId === "string" &&

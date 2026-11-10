@@ -1,7 +1,11 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { IWorkflowRunCellLlmExecution } from "@flash-evals/api-contract";
+import {
+    isWorkflowEnvCredential,
+    WORKFLOW_ENV_CREDENTIAL,
+    type IWorkflowRunCellLlmExecution,
+} from "@flash-evals/api-contract";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
@@ -200,7 +204,10 @@ export function LlmExecutionDetails({
                         }`}
                     </DetailRow>
                     <DetailRow label="Flash Evals reuse">
-                        {labelFor(FLASH_EVALS_REUSE_LABELS, route.cache.flashEvalsReuse)}
+                        {labelFor(
+                            FLASH_EVALS_REUSE_LABELS,
+                            route.cache.flashEvalsReuse,
+                        )}
                     </DetailRow>
                     <DetailRow label="Provider caching">
                         {humanize(route.cache.providerCaching)}
@@ -224,7 +231,13 @@ export function LlmExecutionDetails({
                         ) : null}
                         <CopyableRow
                             label="Credential"
-                            value={`${execution.resolved.credential.hint ?? execution.resolved.credential.providerKeyId} · rotation ${execution.resolved.credential.rotationVersion}`}
+                            value={
+                                isWorkflowEnvCredential(
+                                    execution.resolved.credential,
+                                )
+                                    ? WORKFLOW_ENV_CREDENTIAL.hint
+                                    : `${execution.resolved.credential.hint ?? execution.resolved.credential.providerKeyId} · rotation ${execution.resolved.credential.rotationVersion}`
+                            }
                             copyValue={
                                 execution.resolved.credential.providerKeyId
                             }
@@ -582,7 +595,8 @@ function costLabel(
     const sources = {
         provider_reported: "Provider reported",
         gateway_reported: "Gateway reported",
-        catalog_estimate: "Catalog estimate",
+        bifrost_list_price: "Bifrost list price",
+        catalog_estimate: "Registry list price",
         unavailable: "Unavailable",
     } as const;
     return cost.usd === undefined

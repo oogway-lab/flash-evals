@@ -42,11 +42,18 @@ export interface IApiConfig {
     openaiApiKey?: string;
     aiGatewayApiKey?: string;
     sonioxApiKey?: string;
+    elevenlabsApiKey?: string;
     geminiApiKey?: string;
     openrouterApiKey?: string;
     openrouterBaseUrl?: string;
     bifrostApiKey?: string;
     bifrostBaseUrl?: string;
+    /**
+     * Anthropic and Gemini API keys for direct model calls. Settings only:
+     * never read from .env, so they are set only on a team's resolved config.
+     */
+    anthropicApiKey?: string;
+    googleApiKey?: string;
     sttCapabilityProbes: SttCapabilityProbeResults;
     internalApiToken?: string;
     flashEvalsSecretsEncKey?: string;
@@ -178,6 +185,7 @@ export function getApiConfig(env: Env = process.env): IApiConfig {
         openaiApiKey: emptyToUndefined(env.OPENAI_API_KEY),
         aiGatewayApiKey: emptyToUndefined(env.AI_GATEWAY_API_KEY),
         sonioxApiKey: emptyToUndefined(env.SONIOX_API_KEY),
+        elevenlabsApiKey: emptyToUndefined(env.ELEVENLABS_API_KEY),
         geminiApiKey: emptyToUndefined(env.GEMINI_API_KEY),
         openrouterApiKey: emptyToUndefined(env.OPENROUTER_API_KEY),
         openrouterBaseUrl: emptyToUndefined(env.OPENROUTER_BASE_URL),
@@ -439,9 +447,16 @@ function parseStorageAdapter(env: Env): "local" | "supabase" | "r2" {
     return insecureDefaults ? "local" : "supabase";
 }
 
-function parseProviderMode(raw: string | undefined): EvalProviderMode {
-    const mode = raw?.trim();
-    if (!mode) return "auto";
+/**
+ * Reads a provider mode the way FLASH_EVALS_LLM_PROVIDER is read: trimmed,
+ * "vercel-ai-gateway" as "gateway". Undefined when the value is not a mode.
+ */
+export function normalizeProviderMode(
+    raw: string,
+): EvalProviderMode | undefined {
+    const mode = raw.trim();
+    // The documented name; "gateway" stays accepted as the old spelling.
+    if (mode === "vercel-ai-gateway") return "gateway";
     if (
         mode === "auto" ||
         mode === "vercel-ai" ||
@@ -452,8 +467,15 @@ function parseProviderMode(raw: string | undefined): EvalProviderMode {
     ) {
         return mode;
     }
+    return undefined;
+}
+
+function parseProviderMode(raw: string | undefined): EvalProviderMode {
+    if (!raw?.trim()) return "auto";
+    const mode = normalizeProviderMode(raw);
+    if (mode) return mode;
     throw new ConfigError(
-        `Invalid FLASH_EVALS_LLM_PROVIDER value "${raw}". Expected one of: auto, vercel-ai, openai, gateway, openrouter, bifrost.`,
+        `Invalid FLASH_EVALS_LLM_PROVIDER value "${raw}". Expected one of: auto, vercel-ai-gateway, openrouter, openai, bifrost (legacy: gateway, vercel-ai).`,
     );
 }
 

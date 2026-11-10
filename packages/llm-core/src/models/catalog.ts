@@ -6,6 +6,7 @@ import type {
     IReasoningEffortCapability,
 } from "./registry.js";
 import { REASONING_EFFORT_LEVELS, type ReasoningEffort } from "../types.js";
+import { claudeRejectsThinkingDisabled } from "./claudeLimits.js";
 
 export const CATALOG_URLS = {
     "models.dev": "https://models.dev/api.json",
@@ -13,7 +14,11 @@ export const CATALOG_URLS = {
     gateway: "https://ai-gateway.vercel.sh/v1/models",
 } as const;
 export type CatalogSource = keyof typeof CATALOG_URLS;
-export type CatalogTransport = Exclude<EvalProviderTransport, "bifrost">;
+/** Transports public catalogs describe; direct maker prices live in the registry. */
+export type CatalogTransport = Exclude<
+    EvalProviderTransport,
+    "bifrost" | "anthropic" | "google"
+>;
 
 export interface ICatalogModel {
     id: string;
@@ -358,6 +363,10 @@ export function mergeModelCatalogs(
         ]),
     );
     const aliases = new Map<string, string>();
+    // The same model can have a different ID on each provider's list
+    // (Vercel "zai/glm-5.2", OpenRouter "z-ai/glm-5.2"); this index matches
+    // them so one entry carries both providers and both prices.
+    const sameModel = new Map<string, Set<string>>();
     const staticById = new Map(staticEntries.map((entry) => [entry.id, entry]));
     function indexEntry(entry: IModelRegistryEntry) {
         for (const alias of [
@@ -367,12 +376,36 @@ export function mergeModelCatalogs(
         ]) {
             if (alias) aliases.set(alias, entry.id);
         }
+        for (const alias of [
+            entry.id,
+            entry.transports.gateway,
+            entry.transports.openrouter,
+        ]) {
+            const key = alias ? crossProviderKey(alias) : undefined;
+            if (!key) continue;
+            const ids = sameModel.get(key) ?? new Set<string>();
+            ids.add(entry.id);
+            sameModel.set(key, ids);
+        }
+    }
+    function matchingEntryId(model: ICatalogModel): string | undefined {
+        const exact = aliases.get(model.id);
+        if (exact) return exact;
+        if (model.transport === "openai") return undefined;
+        const key = crossProviderKey(model.id);
+        const ids = key ? sameModel.get(key) : undefined;
+        if (!ids || ids.size !== 1) return undefined;
+        const [id] = ids;
+        // Never fold two models from the same provider's list together.
+        return id && !entries.get(id)?.transports[model.transport]
+            ? id
+            : undefined;
     }
     for (const entry of entries.values()) indexEntry(entry);
     for (const snapshot of snapshots)
         for (const model of snapshot.models) {
             const id =
-                aliases.get(model.id) ??
+                matchingEntryId(model) ??
                 (model.id.startsWith("openai/") ? model.id.slice(7) : model.id);
             const prior = entries.get(id);
             const fromCatalog = entryFromCatalog(id, model, prior);
@@ -384,6 +417,74 @@ export function mergeModelCatalogs(
             indexEntry(entry);
         }
     return [...entries.values()];
+}
+
+/**
+ * Vendor names that differ between the Vercel and OpenRouter lists, mapped to
+ * one spelling. Only used to match the same model across the two lists.
+ */
+const VENDOR_ALIASES: Readonly<Record<string, string>> = {
+    "z-ai": "zai",
+    "x-ai": "xai",
+    spacexai: "xai",
+    mistralai: "mistral",
+    "meta-llama": "meta",
+    qwen: "alibaba",
+    "bytedance-seed": "bytedance",
+};
+
+/** Readable names for model makers, keyed by their one spelling above. */
+const VENDOR_NAMES: Readonly<Record<string, string>> = {
+    openai: "OpenAI",
+    anthropic: "Anthropic",
+    google: "Google",
+    zai: "Z.ai",
+    xai: "xAI",
+    mistral: "Mistral",
+    meta: "Meta",
+    alibaba: "Alibaba (Qwen)",
+    deepseek: "DeepSeek",
+    moonshotai: "Moonshot AI",
+    minimax: "MiniMax",
+    bytedance: "ByteDance",
+    amazon: "Amazon",
+    cohere: "Cohere",
+    nvidia: "NVIDIA",
+};
+
+/**
+ * Who makes a model, named the same way whichever list spelled it:
+ * "z-ai/glm-5.2", "zai/glm-5.2" and "~z-ai/glm-latest" are all "Z.ai".
+ * Bare IDs such as "gpt-6-luna" belong to `fallbackVendor`.
+ */
+export function modelVendor(
+    modelId: string,
+    fallbackVendor = "openai",
+): string {
+    const slash = modelId.indexOf("/");
+    const raw = (slash > 0 ? modelId.slice(0, slash) : fallbackVendor).replace(
+        /^~/,
+        "",
+    );
+    const vendor = VENDOR_ALIASES[raw.toLowerCase()] ?? raw.toLowerCase();
+    return VENDOR_NAMES[vendor] ?? raw;
+}
+
+/**
+ * A provider-neutral key for "vendor/model", or undefined for IDs that name a
+ * variant rather than a model (OpenRouter's "~" aliases and ":free"/":batch").
+ * Dots and dashes count as the same, so "seed-2-1-turbo" matches "seed-2.1-turbo".
+ */
+export function crossProviderKey(modelId: string): string | undefined {
+    if (modelId.startsWith("~") || modelId.includes(":")) return undefined;
+    const slash = modelId.indexOf("/");
+    if (slash <= 0 || slash !== modelId.lastIndexOf("/")) return undefined;
+    const vendor = modelId.slice(0, slash).toLowerCase();
+    const name = modelId
+        .slice(slash + 1)
+        .toLowerCase()
+        .replace(/\./g, "-");
+    return name ? `${VENDOR_ALIASES[vendor] ?? vendor}/${name}` : undefined;
 }
 
 /** Catalog order defines last-wins precedence, so every merge must use the same order. */
@@ -426,6 +527,27 @@ function withStaticFacts(
     };
 }
 
+/**
+ * Leaves out "none" for a Claude model that can't turn thinking off, even
+ * when a provider's list offers it (the call would be refused).
+ */
+function withoutRefusedThinkingOff(
+    id: string,
+    effort: IReasoningEffortCapability | undefined,
+): IReasoningEffortCapability | undefined {
+    if (!effort || !claudeRejectsThinkingDisabled(id)) return effort;
+    const supportedLevels: ReasoningEffort[] = effort.supportedLevels.filter(
+        (level) => level !== "none",
+    );
+    if (!supportedLevels.length) return undefined;
+    return {
+        supportedLevels,
+        defaultLevel: supportedLevels.includes(effort.defaultLevel)
+            ? effort.defaultLevel
+            : supportedLevels[0]!,
+    };
+}
+
 function entryFromCatalog(
     id: string,
     model: ICatalogModel,
@@ -434,7 +556,10 @@ function entryFromCatalog(
     // A source without effort or reasoning data must not erase what another source reported.
     const reasoning = model.reasoning || prior?.reasoning === true;
     const reasoningEffort = reasoning
-        ? (model.reasoningEffort ?? prior?.reasoningEffort)
+        ? withoutRefusedThinkingOff(
+              id,
+              model.reasoningEffort ?? prior?.reasoningEffort,
+          )
         : undefined;
     const provider =
         model.transport === "openai" ? "openai" : model.id.split("/")[0]!;
@@ -457,8 +582,12 @@ function entryFromCatalog(
     return {
         id,
         gatewayModelId:
-            prior?.gatewayModelId ??
-            (model.transport === "openai" ? `openai/${model.id}` : model.id),
+            model.transport === "gateway" && !prior?.transports.gateway
+                ? model.id
+                : (prior?.gatewayModelId ??
+                  (model.transport === "openai"
+                      ? `openai/${model.id}`
+                      : model.id)),
         label: model.name,
         family,
         provider: prior?.provider ?? provider,

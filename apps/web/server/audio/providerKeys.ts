@@ -2,6 +2,7 @@ export interface ISttProviderKeys {
     openai?: string;
     vercelGateway?: string;
     soniox?: string;
+    elevenlabs?: string;
     gemini?: string;
     openrouter?: string;
     openrouterBaseUrl?: string;
@@ -16,6 +17,7 @@ export function sttProviderKeysFromEnv(
         openai: emptyToUndefined(env.OPENAI_API_KEY),
         vercelGateway: emptyToUndefined(env.AI_GATEWAY_API_KEY),
         soniox: emptyToUndefined(env.SONIOX_API_KEY),
+        elevenlabs: emptyToUndefined(env.ELEVENLABS_API_KEY),
         gemini: emptyToUndefined(env.GEMINI_API_KEY),
         openrouter: emptyToUndefined(env.OPENROUTER_API_KEY),
         openrouterBaseUrl: emptyToUndefined(env.OPENROUTER_BASE_URL),

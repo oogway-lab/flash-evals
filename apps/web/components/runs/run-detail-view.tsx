@@ -1,13 +1,15 @@
 "use client";
 
 import type {
-    ILeaderboardRow,
     IMatrixCellScore,
     IRunAudioTranscriptSummary,
     IRunConfigSnapshot,
+    RunStatus,
 } from "@flash-evals/api-contract";
-import { Leaderboard } from "@/components/runs/leaderboard";
 import { MatrixView } from "@/components/runs/matrix-view";
+import { goldenScoreLabel } from "@/components/runs/golden-score";
+import { ModelsTable } from "@/components/runs/models-table";
+import type { IModelResult } from "@/components/runs/run-results";
 import { RunTranscriptPanel } from "@/components/runs/run-transcript-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
@@ -17,8 +19,13 @@ import type {
     SaveCellAnnotationAction,
 } from "@/components/runs/types";
 
+/**
+ * The models table, then the item-level views (transcripts, matrix) one tab
+ * away.
+ */
 export function RunDetailView({
-    leaderboard,
+    results,
+    runStatus,
     models,
     items,
     cells,
@@ -27,7 +34,8 @@ export function RunDetailView({
     configSnapshot,
     saveCellAnnotationAction,
 }: {
-    leaderboard: ILeaderboardRow[];
+    results: IModelResult[];
+    runStatus: RunStatus;
     models: ModelCol[];
     items: ItemRow[];
     cells: CellData[];
@@ -38,9 +46,9 @@ export function RunDetailView({
 }) {
     return (
         <div>
-            <Tabs defaultValue="leaderboard">
+            <Tabs defaultValue="models">
                 <TabsList className="self-start">
-                    <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
+                    <TabsTrigger value="models">Models</TabsTrigger>
                     {audioTranscripts.length > 0 && (
                         <TabsTrigger value="transcripts">
                             Transcripts
@@ -48,10 +56,11 @@ export function RunDetailView({
                     )}
                     <TabsTrigger value="matrix">Matrix</TabsTrigger>
                 </TabsList>
-                <TabsContent value="leaderboard">
-                    <Leaderboard
-                        rows={leaderboard}
-                        configSnapshot={configSnapshot}
+                <TabsContent value="models">
+                    <ModelsTable
+                        results={results}
+                        runStatus={runStatus}
+                        goldenLabel={goldenScoreLabel(configSnapshot)}
                     />
                 </TabsContent>
                 {audioTranscripts.length > 0 && (
@@ -70,6 +79,7 @@ export function RunDetailView({
                         scoresByCell={scoresByCell}
                         saveCellAnnotationAction={saveCellAnnotationAction}
                         configSnapshot={configSnapshot}
+                        stopped={runStatus === "cancelled"}
                     />
                 </TabsContent>
             </Tabs>

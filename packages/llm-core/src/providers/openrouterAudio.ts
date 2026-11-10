@@ -1,5 +1,6 @@
 import OpenAI, { APIConnectionError, APIConnectionTimeoutError } from "openai";
 import { openRouterAttributionHeaders } from "./attribution.js";
+import { openAIClientEndpoint } from "./endpoints.js";
 import { finishLatinTranscript } from "./latinTranscript.js";
 
 const AUDIO_FORMATS = new Map<string, "wav" | "mp3">([
@@ -11,7 +12,12 @@ const AUDIO_FORMATS = new Map<string, "wav" | "mp3">([
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
-/** Default inline audio budget; callers prepare larger recordings first. */
+/**
+ * Default inline audio budget; callers prepare larger recordings first.
+ * OpenRouter documents no size limit for base64 audio in chat completions
+ * (https://openrouter.ai/docs/features/multimodal/audio, checked 2026-11-10),
+ * so this stays a conservative 14 MiB.
+ */
 export const OPENROUTER_AUDIO_DEFAULT_MAX_BYTES = 14 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 60_000;
 /** Changes to the audio output contract must not reuse transcripts made under an older contract. */
@@ -75,7 +81,7 @@ export async function transcribeOpenRouterAudio(input: {
         );
     const client = new OpenAI({
         apiKey: input.apiKey,
-        baseURL: OPENROUTER_BASE_URL,
+        ...openAIClientEndpoint(OPENROUTER_BASE_URL),
         defaultHeaders: openRouterAttributionHeaders(OPENROUTER_BASE_URL),
         timeout: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxRetries: 0,

@@ -26,6 +26,7 @@ interface ISttModelDefinition {
         | "openaiApiKey"
         | "aiGatewayApiKey"
         | "sonioxApiKey"
+        | "elevenlabsApiKey"
         | "geminiApiKey"
         | "openrouterApiKey"
         | "bifrostApiKey"
@@ -176,6 +177,20 @@ const STT_MODELS: ISttModelDefinition[] = [
         configFields: sttConfigFieldsForModelId("soniox:stt-async-v5"),
         runnable: true,
         probeCanEnable: true,
+    },
+    {
+        id: "elevenlabs:scribe_v2",
+        label: "ElevenLabs Scribe v2",
+        providerId: "elevenlabs",
+        providerLabel: "ElevenLabs",
+        routeId: "elevenlabs-speech-to-text",
+        outputKind: "diarized_transcript",
+        requiredKey: "elevenlabsApiKey",
+        configFields: sttConfigFieldsForModelId("elevenlabs:scribe_v2"),
+        runnable: false,
+        probeCanEnable: true,
+        unavailableWhenConfigured:
+            "Verify the ElevenLabs Scribe route in Settings before using it.",
     },
     {
         id: "openrouter:whisper-large-v3-turbo",
@@ -364,6 +379,7 @@ function missingKeyMessage(definition: ISttModelDefinition): string {
         openaiApiKey: "OPENAI_API_KEY",
         aiGatewayApiKey: "AI_GATEWAY_API_KEY",
         sonioxApiKey: "SONIOX_API_KEY",
+        elevenlabsApiKey: "ELEVENLABS_API_KEY",
         geminiApiKey: "GEMINI_API_KEY",
         openrouterApiKey: "OPENROUTER_API_KEY",
         bifrostApiKey: "BIFROST_API_KEY",

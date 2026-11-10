@@ -19,6 +19,7 @@ function row(overrides: Partial<ILeaderboardRow>): ILeaderboardRow {
         modelId: "model",
         isReference: false,
         n: 10,
+        failedCells: 0,
         avgFieldScore: undefined,
         avgJudgeScore: undefined,
         avgTranscriptScore: undefined,
@@ -76,14 +77,29 @@ function renderSummary(props: Partial<Parameters<typeof RunSummary>[0]> = {}) {
 }
 
 describe("RunSummary", () => {
-    it("leads with the best model, its score, cost and cell count", () => {
+    it("adds judge cost to the total and says how much was judging", () => {
+        renderSummary({
+            leaderboard: [
+                row({
+                    runModelId: "rm-1",
+                    totalCostUsd: 0.5,
+                    totalJudgeCostUsd: 0.25,
+                }),
+                row({ runModelId: "rm-2", totalCostUsd: 0.5 }),
+            ],
+        });
+        const cost = screen.getByText("Total cost").closest("div")!;
+        expect(cost).toHaveTextContent("$1.25");
+        expect(cost).toHaveTextContent(
+            /Across 2 models\. Includes \$0\.25\d* for judging\./,
+        );
+    });
+
+    it("shows cost and cell count, and leaves the answer to the banner", () => {
         renderSummary();
         const summary = screen.getByRole("region", { name: "Run summary" });
 
-        expect(within(summary).getByText("Best model")).toBeInTheDocument();
-        expect(within(summary).getByText("0.90")).toBeInTheDocument();
-        expect(within(summary).getByText("gpt-4o")).toBeInTheDocument();
-        expect(within(summary).getByText(/judge score/)).toBeInTheDocument();
+        expect(within(summary).queryByText("Best model")).toBeNull();
         expect(within(summary).getByText("$1.00")).toBeInTheDocument();
         expect(within(summary).getByText("20 / 20")).toBeInTheDocument();
         expect(within(summary).getByText("All complete")).toBeInTheDocument();
@@ -110,50 +126,7 @@ describe("RunSummary", () => {
         expect(
             screen.getByRole("progressbar", { name: "Run progress" }),
         ).toBeInTheDocument();
-        expect(screen.getByText("Leading model")).toBeInTheDocument();
         expect(screen.getByText("25% complete")).toBeInTheDocument();
-    });
-
-    it("says so when a tie has no single winner", () => {
-        renderSummary({
-            leaderboard: [
-                row({ modelId: "a", avgJudgeScore: 0.9 }),
-                row({ modelId: "b", avgJudgeScore: 0.904 }),
-            ],
-        });
-        expect(screen.getByText("2 models tied")).toBeInTheDocument();
-        expect(screen.getByText("Best model")).toBeInTheDocument();
-    });
-
-    it("shows an en dash and an honest note when nothing is scored", () => {
-        renderSummary({
-            leaderboard: [row({ modelId: "a" }), row({ modelId: "b" })],
-        });
-        expect(
-            screen.getByText("No scores recorded for this run."),
-        ).toBeInTheDocument();
-    });
-
-    it("notes that scores are still arriving while in progress", () => {
-        renderSummary({
-            leaderboard: [],
-            initial: {
-                status: "running",
-                total: 20,
-                done: 0,
-                failed: 0,
-                pending: 20,
-            },
-        });
-        expect(
-            screen.getByText("Scores appear as cells finish."),
-        ).toBeInTheDocument();
-    });
-
-    it("labels a single-model run Score rather than Best model", () => {
-        renderSummary({ leaderboard: [ROWS[0]!] });
-        expect(screen.getByText("Score")).toBeInTheDocument();
-        expect(screen.queryByText("Best model")).toBeNull();
     });
 
     it("shows failed cells in the cell count", () => {
@@ -281,5 +254,52 @@ describe("RunSummary", () => {
             } as IRunConfigSnapshot,
         });
         expect(screen.getByText("gemini-2.5-flash")).toBeInTheDocument();
+    });
+
+    it("names the labelled subset the run used", () => {
+        renderSummary({
+            configSnapshot: {
+                itemFilter: {
+                    taskKey: "call_type",
+                    path: "$.call_type",
+                    equals: "sales",
+                },
+                benchmark: {
+                    taskMap: {
+                        tasks: [
+                            {
+                                key: "call_type",
+                                name: "Call type",
+                                method: "agreement",
+                                fields: [
+                                    { path: "$.call_type", matcher: "exact" },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            } as IRunConfigSnapshot,
+        });
+        expect(
+            screen.getByText('Only items labelled "sales" for Call type'),
+        ).toBeInTheDocument();
+    });
+
+    it("names a path filter on a speech-to-text metrics run", () => {
+        renderSummary({
+            configSnapshot: {
+                audioRunMode: "stt_metrics",
+                sttConfig: { modelId: "soniox" },
+                itemFilter: { path: "$.language", equals: "hindi" },
+            } as IRunConfigSnapshot,
+        });
+        expect(
+            screen.getByText('Only items labelled "hindi" for $.language'),
+        ).toBeInTheDocument();
+    });
+
+    it("says nothing about items without a filter", () => {
+        renderSummary();
+        expect(screen.queryByText(/Only items labelled/)).toBeNull();
     });
 });

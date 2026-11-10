@@ -1,12 +1,15 @@
 "use client";
 
-import { Check, X } from "lucide-react";
+import Link from "next/link";
+import { Check, TriangleAlert, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { KeyboardEvent } from "react";
 import type {
     IRunSetupDatasetOption,
     IRunSetupModelOption,
+    IRunDataPolicy,
     IRunSetupVersionOption,
+    ProviderTransport,
     ReasoningEffort,
 } from "@flash-evals/api-contract";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -23,14 +26,17 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { RequiredMark } from "./run-form-basics";
-import { transportLabel } from "@/lib/transport";
+import { offerSummary } from "@/lib/model-prices";
+import { modelOffers, ProviderSelect } from "./provider-select";
+import { DataRules } from "./data-rules";
 import type { usePromptEvalRunController } from "./use-prompt-eval-run-controller";
 import {
     modelCanRunOnDataset,
     modelDisabledReason,
     reasoningConfigForModel,
+    temperatureUnsupportedReason,
 } from "./use-prompt-eval-run-controller";
-import { Hint } from "@/components/ui/hint";
+import { Hint, HintText } from "@/components/ui/hint";
 import { REASONING_EFFORT_LABELS } from "@/lib/labels";
 
 type PromptEvalController = ReturnType<typeof usePromptEvalRunController>;
@@ -57,14 +63,20 @@ function ModelOptionButton({
     // aria-disabled rather than disabled, so the chip stays focusable and
     // its tooltip can say why it can't be picked.
     const reason = disabledReason ?? "Model unavailable";
+    const offers = modelOffers(model);
     return (
         <Hint
             content={
-                disabled ? (
-                    reason
-                ) : (
-                    <span className="text-mono-13">{model.id}</span>
-                )
+                <span className="flex flex-col gap-1">
+                    {disabled ? (
+                        <span>{reason}</span>
+                    ) : (
+                        <span className="text-mono-13">{model.id}</span>
+                    )}
+                    {offers.map((offer) => (
+                        <span key={offer.transport}>{offerSummary(offer)}</span>
+                    ))}
+                </span>
             }
         >
             <button
@@ -224,7 +236,6 @@ function PerModelConfigurationRow({
         controller.promptByModel[modelId] ?? controller.promptVersionId;
     const selectedModel = availableModels.find((model) => model.id === modelId);
     const capability = selectedModel?.reasoningEffort;
-    const transports = selectedModel?.transports ?? [];
     const reasoningConfig = reasoningConfigForModel(
         modelId,
         assignedPromptVersionId,
@@ -234,7 +245,7 @@ function PerModelConfigurationRow({
     );
 
     return (
-        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(180px,0.7fr)_minmax(160px,0.6fr)_minmax(160px,0.6fr)]">
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(160px,0.6fr)_minmax(220px,1fr)_minmax(140px,0.5fr)_minmax(110px,0.4fr)]">
             <Card variant="inset" className="px-3 py-2 text-mono-13">
                 {modelId}
             </Card>
@@ -258,30 +269,21 @@ function PerModelConfigurationRow({
                     ))}
                 </SelectContent>
             </Select>
-            {transports.length > 1 ? (
-                <Select
-                    value={controller.transportByModel[modelId] ?? ""}
-                    onValueChange={(value) =>
-                        controller.setTransportByModel((previous) => ({
-                            ...previous,
-                            [modelId]: value as (typeof transports)[number],
-                        }))
-                    }
-                >
-                    <SelectTrigger aria-label={`Transport for ${modelId}`}>
-                        <SelectValue placeholder="Default transport" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {transports.map((transport) => (
-                            <SelectItem key={transport} value={transport}>
-                                {transportLabel(transport)}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            ) : (
-                <div aria-hidden="true" />
-            )}
+            <ProviderSelect
+                id={`provider-${modelId}`}
+                label={`Provider for ${modelId}`}
+                model={selectedModel}
+                value={
+                    controller.transportByModel[modelId] ??
+                    selectedModel?.transports[0]
+                }
+                onChange={(transport) =>
+                    controller.setTransportByModel((previous) => ({
+                        ...previous,
+                        [modelId]: transport,
+                    }))
+                }
+            />
             {capability ? (
                 <Select
                     value={reasoningConfig?.effort ?? ""}
@@ -310,7 +312,50 @@ function PerModelConfigurationRow({
                     Reasoning unsupported
                 </p>
             )}
+            <TemperatureField
+                modelId={modelId}
+                model={selectedModel}
+                controller={controller}
+            />
         </div>
+    );
+}
+
+/** Optional temperature for one model; empty keeps the provider's default. */
+function TemperatureField({
+    modelId,
+    model,
+    controller,
+}: {
+    modelId: string;
+    model: IRunSetupModelOption | undefined;
+    controller: PromptEvalController;
+}) {
+    const unsupported = temperatureUnsupportedReason(model);
+    if (unsupported)
+        return (
+            <p className="px-3 py-2 text-copy-14 text-muted-foreground">
+                <HintText hint={unsupported}>No temperature</HintText>
+            </p>
+        );
+    return (
+        <Input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            max={2}
+            step={0.1}
+            placeholder="Default"
+            aria-label={`Temperature for ${modelId}`}
+            value={controller.temperatureByModel[modelId] ?? ""}
+            onChange={(event) => {
+                const value = event.target.value;
+                controller.setTemperatureByModel((previous) => ({
+                    ...previous,
+                    [modelId]: value,
+                }));
+            }}
+        />
     );
 }
 
@@ -327,11 +372,12 @@ function PerModelConfiguration({
     return (
         <div className="space-y-3">
             <Label>Per-model configuration</Label>
-            <div className="hidden gap-2 px-1 text-label-12 text-muted-foreground sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(180px,0.7fr)_minmax(160px,0.6fr)_minmax(160px,0.6fr)]">
+            <div className="hidden gap-2 px-1 text-label-12 text-muted-foreground sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(160px,0.6fr)_minmax(220px,1fr)_minmax(140px,0.5fr)_minmax(110px,0.4fr)]">
                 <span>Model</span>
                 <span>Prompt version</span>
-                <span>Transport</span>
+                <span>Provider (price in / out per 1M tokens)</span>
                 <span>Reasoning effort</span>
+                <span>Temperature (0–2)</span>
             </div>
             {controller.selectedModels.map((modelId) => (
                 <PerModelConfigurationRow
@@ -352,12 +398,18 @@ export function PromptEvalModelsSection({
     versionOptions,
     selectedDataset,
     modelsDegraded,
+    savedKeyProviders,
+    initialDataPolicy,
 }: {
     controller: PromptEvalController;
     availableModels: IRunSetupModelOption[];
     versionOptions: IRunSetupVersionOption[];
     selectedDataset: IRunSetupDatasetOption | undefined;
     modelsDegraded: boolean;
+    /** Providers with a key (Settings or .env); undefined from older APIs. */
+    savedKeyProviders?: ProviderTransport[];
+    /** A rerun's data rules. */
+    initialDataPolicy?: IRunDataPolicy;
 }) {
     const isAudio = selectedDataset?.modality === "audio";
     return (
@@ -369,6 +421,21 @@ export function PromptEvalModelsSection({
                 </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
+                {savedKeyProviders?.length === 0 && (
+                    <Alert variant="warning">
+                        <TriangleAlert aria-hidden="true" />
+                        <AlertDescription>
+                            No provider has a key, so no model can run. Add one
+                            in Settings or the repo&apos;s .env files.{" "}
+                            <Link
+                                href="/settings"
+                                className="underline underline-offset-4"
+                            >
+                                Add a key in Settings
+                            </Link>
+                        </AlertDescription>
+                    </Alert>
+                )}
                 {modelsDegraded && (
                     <Alert role="status">
                         <AlertDescription>
@@ -388,7 +455,7 @@ export function PromptEvalModelsSection({
                     <p className="text-copy-14 text-muted-foreground">
                         {isAudio
                             ? "These LLMs receive the STT transcript after transcription. The STT model above is the audio model under test."
-                            : "Choose a model family, then pick the models to compare. Greyed-out models aren't enabled for your API key."}
+                            : "Choose a model family, then pick the models to compare. Greyed-out models need a key for a provider that lists them. Hover a model for its Vercel and OpenRouter prices."}
                     </p>
                     <ModelFamilySelector
                         controller={controller}
@@ -439,6 +506,7 @@ export function PromptEvalModelsSection({
                         className="max-w-[200px]"
                     />
                 </div>
+                <DataRules initial={initialDataPolicy} />
             </CardContent>
         </Card>
     );

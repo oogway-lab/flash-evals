@@ -11,6 +11,8 @@ const alertVariants = cva(
                     "border-border bg-surface text-on-surface [&>svg]:text-muted-foreground",
                 destructive:
                     "border-error/30 bg-eval-danger-muted text-error [&>svg]:text-error [&_[data-slot=alert-description]]:text-inherit [&_[data-slot=alert-title]]:text-inherit",
+                warning:
+                    "border-transparent bg-eval-warning-muted text-eval-warning [&>svg]:text-eval-warning [&_[data-slot=alert-description]]:text-inherit [&_[data-slot=alert-title]]:text-inherit",
             },
         },
         defaultVariants: {

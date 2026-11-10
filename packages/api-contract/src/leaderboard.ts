@@ -1,6 +1,8 @@
+import type { ScorerType } from "./index.js";
+
 export interface ILeaderboardScore {
-    scorerType:
-        "field_diff" | "judge" | "transcript_metric" | "transcript_judge";
+    /** Benchmark scores are summarized separately and ignored here. */
+    scorerType: ScorerType;
     score: number | null;
     detailsJson: unknown;
 }
@@ -14,8 +16,14 @@ export interface ILeaderboardModel {
 export interface ILeaderboardCell {
     id: string;
     runModelId: string;
+    /** Used to count failed cells against a model's average scores. */
+    datasetItemId?: string;
+    /** Cell status; "failed" cells count as zero (see `buildLeaderboardRows`). */
+    status?: string;
     latencyMs: number | null;
     costUsd: number | null;
+    /** What judging the cell cost (every scoring pass); see run totals. */
+    judgeCostUsd?: number | null;
     promptTokens: number | null;
     completionTokens: number | null;
 }
@@ -25,6 +33,8 @@ export interface ILeaderboardRow {
     modelId: string;
     isReference: boolean;
     n: number;
+    /** Cells that failed (no output). */
+    failedCells: number;
     avgFieldScore: number | undefined;
     avgJudgeScore: number | undefined;
     avgTranscriptScore: number | undefined;
@@ -42,6 +52,12 @@ export interface ILeaderboardRow {
     avgCompletionTokens: number | undefined;
     avgTotalTokens: number | undefined;
     totalCostUsd: number | undefined;
+    /**
+     * What judging this model's cells cost. Not part of `totalCostUsd`, which
+     * stays the model's own cost so models compare fairly; the run's total
+     * cost adds it.
+     */
+    totalJudgeCostUsd?: number;
     projectedCostPer1k: number | undefined;
     costAvailable: boolean;
     tokenUsageAvailable: boolean;
@@ -60,18 +76,34 @@ interface IScoreStats {
     transcriptFailureCount: number;
 }
 
+/**
+ * One row per model. A failed cell counts as a zero golden or judge score
+ * whenever another model's cell on the same item got that score, so a model
+ * that crashes on hard items can't outrank one that answered them.
+ */
 export function buildLeaderboardRows(
     models: ILeaderboardModel[],
     cells: ILeaderboardCell[],
     scoresByCell: Map<string, ILeaderboardScore[]>,
 ): ILeaderboardRow[] {
+    const scoredItems = scoredItemsByMetric(cells, scoresByCell);
     return models.map((model) => {
         const modelCells = cells.filter((cell) => cell.runModelId === model.id);
         const stats = scoreStatsForCells(modelCells, scoresByCell);
+        const failedCells = modelCells.filter(
+            (cell) => cell.status === "failed",
+        );
+        for (const cell of failedCells) {
+            if (scoredItems.field.has(itemKey(cell))) stats.fieldScores.push(0);
+            if (scoredItems.judge.has(itemKey(cell))) stats.judgeScores.push(0);
+        }
         const latencies = presentNumbers(
             modelCells.map((cell) => cell.latencyMs),
         );
         const costs = presentNumbers(modelCells.map((cell) => cell.costUsd));
+        const judgeCosts = presentNumbers(
+            modelCells.map((cell) => cell.judgeCostUsd ?? null),
+        );
         const promptTokens = presentNumbers(
             modelCells.map((cell) => cell.promptTokens),
         );
@@ -92,6 +124,7 @@ export function buildLeaderboardRows(
             modelId: model.modelId,
             isReference: model.isReference,
             n: modelCells.length,
+            failedCells: failedCells.length,
             avgFieldScore: mean(stats.fieldScores),
             avgJudgeScore: mean(stats.judgeScores),
             avgTranscriptScore: mean(stats.transcriptScores),
@@ -111,6 +144,9 @@ export function buildLeaderboardRows(
             avgCompletionTokens: mean(completionTokens),
             avgTotalTokens: mean(tokenTotals),
             totalCostUsd: costs.length ? sum(costs) : undefined,
+            ...(judgeCosts.length
+                ? { totalJudgeCostUsd: sum(judgeCosts) }
+                : {}),
             projectedCostPer1k:
                 averageCost === undefined ? undefined : averageCost * 1000,
             costAvailable:
@@ -120,6 +156,28 @@ export function buildLeaderboardRows(
                 modelCells.length > 0,
         };
     });
+}
+
+/** Cells without an item id share one key, so the rule falls back to the whole run. */
+function itemKey(cell: ILeaderboardCell): string {
+    return cell.datasetItemId ?? "";
+}
+
+/** Items on which at least one cell has a golden or judge score. */
+function scoredItemsByMetric(
+    cells: ILeaderboardCell[],
+    scoresByCell: Map<string, ILeaderboardScore[]>,
+): { field: Set<string>; judge: Set<string> } {
+    const field = new Set<string>();
+    const judge = new Set<string>();
+    for (const cell of cells) {
+        for (const score of scoresByCell.get(cell.id) ?? []) {
+            if (score.score === null) continue;
+            if (score.scorerType === "field_diff") field.add(itemKey(cell));
+            else if (score.scorerType === "judge") judge.add(itemKey(cell));
+        }
+    }
+    return { field, judge };
 }
 
 function scoreStatsForCells(

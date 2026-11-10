@@ -7,8 +7,13 @@ import type {
     IWorkflowLlmRoute,
     IWorkflowLlmRouteCandidate,
     IWorkflowNodeConfig,
+    WorkflowLlmTransport,
 } from "@flash-evals/api-contract";
-import { isWorkflowModelBackedNodeType } from "@flash-evals/api-contract";
+import {
+    STT_LEVEL_VOLUME_FIELD,
+    isWorkflowLlmTransport,
+    isWorkflowModelBackedNodeType,
+} from "@flash-evals/api-contract";
 import Link from "next/link";
 import { Copy, Trash2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -35,12 +40,16 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import {
+    ConfigField,
     SttConfigFields,
     configForSttSnapshot,
     sttConfigForModel,
+    sttConfigWithLevelVolume,
 } from "@/components/runs/stt-config-fields";
 import type { SttCanvasNode, SttNodeData } from "./stt-canvas";
 import { InputDatasetUpload } from "./input-dataset-upload";
+import { StepConditionFields } from "./step-condition-fields";
+import { StepSettingsFields } from "./step-settings-fields";
 import {
     REASONING_EFFORT_LABELS,
     TRANSPORT_LABELS,
@@ -65,9 +74,12 @@ export function SttNodeInspector({
     onCreateLlmRoute,
     onLoadLlmModels,
     onRouteCreated,
+    earlierSteps = [],
 }: {
     node?: SttCanvasNode;
     setup: IRunSetupResponse;
+    /** Steps that run before this node, for its run condition. */
+    earlierSteps?: Array<{ nodeKey: string; label: string }>;
     onClose: () => void;
     onChange: (data: SttNodeData) => void;
     onRemove: () => void;
@@ -75,14 +87,14 @@ export function SttNodeInspector({
     llmRoutes?: IWorkflowLlmRoute[];
     projectDefault?: IWorkflowLlmProjectDefaultState;
     onCreateLlmRoute?: (input: {
-        transport: "openai" | "gateway" | "openrouter" | "bifrost";
+        transport: WorkflowLlmTransport;
         modelId: string;
         name: string;
         reasoningEffort?:
             "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
     }) => Promise<{ route?: IWorkflowLlmRoute; error?: string }>;
     onLoadLlmModels?: (
-        transport: "openai" | "gateway" | "openrouter" | "bifrost",
+        transport: WorkflowLlmTransport,
     ) => Promise<{ candidates?: IWorkflowLlmRouteCandidate[]; error?: string }>;
     onRouteCreated?: (route: IWorkflowLlmRoute) => void;
 }) {
@@ -132,6 +144,41 @@ export function SttNodeInspector({
                         onLoadLlmModels={onLoadLlmModels}
                         onRouteCreated={onRouteCreated}
                     />
+                    {data.nodeType === "prompt" ||
+                    data.nodeType === "llm_text" ? (
+                        <StepSettingsFields
+                            key={`settings-${data.nodeKey}`}
+                            nodeKey={data.nodeKey}
+                            label={data.label}
+                            settings={data.stepSettings}
+                            hasOutputSchema={data.nodeType === "prompt"}
+                            earlierSteps={earlierSteps}
+                            onChange={(stepSettings) => {
+                                const { stepSettings: _old, ...rest } = data;
+                                onChange(
+                                    stepSettings
+                                        ? { ...rest, stepSettings }
+                                        : rest,
+                                );
+                            }}
+                        />
+                    ) : null}
+                    {data.nodeType !== "input" && data.nodeType !== "stt" ? (
+                        <StepConditionFields
+                            key={data.nodeKey}
+                            nodeKey={data.nodeKey}
+                            condition={data.runCondition}
+                            earlierSteps={earlierSteps}
+                            onChange={(runCondition) => {
+                                const { runCondition: _old, ...rest } = data;
+                                onChange(
+                                    runCondition
+                                        ? { ...rest, runCondition }
+                                        : rest,
+                                );
+                            }}
+                        />
+                    ) : null}
                     <div className="flex gap-2">
                         {data.nodeType === "stt" ? (
                             <Button
@@ -180,14 +227,14 @@ function NodeConfigFields({
     llmRoutes: IWorkflowLlmRoute[];
     projectDefault?: IWorkflowLlmProjectDefaultState;
     onCreateLlmRoute?: (input: {
-        transport: "openai" | "gateway" | "openrouter" | "bifrost";
+        transport: WorkflowLlmTransport;
         modelId: string;
         name: string;
         reasoningEffort?:
             "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
     }) => Promise<{ route?: IWorkflowLlmRoute; error?: string }>;
     onLoadLlmModels?: (
-        transport: "openai" | "gateway" | "openrouter" | "bifrost",
+        transport: WorkflowLlmTransport,
     ) => Promise<{ candidates?: IWorkflowLlmRouteCandidate[]; error?: string }>;
     onRouteCreated?: (route: IWorkflowLlmRoute) => void;
 }) {
@@ -361,6 +408,20 @@ function NodeConfigFields({
                             })
                         }
                     />
+                    <ConfigField
+                        idPrefix={`stt-node-${data.nodeKey}`}
+                        field={STT_LEVEL_VOLUME_FIELD}
+                        value={config.levelVolume === true}
+                        onChange={(value) =>
+                            setConfig({
+                                type: "stt",
+                                sttConfig: sttConfigWithLevelVolume(
+                                    config,
+                                    value === true,
+                                ),
+                            })
+                        }
+                    />
                 </>
             );
         }
@@ -481,7 +542,7 @@ function LlmRouteFields({
     projectDefault?: IWorkflowLlmProjectDefaultState;
     onChange: (data: SttNodeData) => void;
     onCreateLlmRoute?: (input: {
-        transport: "openai" | "gateway" | "openrouter" | "bifrost";
+        transport: WorkflowLlmTransport;
         modelId: string;
         name: string;
         generation?: {
@@ -497,7 +558,7 @@ function LlmRouteFields({
         flashEvalsReuse?: "allow" | "force_fresh";
     }) => Promise<{ route?: IWorkflowLlmRoute; error?: string }>;
     onLoadLlmModels?: (
-        transport: "openai" | "gateway" | "openrouter" | "bifrost",
+        transport: WorkflowLlmTransport,
     ) => Promise<{ candidates?: IWorkflowLlmRouteCandidate[]; error?: string }>;
     onRouteCreated?: (route: IWorkflowLlmRoute) => void;
 }) {
@@ -506,9 +567,6 @@ function LlmRouteFields({
         .flatMap((route) =>
             routeVersions(route).map((version) => ({ route, version })),
         );
-    const providers = Object.entries(TRANSPORT_LABELS) as Array<
-        [keyof typeof TRANSPORT_LABELS, string]
-    >;
     const defaultVersion = activeVersions.find(
         ({ version }) => version.id === projectDefault?.routeVersionId,
     );
@@ -540,13 +598,20 @@ function LlmRouteFields({
             ? "The pinned route is unavailable. Choose an active route."
             : undefined;
     const version = effectiveVersion?.version;
+    const providers = workflowProviders(
+        setup,
+        version?.config.transportConfig.transport ??
+            (data.llmExecutionSelection?.mode === "simple"
+                ? data.llmExecutionSelection.transport
+                : undefined),
+    );
     const [selectedTransport, setSelectedTransport] = useState<
-        "" | "openai" | "gateway" | "openrouter" | "bifrost"
+        "" | WorkflowLlmTransport
     >(
         version?.config.transportConfig.transport ??
             (data.llmExecutionSelection?.mode === "simple"
                 ? data.llmExecutionSelection.transport
-                : ""),
+                : startingProvider(setup)),
     );
     const [selectedModelId, setSelectedModelId] = useState(
         version?.config.modelId ?? data.modelId ?? "",
@@ -616,9 +681,17 @@ function LlmRouteFields({
     const selectedModel = modelOptions.find(
         (model) => model.id === selectedModelId,
     );
+    // Bifrost lists one model under an id per upstream; a step saves the
+    // exact Bifrost id so the call goes where it was picked to go.
     const simpleModelOptions =
         simpleCandidates.length > 0
-            ? simpleCandidates
+            ? simpleCandidates.map((candidate) => ({
+                  modelId: candidate.transportModelId ?? candidate.modelId,
+                  label: candidate.label,
+                  modelProviderLabel: candidate.transportModelId
+                      ? candidate.transportModelId
+                      : candidate.modelProviderLabel,
+              }))
             : modelOptions.map((model) => ({
                   modelId: model.id,
                   label: model.label,
@@ -715,13 +788,7 @@ function LlmRouteFields({
     }
 
     function selectProvider(transport: string) {
-        if (
-            transport !== "openai" &&
-            transport !== "gateway" &&
-            transport !== "openrouter" &&
-            transport !== "bifrost"
-        )
-            return;
+        if (!isWorkflowLlmTransport(transport)) return;
         setSelectedTransport(transport);
         setSelectedModelId("");
         setSimpleCandidates([]);
@@ -1299,6 +1366,42 @@ function routeSettingsSummary(
             ? "always call provider"
             : "exact reuse allowed";
     return `${generation} · ${reuse}`;
+}
+
+/**
+ * Providers the step's provider lists offer. The makers' own APIs (Anthropic,
+ * the Gemini API) appear only when the team saved that key in Settings, or
+ * when the step already uses one, so the current choice still shows.
+ */
+function workflowProviders(
+    setup: Pick<IRunSetupResponse, "savedKeyProviders">,
+    current?: WorkflowLlmTransport,
+): Array<[WorkflowLlmTransport, string]> {
+    return (
+        Object.entries(TRANSPORT_LABELS) as Array<
+            [WorkflowLlmTransport, string]
+        >
+    ).filter(
+        ([transport]) =>
+            (transport !== "anthropic" && transport !== "google") ||
+            transport === current ||
+            Boolean(setup.savedKeyProviders?.includes(transport)),
+    );
+}
+
+/**
+ * A new step starts on the default provider (FLASH_EVALS_LLM_PROVIDER, e.g.
+ * bifrost) when its key is saved.
+ */
+function startingProvider(
+    setup: Pick<IRunSetupResponse, "preferredProvider" | "savedKeyProviders">,
+): "" | WorkflowLlmTransport {
+    const preferred = setup.preferredProvider;
+    return preferred &&
+        isWorkflowLlmTransport(preferred) &&
+        setup.savedKeyProviders?.includes(preferred)
+        ? preferred
+        : "";
 }
 
 function transportLabel(transport: string): string {

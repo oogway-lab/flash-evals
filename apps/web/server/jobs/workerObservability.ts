@@ -66,6 +66,53 @@ export interface IWorkerLogMetadata {
     drainTimeoutMs?: number;
     remainingInFlight?: number;
     recoveredCount?: number;
+    warningType?: string;
+    expireInSeconds?: number;
+    /** An environment setting's name, never its value. */
+    setting?: string;
+    warning?: string;
+}
+
+const SAFE_WARNING_TYPES = new Set([
+    "slow_query",
+    "queue_backlog",
+    "clock_skew",
+    "listen_notify_unavailable",
+    "invalid_schedule",
+    "index_bloat",
+    "xmin_horizon",
+    "autovacuum_disabled",
+    "monitor_backoff",
+    "transactional_pool_headroom",
+    "transaction_timeout_probe",
+    "start_retry",
+    "handler_overrun",
+]);
+
+/**
+ * Logs a pg-boss `warning` event, such as a handler that outlived its job's
+ * expiry. Only the warning type and expiry are kept: the message can quote
+ * SQL or database error text.
+ */
+export function logQueueWarning(queue: string, warning: unknown): void {
+    const data =
+        typeof warning === "object" && warning !== null && "data" in warning
+            ? (warning as { data?: unknown }).data
+            : undefined;
+    const record =
+        typeof data === "object" && data !== null
+            ? (data as Record<string, unknown>)
+            : {};
+    const type = record.type;
+    const expire = record.expireInSeconds;
+    logWorkerEvent("warn", "queue.warning", {
+        queue,
+        warningType:
+            typeof type === "string" && SAFE_WARNING_TYPES.has(type)
+                ? type
+                : "unknown",
+        ...(typeof expire === "number" ? { expireInSeconds: expire } : {}),
+    });
 }
 
 export function logWorkerEvent(

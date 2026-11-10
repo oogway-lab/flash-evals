@@ -24,6 +24,8 @@ export interface IConfirmDialogProps {
     title: string;
     description: React.ReactNode;
     confirmLabel: string;
+    /** Label of the button that closes the dialog without acting. */
+    cancelLabel?: string;
     /** Extra body content between the description and the actions. */
     children?: React.ReactNode;
     /** Accessible label while confirming, e.g. "Deleting…". */
@@ -48,6 +50,7 @@ export function ConfirmDialog({
     title,
     description,
     confirmLabel,
+    cancelLabel = "Cancel",
     children,
     pendingLabel,
     onConfirm,
@@ -101,7 +104,7 @@ export function ConfirmDialog({
                 )}
                 <AlertDialogFooter>
                     <AlertDialogCancel disabled={pending}>
-                        Cancel
+                        {cancelLabel}
                     </AlertDialogCancel>
                     <Button
                         type="button"

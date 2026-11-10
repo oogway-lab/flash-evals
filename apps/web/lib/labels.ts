@@ -7,6 +7,7 @@ import type {
     IWorkflowLlmCachePolicy,
     IWorkflowLlmRetryPolicy,
     IWorkflowLlmRouteCandidate,
+    ProviderTransport,
     ReasoningEffort,
     RunStatus,
     WorkflowLlmTransport,
@@ -34,6 +35,7 @@ export const RUN_STATUS_LABELS: Record<RunStatus, string> = {
     completed: "Completed",
     partial: "Partial",
     failed: "Failed",
+    cancelled: "Cancelled",
 };
 
 export const CELL_STATUS_LABELS: Record<CellStatus, string> = {
@@ -42,6 +44,7 @@ export const CELL_STATUS_LABELS: Record<CellStatus, string> = {
     succeeded: "Succeeded",
     failed: "Failed",
     cached: "Cached",
+    skipped: "Skipped",
 };
 
 export const NODE_TYPE_LABELS: Record<WorkflowNodeType, string> = {
@@ -54,12 +57,22 @@ export const NODE_TYPE_LABELS: Record<WorkflowNodeType, string> = {
     metric_compare: "Metric compare",
 };
 
+/**
+ * Transports a workflow LLM step can use, in the order the app offers them.
+ * Anthropic and the Gemini API are the makers' own APIs, called directly.
+ */
 export const TRANSPORT_LABELS: Record<WorkflowLlmTransport, string> = {
     openai: "OpenAI",
     gateway: "Vercel AI Gateway",
     openrouter: "OpenRouter",
     bifrost: "Bifrost",
+    anthropic: "Anthropic",
+    google: "Gemini API",
 };
+
+/** Every provider an eval run can call: the same set as workflow steps. */
+export const PROVIDER_TRANSPORT_LABELS: Record<ProviderTransport, string> =
+    TRANSPORT_LABELS;
 
 export const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
     none: "None",

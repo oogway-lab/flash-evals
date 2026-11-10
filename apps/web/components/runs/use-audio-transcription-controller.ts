@@ -19,6 +19,7 @@ function transcriptionInitialState(
             "",
         language: config?.language ?? "",
         config: config?.config ?? {},
+        levelVolume: config?.levelVolume === true,
     };
 }
 
@@ -55,6 +56,7 @@ export function useAudioTranscriptionController(
     const [sttConfig, setSttConfig] = useState<Record<string, unknown>>(
         initial.config,
     );
+    const [sttLevelVolume, setSttLevelVolume] = useState(initial.levelVolume);
     const [transliterationEnabled, setTransliterationEnabled] = useState(
         transliteration.enabled,
     );
@@ -85,6 +87,8 @@ export function useAudioTranscriptionController(
             setSttLanguage,
             sttConfig,
             setSttConfig,
+            sttLevelVolume,
+            setSttLevelVolume,
             transliterationEnabled,
             setTransliterationEnabled,
             transliterationModelId,

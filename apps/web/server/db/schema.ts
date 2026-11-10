@@ -1,7 +1,14 @@
 import { sql } from "drizzle-orm";
-import type { ProviderMetadata, IModelCatalogSnapshot } from "@flash-evals/llm-core";
 import type {
+    ProviderMetadata,
+    IModelCatalogSnapshot,
+} from "@flash-evals/llm-core";
+import type {
+    ISetupComparisonConfig,
     ISttRunConfig,
+    RunStopReason,
+    IBenchmarkCellDetails,
+    IWorkflowRunConfig,
     IWorkflowLlmActualRoute,
     IWorkflowLlmCapabilitySnapshot,
     IWorkflowLlmExecutionProvenance,
@@ -43,6 +50,9 @@ import type {
     ITranscriptSegment,
     ITranscriptSpeaker,
     IWorkflowNodeEvalConfig,
+    WorkflowRunCondition,
+    IPipelineFinalAnswer,
+    IWorkflowStepSettings,
     WorkflowNodeConfig,
     IWorkflowNodePosition,
     IWorkflowSnapshot,
@@ -74,6 +84,8 @@ export const promptValidationStatus = pgEnum("prompt_validation_status", [
     "failed",
     "provider_error",
     "cancelled",
+    // Saved runnable without a model check (the direct save endpoint).
+    "unchecked",
 ]);
 export const promptOptimizationStatus = pgEnum("prompt_optimization_status", [
     "running",
@@ -91,6 +103,7 @@ export const runStatus = pgEnum("run_status", [
     "completed",
     "partial",
     "failed",
+    "cancelled",
 ]);
 export const cellStatus = pgEnum("cell_status", [
     "pending",
@@ -98,6 +111,7 @@ export const cellStatus = pgEnum("cell_status", [
     "succeeded",
     "failed",
     "cached",
+    "skipped",
 ]);
 export const datasetPurpose = pgEnum("dataset_purpose", [
     "golden",
@@ -261,7 +275,7 @@ export const llmCapabilityVersions = pgTable(
         ),
         check(
             "llm_capability_versions_transport_check",
-            sql`${t.transport} in ('openai', 'gateway', 'openrouter', 'bifrost')`,
+            sql`${t.transport} in ('openai', 'gateway', 'openrouter', 'bifrost', 'anthropic', 'google')`,
         ),
         check(
             "llm_capability_versions_window_check",
@@ -505,6 +519,42 @@ export const labels = pgTable("labels", {
     labelJson: jsonb("label_json").$type<LabelJson>().notNull(),
     createdAt: createdAt(),
 });
+
+/**
+ * Every change to a stored answer made by reviewing a disagreement: which
+ * field, from what to what, which run answer it came from, who decided.
+ */
+export const labelCorrections = pgTable(
+    "label_corrections",
+    {
+        id: id(),
+        datasetItemId: uuid("dataset_item_id")
+            .notNull()
+            .references(() => datasetItems.id, { onDelete: "cascade" }),
+        /** The output field, e.g. "$.domain". */
+        path: text("path").notNull(),
+        previousValue: jsonb("previous_value"),
+        newValue: jsonb("new_value").notNull(),
+        /** Whose answer was right: the model's or the yardstick's. */
+        choice: text("choice").notNull(),
+        taskKey: text("task_key").notNull(),
+        runCellId: uuid("run_cell_id").references(
+            (): AnyPgColumn => runCells.id,
+            {
+                onDelete: "set null",
+            },
+        ),
+        decidedBy: uuid("decided_by").references(() => users.id),
+        createdAt: createdAt(),
+    },
+    (t) => [
+        index("label_corrections_dataset_item_id_idx").on(t.datasetItemId),
+        check(
+            "label_corrections_choice_check",
+            sql`${t.choice} in ('candidate', 'benchmark')`,
+        ),
+    ],
+);
 
 export const prompts = pgTable(
     "prompts",
@@ -770,6 +820,52 @@ export const judgeConfigs = pgTable(
     ],
 );
 
+/**
+ * One launch that compares setups on a dataset: an eval run (the reference
+ * and the single-model candidates) and pipeline runs scored against that
+ * run's reference. Its members point back to it; its status is derived from
+ * theirs, and its spend limit is shared by all of them.
+ */
+export const setupComparisons = pgTable(
+    "setup_comparisons",
+    {
+        id: id(),
+        teamId: uuid("team_id")
+            .notNull()
+            .references(() => teams.id),
+        projectId: uuid("project_id")
+            .notNull()
+            .references(() => projects.id),
+        datasetId: uuid("dataset_id")
+            .notNull()
+            .references(() => datasets.id),
+        /** One spend limit for every member run, judge calls included. */
+        maxCostUsd: doublePrecision("max_cost_usd"),
+        /** Settings captured at launch (data rules, pipeline order). */
+        config: jsonb("config")
+            .$type<ISetupComparisonConfig>()
+            .notNull()
+            .default({}),
+        /** Set when someone cancels the comparison (all members). */
+        cancelRequestedAt: timestamp("cancel_requested_at", {
+            withTimezone: true,
+        }),
+        createdBy: uuid("created_by").references(() => users.id),
+        idempotencyKey: text("idempotency_key"),
+        idempotencyFingerprint: text("idempotency_fingerprint"),
+        createdAt: createdAt(),
+    },
+    (t) => [
+        index("setup_comparisons_project_id_idx").on(t.projectId),
+        unique("setup_comparisons_idempotency_unique").on(
+            t.teamId,
+            t.projectId,
+            t.createdBy,
+            t.idempotencyKey,
+        ),
+    ],
+);
+
 export const runs = pgTable(
     "runs",
     {
@@ -797,10 +893,42 @@ export const runs = pgTable(
         createdBy: uuid("created_by").references(() => users.id),
         idempotencyKey: text("idempotency_key"),
         idempotencyFingerprint: text("idempotency_fingerprint"),
+        /**
+         * The worker pass executing this run, so a second pass for the same
+         * run (a duplicate job) waits instead of running it twice. Refreshed
+         * by the claim heartbeat; a lease older than the stale-claim window
+         * belongs to a dead worker and can be taken over.
+         */
+        executionLeaseId: uuid("execution_lease_id"),
+        executionLeaseAt: timestamp("execution_lease_at", {
+            withTimezone: true,
+        }),
+        /**
+         * The holding worker's stale-claim window (RUN_STALE_CLAIM_MS), so
+         * the API judges the lease by the worker's setting, not its own.
+         */
+        executionLeaseStaleMs: integer("execution_lease_stale_ms"),
+        /** Set when someone asks to cancel; the worker stops claiming cells. */
+        cancelRequestedAt: timestamp("cancel_requested_at", {
+            withTimezone: true,
+        }),
+        /** Why a cancelled run stopped early. */
+        stopReason: text("stop_reason").$type<RunStopReason>(),
+        /**
+         * Why the run failed before any cell started (redacted; shown in
+         * the app). Cell errors stay on their cells.
+         */
+        error: text("error"),
+        /** The setup comparison this run belongs to, if any. */
+        setupComparisonId: uuid("setup_comparison_id").references(
+            () => setupComparisons.id,
+            { onDelete: "set null" },
+        ),
         createdAt: createdAt(),
     },
     (t) => [
         index("runs_team_id_idx").on(t.teamId),
+        index("runs_setup_comparison_id_idx").on(t.setupComparisonId),
         index("runs_project_id_idx").on(t.projectId),
         unique("runs_idempotency_scope_unique").on(
             t.teamId,
@@ -815,6 +943,10 @@ export const runs = pgTable(
             or (${t.idempotencyKey} is not null and ${t.idempotencyFingerprint} is not null
                 and ${t.createdBy} is not null and length(${t.idempotencyKey}) between 1 and 200)
         `,
+        ),
+        check(
+            "runs_stop_reason_check",
+            sql`${t.stopReason} is null or ${t.stopReason} in ('cancelled', 'spend_cap')`,
         ),
     ],
 );
@@ -870,6 +1002,7 @@ export const promptWorkflows = pgTable(
         description: text("description").notNull().default(""),
         kind: text("kind").notNull().default("prompt"),
         sttConfig: jsonb("stt_config").$type<ISttRunConfig>(),
+        finalAnswer: jsonb("final_answer").$type<IPipelineFinalAnswer>(),
         archivedAt: timestamp("archived_at", { withTimezone: true }),
         createdBy: uuid("created_by").references(() => users.id),
         createdAt: createdAt(),
@@ -909,6 +1042,8 @@ export const workflowNodes = pgTable(
             .notNull()
             .default({ type: "none" }),
         position: jsonb("position").$type<IWorkflowNodePosition>(),
+        runCondition: jsonb("run_condition").$type<WorkflowRunCondition>(),
+        stepSettings: jsonb("step_settings").$type<IWorkflowStepSettings>(),
         createdAt: createdAt(),
     },
     (t) => [
@@ -945,6 +1080,8 @@ export const workflowEdges = pgTable(
         carryOriginalInput: boolean("carry_original_input")
             .notNull()
             .default(false),
+        /** The target waits for the source but reads the original input. */
+        orderOnly: boolean("order_only").notNull().default(false),
         createdAt: createdAt(),
     },
     (t) => [
@@ -996,11 +1133,33 @@ export const workflowRuns = pgTable(
         idempotencyKey: text("idempotency_key"),
         idempotencyFingerprint: text("idempotency_fingerprint"),
         createdBy: uuid("created_by").references(() => users.id),
+        /** The spend limit and data rules captured when the run was created. */
+        configSnapshot: jsonb("config_snapshot")
+            .$type<IWorkflowRunConfig>()
+            .notNull()
+            .default({}),
+        /** Set when someone asks to cancel; the worker stops claiming cells. */
+        cancelRequestedAt: timestamp("cancel_requested_at", {
+            withTimezone: true,
+        }),
+        /** Why a cancelled run stopped early. */
+        stopReason: text("stop_reason").$type<RunStopReason>(),
+        /**
+         * Why the run failed before any step started (redacted; shown in
+         * the app). Step errors stay on their cells.
+         */
+        error: text("error"),
+        /** The setup comparison this run belongs to, if any. */
+        setupComparisonId: uuid("setup_comparison_id").references(
+            () => setupComparisons.id,
+            { onDelete: "set null" },
+        ),
         createdAt: createdAt(),
     },
     (t) => [
         unique().on(t.projectId, t.id),
         index("workflow_runs_team_id_idx").on(t.teamId),
+        index("workflow_runs_setup_comparison_id_idx").on(t.setupComparisonId),
         index("workflow_runs_project_id_idx").on(t.projectId),
         index("workflow_runs_workflow_id_idx").on(t.workflowId),
         index("workflow_runs_dataset_id_idx").on(t.datasetId),
@@ -1016,6 +1175,10 @@ export const workflowRuns = pgTable(
         check(
             "workflow_runs_enqueue_status_check",
             sql`${t.enqueueStatus} in ('pending_enqueue', 'queued', 'failed', 'legacy_unresolved')`,
+        ),
+        check(
+            "workflow_runs_stop_reason_check",
+            sql`${t.stopReason} is null or ${t.stopReason} in ('cancelled', 'spend_cap')`,
         ),
     ],
 );
@@ -1038,6 +1201,11 @@ export const workflowRunCells = pgTable(
         >(),
         latencyMs: doublePrecision("latency_ms"),
         costUsd: doublePrecision("cost_usd"),
+        /**
+         * What scoring this step's answer with a judge has cost, summed over
+         * every scoring pass. Kept apart from cost_usd, the step's own call.
+         */
+        judgeCostUsd: doublePrecision("judge_cost_usd"),
         error: text("error"),
         claimedAt: timestamp("claimed_at", { withTimezone: true }),
         createdAt: createdAt(),
@@ -1051,6 +1219,50 @@ export const workflowRunCells = pgTable(
         ),
         index("workflow_run_cells_workflow_run_id_idx").on(t.workflowRunId),
         index("workflow_run_cells_dataset_item_id_idx").on(t.datasetItemId),
+    ],
+);
+
+/** One item's final answer in a pipeline run, assembled from its steps. */
+export const workflowRunAnswers = pgTable(
+    "workflow_run_answers",
+    {
+        id: id(),
+        workflowRunId: uuid("workflow_run_id")
+            .notNull()
+            .references(() => workflowRuns.id, { onDelete: "cascade" }),
+        datasetItemId: uuid("dataset_item_id")
+            .notNull()
+            .references(() => datasetItems.id),
+        answer: jsonb("answer").$type<Record<string, unknown>>(),
+        status: text("status").$type<"complete" | "failed">().notNull(),
+        schemaErrors:
+            jsonb("schema_errors").$type<
+                Array<{ path: string; message: string }>
+            >(),
+        costUsd: doublePrecision("cost_usd"),
+        latencyMs: doublePrecision("latency_ms"),
+        /**
+         * On a run compared with an eval run: the answer's benchmark score
+         * and per-task details against that run's yardsticks. Cleared when
+         * the answer changes, so a resumed run scores it again.
+         */
+        benchmarkScore: doublePrecision("benchmark_score"),
+        benchmarkDetails:
+            jsonb("benchmark_details").$type<IBenchmarkCellDetails>(),
+        /** When it was scored; null while it waits (or has nothing to score). */
+        benchmarkScoredAt: timestamp("benchmark_scored_at", {
+            withTimezone: true,
+        }),
+        /** What judging it has cost, summed over every scoring pass. */
+        judgeCostUsd: doublePrecision("judge_cost_usd"),
+        createdAt: createdAt(),
+        updatedAt: timestamp("updated_at", { withTimezone: true })
+            .notNull()
+            .defaultNow(),
+    },
+    (t) => [
+        unique().on(t.workflowRunId, t.datasetItemId),
+        index("workflow_run_answers_workflow_run_id_idx").on(t.workflowRunId),
     ],
 );
 
@@ -1259,6 +1471,8 @@ export const runModels = pgTable(
         promptSnapshot:
             jsonb("prompt_snapshot").$type<IRunModelPromptSnapshot>(),
         reasoningConfig: jsonb("reasoning_config").$type<IReasoningConfig>(),
+        /** Sampling temperature sent on every call; null: the provider's default. */
+        temperature: doublePrecision("temperature"),
         isReference: boolean("is_reference").notNull().default(false),
     },
     (t) => [
@@ -1285,8 +1499,25 @@ export const runCells = pgTable(
         latencyMs: doublePrecision("latency_ms"),
         costUsd: doublePrecision("cost_usd"),
         costSource: costSource("cost_source"),
+        /**
+         * What judging this cell has cost: benchmark, rubric and judge calls,
+         * summed over every scoring pass (each pass pays again). Kept apart
+         * from cost_usd, the model's own call, which may be a cache hit.
+         */
+        judgeCostUsd: doublePrecision("judge_cost_usd"),
+        /**
+         * What this cell's own calls cost when they were made, summed over
+         * passes: its model call (nothing for a reused answer) and the
+         * transcription its input needed (nothing for a reused transcript).
+         * Run and team spend count this; null on cells written before it
+         * existed (spend then counts cost_usd unless the cell is cached).
+         * cost_usd stays the list cost shown on the cell.
+         */
+        incurredCostUsd: doublePrecision("incurred_cost_usd"),
         promptTokens: integer("prompt_tokens"),
         completionTokens: integer("completion_tokens"),
+        /** Thinking (reasoning) tokens, part of completion_tokens, when reported. */
+        reasoningTokens: integer("reasoning_tokens"),
         providerMetadata: jsonb("provider_metadata").$type<ProviderMetadata>(),
         schemaViolation: boolean("schema_violation").notNull().default(false),
         maxTokens: integer("max_tokens"),
@@ -1516,3 +1747,34 @@ export const modelCatalogSnapshots = pgTable("model_catalog_snapshots", {
     snapshot: jsonb("snapshot").$type<IModelCatalogSnapshot>().notNull(),
     fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
 });
+
+/**
+ * Every amount spent, when it was paid: append-only, written by database
+ * triggers whenever a cell's, answer's or item's recorded spend grows
+ * (migration 0081), so every writer is covered. The team daily cap and the
+ * worker status summary sum it over a window; the per-row cost columns stay
+ * cumulative totals. Rows outlive the cells they came from, so deleting a
+ * run does not lower today's spend.
+ */
+export const spendLedger = pgTable(
+    "spend_ledger",
+    {
+        id: id(),
+        teamId: uuid("team_id")
+            .notNull()
+            .references(() => teams.id, { onDelete: "cascade" }),
+        /** The table the spend was recorded on (run_cells, workflow_run_cells, ...). */
+        sourceTable: text("source_table").notNull(),
+        sourceId: uuid("source_id").notNull(),
+        /** "call" (model, step or transcription calls) or "judge". */
+        kind: text("kind").notNull(),
+        amountUsd: doublePrecision("amount_usd").notNull(),
+        paidAt: timestamp("paid_at", { withTimezone: true })
+            .notNull()
+            .defaultNow(),
+    },
+    (t) => [
+        index("spend_ledger_team_paid_at_idx").on(t.teamId, t.paidAt),
+        index("spend_ledger_paid_at_idx").on(t.paidAt),
+    ],
+);

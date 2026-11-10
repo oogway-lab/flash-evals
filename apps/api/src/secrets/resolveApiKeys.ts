@@ -15,6 +15,7 @@ export interface ISttProviderKeys {
     openai?: string;
     vercelGateway?: string;
     soniox?: string;
+    elevenlabs?: string;
     gemini?: string;
     openrouter?: string;
     openrouterBaseUrl?: string;
@@ -35,7 +36,14 @@ export interface IResolvedProviderKeys {
 
 interface IProviderKeyRow {
     provider:
-        "openai" | "gateway" | "soniox" | "openrouter" | "bifrost" | "gemini";
+        | "openai"
+        | "gateway"
+        | "soniox"
+        | "elevenlabs"
+        | "openrouter"
+        | "bifrost"
+        | "gemini"
+        | "anthropic";
     ciphertext: string;
     iv: string;
     authTag: string;
@@ -140,21 +148,33 @@ export function teamBaseUrlProviderOptions(
     };
 }
 
+export const SAVED_BIFROST_URL_MISSING =
+    "The Bifrost key saved in Settings has no base URL. Save the public HTTPS URL of your Bifrost endpoint with it in Settings, then try again.";
+
 function resolvedKeys(
     stored: Map<string, { key: string; baseUrl?: string }>,
     config: IApiConfig,
 ): IResolvedProviderKeys {
     const openai = stored.get("openai")?.key ?? config.openaiApiKey;
     const gateway = stored.get("gateway")?.key ?? config.aiGatewayApiKey;
-    const soniox = stored.get("soniox")?.key ?? config.sonioxApiKey;
-    const gemini = stored.get("gemini")?.key ?? config.geminiApiKey;
+    const { soniox, elevenlabs, gemini } = sttOnlyKeys(stored, config);
     const openrouterRow = stored.get("openrouter");
     const bifrostRow = stored.get("bifrost");
     const openrouter = openrouterRow?.key ?? config.openrouterApiKey;
-    const bifrost = bifrostRow?.key ?? config.bifrostApiKey;
-    const openrouterBaseUrl =
-        openrouterRow?.baseUrl ?? config.openrouterBaseUrl;
-    const bifrostBaseUrl = bifrostRow?.baseUrl ?? config.bifrostBaseUrl;
+    // A saved key keeps its own URL (none means the provider's public
+    // default); the .env URL pairs only with the .env key. Bifrost has no
+    // public default, so a saved Bifrost key without a URL is left out
+    // (no .env fallback) and a Bifrost call says why.
+    const bifrostUnusable = bifrostRow !== undefined && !bifrostRow.baseUrl;
+    const bifrost = bifrostUnusable
+        ? undefined
+        : (bifrostRow?.key ?? config.bifrostApiKey);
+    const openrouterBaseUrl = openrouterRow
+        ? openrouterRow.baseUrl
+        : config.openrouterBaseUrl;
+    const bifrostBaseUrl = bifrostRow
+        ? bifrostRow.baseUrl
+        : config.bifrostBaseUrl;
     return {
         apiKeys: {
             openai,
@@ -163,11 +183,16 @@ function resolvedKeys(
             openrouterBaseUrl,
             bifrost,
             bifrostBaseUrl,
+            ...directMakerKeys(stored),
+            ...(bifrostUnusable
+                ? { unusable: { bifrost: SAVED_BIFROST_URL_MISSING } }
+                : {}),
         },
         sttProviderKeys: {
             openai,
             vercelGateway: gateway,
             soniox,
+            elevenlabs,
             gemini,
             openrouter,
             openrouterBaseUrl,
@@ -179,5 +204,33 @@ function resolvedKeys(
                 baseUrl ? [baseUrl] : [],
             ),
         ),
+    };
+}
+
+/** Speech-to-text-only keys: a key saved in Settings wins over .env. */
+function sttOnlyKeys(
+    stored: Map<string, { key: string }>,
+    config: IApiConfig,
+): Pick<ISttProviderKeys, "soniox" | "elevenlabs" | "gemini"> {
+    return {
+        soniox: stored.get("soniox")?.key ?? config.sonioxApiKey,
+        elevenlabs: stored.get("elevenlabs")?.key ?? config.elevenlabsApiKey,
+        gemini: stored.get("gemini")?.key ?? config.geminiApiKey,
+    };
+}
+
+/**
+ * Direct maker keys come from Settings only, never from .env, so a key
+ * exported in a shell can't end up paying for a team's runs. Direct Google
+ * calls use the saved Gemini key.
+ */
+function directMakerKeys(
+    stored: Map<string, { key: string }>,
+): Pick<ApiKeys, "anthropic" | "google"> {
+    const anthropic = stored.get("anthropic")?.key;
+    const google = stored.get("gemini")?.key;
+    return {
+        ...(anthropic ? { anthropic } : {}),
+        ...(google ? { google } : {}),
     };
 }

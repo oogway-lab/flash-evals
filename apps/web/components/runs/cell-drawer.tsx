@@ -33,6 +33,10 @@ import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+    goldenScoreLabel,
+    type IGoldenScoreLabel,
+} from "@/components/runs/golden-score";
 import { ImagePreview } from "@/components/runs/image-preview";
 import {
     type DrawerPayload,
@@ -46,6 +50,7 @@ import {
     toTranscriptJudgeMetricDetails,
     toTranscriptMetricDetails,
     type SaveCellAnnotationAction,
+    type CellData,
 } from "@/components/runs/types";
 import { Metric, MetricList } from "@/components/ui/metric";
 
@@ -57,11 +62,14 @@ export function CellDrawer({
     saveCellAnnotationAction,
     onPrevious,
     onNext,
+    goldenLabel = goldenScoreLabel(undefined),
 }: {
     open: boolean;
     onClose: () => void;
     data: DrawerPayload | null;
     modelDisplayName?: string;
+    /** How the stored-answer field match is named in this run. */
+    goldenLabel?: IGoldenScoreLabel;
     saveCellAnnotationAction: SaveCellAnnotationAction;
     onPrevious?: () => void;
     onNext?: () => void;
@@ -299,10 +307,27 @@ export function CellDrawer({
                                 value={fmtTokens(total)}
                             />
                             <Metric
+                                label="Thinking tokens"
+                                value={fmtTokens(
+                                    data.cell.reasoningTokens ?? null,
+                                )}
+                            />
+                            <Metric
                                 label="Latency / cost"
                                 value={`${fmtLatency(data.cell.latencyMs)} · ${fmtCost(data.cell.costUsd)}`}
                             />
                         </MetricList>
+                        {data.cell.thinking && (
+                            <p
+                                className={
+                                    data.cell.thinking.sent
+                                        ? "text-copy-13 text-muted-foreground"
+                                        : "text-copy-13 text-warning"
+                                }
+                            >
+                                {thinkingLine(data.cell.thinking)}
+                            </p>
+                        )}
                     </section>
 
                     <section className="flex flex-col gap-3">
@@ -311,7 +336,7 @@ export function CellDrawer({
                             {golden && (
                                 <ScorePill
                                     score={golden.score}
-                                    label="golden"
+                                    label={goldenLabel.pill}
                                 />
                             )}
                             {(judge || !golden) && (
@@ -363,8 +388,11 @@ export function CellDrawer({
 
                     {goldenDetails && (
                         <section className="flex flex-col gap-3">
-                            <SectionTitle as="h3">
-                                Golden answer comparison
+                            <SectionTitle
+                                as="h3"
+                                description={goldenLabel.explanation}
+                            >
+                                {goldenLabel.label}
                             </SectionTitle>
                             <JsonBlock data={goldenDetails} collapsible />
                         </section>
@@ -775,4 +803,10 @@ function SaveAndNextButton({
             Save and next
         </Button>
     );
+}
+
+function thinkingLine(thinking: NonNullable<CellData["thinking"]>): string {
+    return thinking.sent
+        ? `Thinking ${thinking.requested} sent${thinking.via ? ` (${thinking.via})` : ""}.`
+        : `Thinking ${thinking.requested} not sent${thinking.reason ? `: ${thinking.reason}` : "."}`;
 }

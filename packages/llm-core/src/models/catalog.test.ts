@@ -4,6 +4,8 @@ import {
     parseModelCatalog,
     readCatalogSnapshot,
     mergeModelCatalogs,
+    crossProviderKey,
+    modelVendor,
     orderCatalogSnapshots,
     fetchModelCatalog,
     type ICatalogModel,
@@ -276,6 +278,74 @@ describe("model catalogs", () => {
                 openrouter: openrouter.models[0]?.pricing,
             },
         });
+    });
+    it("matches the same model across the Vercel and OpenRouter lists", () => {
+        const price = (input: number, output: number) => ({
+            promptPricePerToken: input / 1e6,
+            completionPricePerToken: output / 1e6,
+        });
+        const openrouter = {
+            ...catalog,
+            models: [
+                {
+                    ...model,
+                    id: "z-ai/glm-5.2",
+                    family: "glm",
+                    pricing: price(0.006, 6.8),
+                },
+            ],
+        };
+        const gateway = {
+            ...catalog,
+            source: "gateway" as const,
+            models: [
+                {
+                    ...model,
+                    id: "zai/glm-5.2",
+                    family: "glm",
+                    transport: "gateway" as const,
+                    pricing: price(0.8, 2.55),
+                },
+            ],
+        };
+        const entries = mergeModelCatalogs([], [openrouter, gateway]);
+        expect(entries).toHaveLength(1);
+        expect(entries[0]).toMatchObject({
+            transports: { openrouter: "z-ai/glm-5.2", gateway: "zai/glm-5.2" },
+            gatewayModelId: "zai/glm-5.2",
+            supportsGateway: true,
+            pricingByTransport: {
+                openrouter: price(0.006, 6.8),
+                gateway: price(0.8, 2.55),
+            },
+        });
+    });
+    it("keeps variants and look-alikes from the same list apart", () => {
+        const openrouter = {
+            ...catalog,
+            models: [
+                { ...model, id: "anthropic/claude-haiku-4.5" },
+                { ...model, id: "anthropic/claude-haiku-4-5" },
+                { ...model, id: "anthropic/claude-haiku-4.5:batch" },
+                { ...model, id: "~anthropic/claude-haiku-latest" },
+            ],
+        };
+        const entries = mergeModelCatalogs([], [openrouter]);
+        expect(entries.map((entry) => entry.id).sort()).toEqual([
+            "anthropic/claude-haiku-4-5",
+            "anthropic/claude-haiku-4.5",
+            "anthropic/claude-haiku-4.5:batch",
+            "~anthropic/claude-haiku-latest",
+        ]);
+        expect(crossProviderKey("qwen/qwen3.7-max")).toBe(
+            "alibaba/qwen3-7-max",
+        );
+        expect(crossProviderKey("openai/o3-mini:batch")).toBeUndefined();
+        expect(modelVendor("z-ai/glm-5.2")).toBe("Z.ai");
+        expect(modelVendor("zai/glm-5.2")).toBe("Z.ai");
+        expect(modelVendor("~anthropic/claude-haiku-latest")).toBe("Anthropic");
+        expect(modelVendor("gpt-6-luna")).toBe("OpenAI");
+        expect(modelVendor("aion-labs/aion-3.5")).toBe("aion-labs");
     });
     it("keeps existing canonical IDs and reasoning defaults", () => {
         const previous = mergeModelCatalogs(

@@ -16,6 +16,9 @@ import type {
     IWorkflowLlmRouteCandidate,
     IWorkflowLlmSelection,
     IWorkflowNodeConfig,
+    WorkflowLlmTransport,
+    WorkflowRunCondition,
+    IWorkflowStepSettings,
     WorkflowNodeType,
 } from "@flash-evals/api-contract";
 import { isWorkflowModelBackedNodeType } from "@flash-evals/api-contract";
@@ -49,6 +52,8 @@ import {
     type ISttGraphNodeData,
 } from "./stt-canvas-graph";
 import { WORKFLOW_NODE_REPAIR_EVENT } from "./workflow-node-repair";
+import { FinalAnswerFields } from "./final-answer-fields";
+import { EdgeModeFields } from "./edge-mode-fields";
 import { NODE_TYPE_LABELS } from "@/lib/labels";
 
 export type SttNodeData = ISttGraphNodeData & {
@@ -60,16 +65,63 @@ export type SttNodeData = ISttGraphNodeData & {
     };
     llmExecutionSelection?: IWorkflowLlmSelection;
     evalConfig: { type: "none" };
+    runCondition?: WorkflowRunCondition;
+    stepSettings?: IWorkflowStepSettings;
 };
 export type SttCanvasNode = Node<SttNodeData>;
+
+/** What a connection saves besides its ends. */
+export interface ISttEdgeData extends Record<string, unknown> {
+    carryOriginalInput?: boolean;
+    /** The target waits for the source but reads the original input. */
+    orderOnly?: boolean;
+}
+
+const ORDER_ONLY_TARGETS = new Set<WorkflowNodeType>(["prompt", "llm_text"]);
+
+/** A connection drawn on the canvas: dashed and labelled when order-only. */
+export function canvasEdge(
+    edge: Pick<Edge, "id" | "source" | "target">,
+    data: ISttEdgeData,
+): Edge {
+    return {
+        ...edge,
+        data,
+        markerEnd: { type: MarkerType.ArrowClosed },
+        ...(data.orderOnly
+            ? {
+                  label: "order only",
+                  style: { strokeDasharray: "6 4" },
+              }
+            : {}),
+    };
+}
+
+/** The saved form of the canvas's connections. */
+export function serializeEdges(edges: Edge[]): Array<{
+    fromNodeKey: string;
+    toNodeKey: string;
+    carryOriginalInput: boolean;
+    orderOnly?: boolean;
+}> {
+    return edges.map((edge) => {
+        const data = (edge.data ?? {}) as ISttEdgeData;
+        return {
+            fromNodeKey: edge.source,
+            toNodeKey: edge.target,
+            carryOriginalInput: data.carryOriginalInput === true,
+            ...(data.orderOnly ? { orderOnly: true } : {}),
+        };
+    });
+}
 type CreateLlmRouteAction = (input: {
-    transport: "openai" | "gateway" | "openrouter" | "bifrost";
+    transport: WorkflowLlmTransport;
     modelId: string;
     name: string;
     reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 }) => Promise<{ route?: IWorkflowLlmRoute; error?: string }>;
 type LoadLlmModelsAction = (
-    transport: "openai" | "gateway" | "openrouter" | "bifrost",
+    transport: WorkflowLlmTransport,
 ) => Promise<{ candidates?: IWorkflowLlmRouteCandidate[]; error?: string }>;
 const EMPTY_LLM_ROUTES: IWorkflowLlmRoute[] = [];
 const nodeTypes = {
@@ -83,6 +135,8 @@ const nodeTypes = {
 };
 
 function graphNodes(workflow: IPromptWorkflow): SttCanvasNode[] {
+    // Nodes saved without a type are prompt steps in a prompt pipeline.
+    const defaultType = workflow.kind === "prompt" ? "prompt" : "stt";
     const depth = new Map(workflow.nodes.map((node) => [node.id, 0]));
     for (let pass = 0; pass < workflow.nodes.length; pass += 1)
         for (const edge of workflow.edges)
@@ -100,24 +154,58 @@ function graphNodes(workflow: IPromptWorkflow): SttCanvasNode[] {
         rows.set(column, row + 1);
         return {
             id: node.nodeKey,
-            type: node.nodeType ?? "stt",
+            type: node.nodeType ?? defaultType,
             position: node.position ?? { x: column * 260, y: row * 150 },
             data: {
                 nodeKey: node.nodeKey,
                 label: node.label,
-                nodeType: node.nodeType ?? "stt",
-                nodeConfig: node.nodeConfig ?? {
-                    type: "stt",
-                    sttConfig: { modelId: "" },
-                },
+                nodeType: node.nodeType ?? defaultType,
+                nodeConfig:
+                    node.nodeConfig ??
+                    (defaultType === "prompt"
+                        ? { type: "prompt" }
+                        : { type: "stt", sttConfig: { modelId: "" } }),
                 promptVersionId: node.promptVersionId,
                 modelId: node.modelId,
                 reasoningConfig: node.reasoningConfig,
                 llmExecutionSelection: node.llmExecutionSelection,
                 evalConfig: { type: "none" },
+                ...(node.runCondition
+                    ? { runCondition: node.runCondition }
+                    : {}),
+                ...(node.stepSettings
+                    ? { stepSettings: node.stepSettings }
+                    : {}),
             },
         };
     });
+}
+
+/** Steps with a path to `nodeKey` (they run before it), in canvas order. */
+export function earlierStepsOf(
+    nodes: SttCanvasNode[],
+    edges: Array<Pick<Edge, "source" | "target">>,
+    nodeKey: string | undefined,
+): Array<{ nodeKey: string; label: string }> {
+    if (!nodeKey) return [];
+    const ancestors = new Set<string>();
+    const pending = [nodeKey];
+    while (pending.length) {
+        const key = pending.pop()!;
+        for (const edge of edges)
+            if (edge.target === key && !ancestors.has(edge.source)) {
+                ancestors.add(edge.source);
+                pending.push(edge.source);
+            }
+    }
+    return nodes
+        .filter(
+            (node) =>
+                ancestors.has(node.id) &&
+                node.data.nodeType !== "input" &&
+                node.data.nodeType !== "stt",
+        )
+        .map((node) => ({ nodeKey: node.id, label: node.data.label }));
 }
 
 function defaultNode(
@@ -128,6 +216,8 @@ function defaultNode(
 ): SttNodeData {
     const legacyLlm =
         setup.availableModels.find((model) => model.available)?.id ?? "";
+    // Every provider an eval run can use, the makers' own APIs included, can
+    // run a workflow step.
     const simpleTransport =
         setup.availableModels.find((model) => model.id === legacyLlm)
             ?.transports?.[0] ?? "gateway";
@@ -230,6 +320,30 @@ function defaultNode(
     }
 }
 
+const ALL_BLOCK_TYPES = [
+    "input",
+    "prompt",
+    "stt",
+    "llm_text",
+    "transliterate",
+    "judge",
+    "metric_compare",
+] as const satisfies readonly WorkflowNodeType[];
+
+/** Blocks a pipeline kind accepts: a "prompt" pipeline holds prompt steps only. */
+export function blockTypesFor(
+    kind: IPromptWorkflow["kind"],
+): readonly WorkflowNodeType[] {
+    return kind === "prompt" ? ["prompt"] : ALL_BLOCK_TYPES;
+}
+
+function canvasRootType(
+    kind: IPromptWorkflow["kind"],
+): "input" | "stt" | "none" {
+    if (kind === "multi") return "input";
+    return kind === "prompt" ? "none" : "stt";
+}
+
 // Selection and measurement changes don't alter the saved graph.
 function editsGraph(changes: Array<NodeChange | EdgeChange>): boolean {
     return changes.some(
@@ -263,21 +377,30 @@ export function SttCanvas({
     );
     const initialEdges = useMemo<Edge[]>(
         () =>
-            workflow.edges.map((edge) => ({
-                id: edge.id,
-                source: idByNode.get(edge.fromNodeId) ?? "",
-                target: idByNode.get(edge.toNodeId) ?? "",
-                markerEnd: { type: MarkerType.ArrowClosed },
-            })),
+            workflow.edges.map((edge) =>
+                canvasEdge(
+                    {
+                        id: edge.id,
+                        source: idByNode.get(edge.fromNodeId) ?? "",
+                        target: idByNode.get(edge.toNodeId) ?? "",
+                    },
+                    {
+                        carryOriginalInput: edge.carryOriginalInput,
+                        ...(edge.orderOnly ? { orderOnly: true } : {}),
+                    },
+                ),
+            ),
         [workflow.edges, idByNode],
     );
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
     const [selected, setSelected] = useState<string>();
+    const [selectedEdgeId, setSelectedEdgeId] = useState<string>();
     const [availableRoutes, setAvailableRoutes] = useState(llmRoutes);
     useEffect(() => setAvailableRoutes(llmRoutes), [llmRoutes]);
     const [dirty, setDirty] = useState(false);
     const [graphError, setGraphError] = useState<string>();
+    const [finalAnswer, setFinalAnswer] = useState(workflow.finalAnswer);
 
     // Keyboard deletes (Backspace/Delete) wait on this confirmation.
     const [pendingNodeDelete, setPendingNodeDelete] = useState<{
@@ -310,7 +433,7 @@ export function SttCanvas({
                 edges,
                 connection.source,
                 connection.target,
-                workflow.kind === "multi" ? "input" : "stt",
+                canvasRootType(workflow.kind),
             );
             if (error) return setGraphError(error);
             setGraphError(undefined);
@@ -356,12 +479,13 @@ export function SttCanvas({
         ...node.data,
         position: node.position,
     }));
-    const serializedEdges = edges.map((edge) => ({
-        fromNodeKey: edge.source,
-        toNodeKey: edge.target,
-        carryOriginalInput: false,
-    }));
-    const graph = JSON.stringify([serializedNodes, serializedEdges]);
+    const serializedEdges = serializeEdges(edges);
+    const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
+    const graph = JSON.stringify([
+        serializedNodes,
+        serializedEdges,
+        finalAnswer ?? null,
+    ]);
     // Clear the dirty flag only once a save succeeds, and only while the graph
     // still matches what was submitted (edits made mid-save stay unsaved).
     useEffect(() => {
@@ -416,22 +540,17 @@ export function SttCanvas({
                     name="edges"
                     value={JSON.stringify(serializedEdges)}
                 />
+                <input
+                    type="hidden"
+                    name="finalAnswer"
+                    value={JSON.stringify(finalAnswer ?? null)}
+                />
                 <div
                     role="group"
                     aria-label="Add block"
                     className="flex flex-wrap gap-2"
                 >
-                    {(
-                        [
-                            "input",
-                            "prompt",
-                            "stt",
-                            "llm_text",
-                            "transliterate",
-                            "judge",
-                            "metric_compare",
-                        ] as const
-                    ).map((type) => (
+                    {blockTypesFor(workflow.kind).map((type) => (
                         <Button
                             key={type}
                             type="button"
@@ -475,6 +594,24 @@ export function SttCanvas({
                     {dirty ? "Unsaved changes" : "Saved"}
                 </span>
             </form>
+            {selectedEdge ? (
+                <ConnectionPanel
+                    key={selectedEdge.id}
+                    edge={selectedEdge}
+                    nodes={nodes}
+                    onChange={(orderOnly) => {
+                        setDirty(true);
+                        setEdges((current) =>
+                            current.map((edge) =>
+                                edge.id === selectedEdge.id
+                                    ? withOrderOnly(edge, orderOnly)
+                                    : edge,
+                            ),
+                        );
+                    }}
+                    onClose={() => setSelectedEdgeId(undefined)}
+                />
+            ) : null}
             <Card className="relative h-[65vh] min-h-[480px] overflow-hidden">
                 {graphError || state.formError ? (
                     // Over the canvas rather than above it, so errors don't
@@ -523,13 +660,35 @@ export function SttCanvas({
                                   }),
                               )
                     }
-                    onNodeClick={(_event, node) => setSelected(node.id)}
+                    onNodeClick={(_event, node) => {
+                        setSelectedEdgeId(undefined);
+                        setSelected(node.id);
+                    }}
+                    onEdgeClick={(_event, edge) => setSelectedEdgeId(edge.id)}
                     fitView
                 >
                     <Background color="var(--border)" />
                     <Controls />
                 </ReactFlow>
             </Card>
+            <FinalAnswerFields
+                value={finalAnswer}
+                steps={nodes
+                    .filter(
+                        (node) =>
+                            node.data.nodeType !== "input" &&
+                            node.data.nodeType !== "stt",
+                    )
+                    .map((node) => ({
+                        nodeKey: node.id,
+                        label: node.data.label,
+                    }))}
+                versions={setup.versionOptions}
+                onChange={(next) => {
+                    setFinalAnswer(next);
+                    setDirty(true);
+                }}
+            />
             <UnsavedChangesGuard when={dirty} />
             <ConfirmDialog
                 open={pendingNodeDelete !== undefined}
@@ -553,6 +712,7 @@ export function SttCanvas({
             <SttNodeInspector
                 node={selectedNode}
                 setup={setup}
+                earlierSteps={earlierStepsOf(nodes, edges, selected)}
                 llmRoutes={availableRoutes}
                 projectDefault={projectDefault}
                 onCreateLlmRoute={onCreateLlmRoute}
@@ -615,6 +775,43 @@ export function SttCanvas({
                 }}
             />
         </div>
+    );
+}
+
+/** A connection switched to (or from) order-only. */
+function withOrderOnly(edge: Edge, orderOnly: boolean): Edge {
+    const { label: _label, style: _style, ...rest } = edge;
+    const { orderOnly: _old, ...data } = (edge.data ?? {}) as ISttEdgeData;
+    return canvasEdge(rest, orderOnly ? { ...data, orderOnly } : data);
+}
+
+/** Settings of the connection clicked on the canvas. */
+function ConnectionPanel({
+    edge,
+    nodes,
+    onChange,
+    onClose,
+}: {
+    edge: Edge;
+    nodes: SttCanvasNode[];
+    onChange: (orderOnly: boolean) => void;
+    onClose: () => void;
+}) {
+    const nodeOf = (key: string) => nodes.find((node) => node.id === key);
+    const target = nodeOf(edge.target);
+    return (
+        <EdgeModeFields
+            sourceLabel={nodeOf(edge.source)?.data.label ?? edge.source}
+            targetLabel={target?.data.label ?? edge.target}
+            orderOnly={
+                (edge.data as ISttEdgeData | undefined)?.orderOnly === true
+            }
+            canBeOrderOnly={ORDER_ONLY_TARGETS.has(
+                target?.data.nodeType ?? "prompt",
+            )}
+            onChange={onChange}
+            onClose={onClose}
+        />
     );
 }
 

@@ -12,11 +12,12 @@ export function validateSttGraphConnection(
     edges: Array<Pick<Edge, "source" | "target">>,
     source: string,
     target: string,
-    rootType: "input" | "stt" = "input",
+    /** "none": prompt pipelines, where any step may start a chain. */
+    rootType: "input" | "stt" | "none" = "input",
 ): string | undefined {
     if (source === target) return "A node cannot connect to itself.";
     const targetNode = nodes.find((node) => node.id === target);
-    if (targetNode?.data.nodeType === rootType)
+    if (rootType !== "none" && targetNode?.data.nodeType === rootType)
         return rootType === "input"
             ? "Input nodes must remain branch roots."
             : "STT nodes must remain branch roots.";
@@ -36,6 +37,7 @@ export function validateSttGraphConnection(
         seen.add(key);
         stack.push(...(outgoing.get(key) ?? []));
     }
+    if (rootType === "none") return undefined;
 
     const rootsByNode = new Map<string, Set<string>>();
     for (const node of nodes)

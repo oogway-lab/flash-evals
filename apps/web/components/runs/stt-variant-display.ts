@@ -12,6 +12,55 @@ export interface ISttVariantDisplay {
     label: string;
     baseModelId: string;
     diffBadges: string[];
+    /** Run settings worth showing even when no sibling differs. */
+    settingLabels: string[];
+}
+
+export const VOLUME_LEVELLED_LABEL = "Volume levelled";
+
+/** True when the transcript's audio was loudness-levelled before transcription. */
+export function transcriptVolumeLevelled(transcript: {
+    providerMetadata?: unknown;
+}): boolean {
+    const metadata = transcript.providerMetadata;
+    return (
+        typeof metadata === "object" &&
+        metadata !== null &&
+        (metadata as { volumeLevelled?: unknown }).volumeLevelled === true
+    );
+}
+
+/**
+ * True when part of a transcription's cost is unknown ("unavailable" in
+ * transcriptionSpend): the recorded cost is then only the known part.
+ */
+export function transcriptCostIncomplete(transcript: {
+    providerMetadata?: unknown;
+}): boolean {
+    const metadata = transcript.providerMetadata;
+    if (typeof metadata !== "object" || metadata === null) return false;
+    const spend = (metadata as { transcriptionSpend?: unknown })
+        .transcriptionSpend;
+    return (
+        typeof spend === "object" &&
+        spend !== null &&
+        (spend as { costSource?: unknown }).costSource === "unavailable"
+    );
+}
+
+/**
+ * A cost that may be a lower bound: "at least $X" when some part is unknown,
+ * or "Unavailable" when nothing known was paid.
+ */
+export function formatPossiblyPartialCost(
+    costUsd: number | undefined,
+    incomplete: boolean,
+    format: (costUsd: number | undefined) => string,
+): string {
+    if (!incomplete) return format(costUsd);
+    return costUsd === undefined || costUsd <= 0
+        ? "Unavailable"
+        : `at least ${format(costUsd)}`;
 }
 
 export function sttVariantDisplayForTranscript(
@@ -29,15 +78,18 @@ export function sttVariantDisplaysForTranscript(
     transcript: Pick<
         IRunAudioTranscriptSummary,
         "sttModelId" | "language" | "configJson"
-    >,
+    > &
+        Partial<Pick<IRunAudioTranscriptSummary, "providerMetadata">>,
 ): ISttVariantDisplay[] {
+    const levelled = transcriptVolumeLevelled(transcript);
     const matches = Object.values(snapshot.sttVariants ?? {}).filter(
         (variant) =>
             variant.config.modelId === transcript.sttModelId &&
             (variant.config.language?.trim().toLowerCase() ?? "") ===
                 transcript.language.trim().toLowerCase() &&
             canonicalJsonString(variant.config.config ?? {}) ===
-                canonicalJsonString(transcript.configJson),
+                canonicalJsonString(transcript.configJson) &&
+            (variant.config.levelVolume === true) === levelled,
     );
     return matches.flatMap((match) => {
         const display = sttVariantDisplay(
@@ -64,6 +116,8 @@ export function sttVariantDisplay(
         label: current.label,
         baseModelId: parsed.modelId,
         diffBadges: differingConfigBadges(current, siblings),
+        settingLabels:
+            current.config.levelVolume === true ? [VOLUME_LEVELLED_LABEL] : [],
     };
 }
 
@@ -72,8 +126,11 @@ function differingConfigBadges(
     siblings: ISttRunVariant[],
 ): string[] {
     if (siblings.length < 2) return [];
-    const flattened = siblings.map((variant) => flattenConfig(variant.config));
-    const currentConfig = flattenConfig(current.config);
+    // Levelling is always shown through settingLabels instead.
+    const flattened = siblings.map((variant) =>
+        flattenConfig(withoutLevelVolume(variant.config)),
+    );
+    const currentConfig = flattenConfig(withoutLevelVolume(current.config));
     const keys = new Set(flattened.flatMap((config) => [...config.keys()]));
     return [...keys]
         .filter((key) => {
@@ -87,6 +144,11 @@ function differingConfigBadges(
             const value = currentConfig.get(key);
             return `${formatKey(key)}: ${formatValue(value)}`;
         });
+}
+
+function withoutLevelVolume(config: ISttRunVariant["config"]) {
+    const { levelVolume: _levelVolume, ...rest } = config;
+    return rest;
 }
 
 function flattenConfig(value: unknown, prefix = ""): Map<string, unknown> {

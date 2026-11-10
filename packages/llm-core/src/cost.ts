@@ -1,4 +1,9 @@
-import type { UsageData, CompletionResult, CostSource } from "./types.js";
+import type {
+    CompletionResult,
+    CostBasis,
+    CostSource,
+    UsageData,
+} from "./types.js";
 
 export interface ICostPricingTier {
     minTokens: number;
@@ -68,17 +73,19 @@ export function computeCostFromUsageWithPricing(
         usage.reasoningTokens ?? 0,
         usage.completionTokens,
     );
-    // Input token totals include cache reads for OpenAI-compatible providers.
-    // Charge the cached portion at its published rate instead of charging it twice.
+    // `promptTokens` is the whole input: it includes cache reads and cache
+    // writes (the AI SDK's inputTokens, OpenAI-compatible prompt_tokens).
+    // Charge each cached part once, at its own rate.
     const billablePromptTokens = Math.max(
         0,
-        usage.promptTokens - cacheReadTokens,
+        usage.promptTokens - cacheReadTokens - cacheWriteTokens,
     );
     const base = calculateCost(
         billablePromptTokens,
         usage.completionTokens - reasoningTokens,
+        // Long-context tiers go by the whole prompt, cached tokens included.
         priceForTokenCount(
-            billablePromptTokens,
+            usage.promptTokens,
             pricing.promptPricePerToken,
             pricing.promptTiers,
         ),
@@ -132,19 +139,36 @@ export function formatCost(costUsd: number | null | undefined): string {
     return `$${costUsd.toFixed(2)}`;
 }
 
-/** Resolve known charges before estimating from tokens. The legacy cell enum uses computed for known costs, including provider charges. */
+/**
+ * Resolve known charges before estimating from tokens: a cost the provider
+ * reported (or Bifrost's list priced), else `pricing` (the registry's list
+ * price). The legacy cell enum uses computed for known costs, including
+ * provider charges; `costBasis` says which it was.
+ */
 export function completionCostFields(
     completion: Pick<CompletionResult, "usage" | "cost">,
     pricing: ICostPricing | undefined,
-): { costUsd?: number; costSource: CostSource } {
-    const reported = completion.cost?.usd;
-    const costUsd =
-        reported !== undefined && Number.isFinite(reported) && reported >= 0
-            ? reported
-            : pricing
-              ? computeCostFromUsageWithPricing(completion.usage, pricing)
-              : undefined;
-    return costUsd !== undefined && Number.isFinite(costUsd) && costUsd >= 0
-        ? { costUsd, costSource: "computed" }
+): { costUsd?: number; costSource: CostSource; costBasis?: CostBasis } {
+    const known = completion.cost?.usd;
+    const usable = (usd: number | undefined): usd is number =>
+        usd !== undefined && Number.isFinite(usd) && usd >= 0;
+    if (usable(known))
+        return {
+            costUsd: known,
+            costSource: "computed",
+            costBasis:
+                completion.cost?.source === "bifrost_list_price"
+                    ? "bifrost_list_price"
+                    : "reported",
+        };
+    const estimated = pricing
+        ? computeCostFromUsageWithPricing(completion.usage, pricing)
+        : undefined;
+    return usable(estimated)
+        ? {
+              costUsd: estimated,
+              costSource: "computed",
+              costBasis: "registry_list_price",
+          }
         : { costSource: "unavailable" };
 }

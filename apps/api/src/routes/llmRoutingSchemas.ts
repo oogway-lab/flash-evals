@@ -9,6 +9,7 @@ import type {
     IWorkflowLlmRouteCandidatesResponse,
     IWorkflowLlmSelection,
 } from "@flash-evals/api-contract";
+import { WORKFLOW_LLM_TRANSPORTS } from "@flash-evals/api-contract";
 import { REASONING_EFFORT_LEVELS } from "@flash-evals/llm-core";
 import { z } from "zod";
 import { ApiFieldValidationError } from "../errors.js";
@@ -81,12 +82,7 @@ const upstreamPolicy = z.discriminatedUnion("mode", [
         .strict(),
 ]);
 
-export const WorkflowLlmTransport = z.enum([
-    "openai",
-    "gateway",
-    "openrouter",
-    "bifrost",
-]);
+export const WorkflowLlmTransport = z.enum(WORKFLOW_LLM_TRANSPORTS);
 
 const transportConfig = z.discriminatedUnion("transport", [
     z.object({ transport: z.literal("openai") }).strict(),
@@ -115,6 +111,9 @@ const transportConfig = z.discriminatedUnion("transport", [
                 .strict(),
         })
         .strict(),
+    // Direct calls to the maker (Anthropic, the Gemini API).
+    z.object({ transport: z.literal("anthropic") }).strict(),
+    z.object({ transport: z.literal("google") }).strict(),
 ]);
 
 export const WorkflowLlmRouteConfig = z
@@ -164,6 +163,7 @@ export const WorkflowLlmRouteCandidate = z
     .object({
         transport: WorkflowLlmTransport,
         modelId: nonEmpty,
+        transportModelId: nonEmpty.optional(),
         label: nonEmpty,
         modelProvider: nonEmpty,
         modelProviderLabel: nonEmpty,
@@ -222,7 +222,7 @@ export const WorkflowLlmSelection = z.discriminatedUnion("mode", [
     z
         .object({
             mode: z.literal("simple"),
-            transport: z.enum(["openai", "gateway", "openrouter", "bifrost"]),
+            transport: WorkflowLlmTransport,
         })
         .strict(),
     z.object({ mode: z.literal("project_default") }).strict(),

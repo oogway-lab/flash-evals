@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IEvalCompletionProvider } from "../types.js";
-import { getEvalProvider } from "./factory.js";
+import {
+    evalTransportFor,
+    getEvalProvider,
+    providerModeFromEnv,
+} from "./factory.js";
 
 function provider(): IEvalCompletionProvider {
     return { complete: vi.fn() };
@@ -173,5 +177,76 @@ describe("getEvalProvider transport routing", () => {
         expect(gateway.complete).toHaveBeenCalledWith(
             expect.objectContaining({ model: "anthropic/claude-sonnet-4.5" }),
         );
+    });
+});
+
+describe("evalTransportFor", () => {
+    const env = (
+        globalThis as unknown as {
+            process: { env: Record<string, string | undefined> };
+        }
+    ).process.env;
+    const original = env.FLASH_EVALS_LLM_PROVIDER;
+    afterEach(() => {
+        if (original === undefined) delete env.FLASH_EVALS_LLM_PROVIDER;
+        else env.FLASH_EVALS_LLM_PROVIDER = original;
+    });
+
+    it("names the transport a call would use, as the provider picks it", () => {
+        delete env.FLASH_EVALS_LLM_PROVIDER;
+        expect(
+            evalTransportFor("gpt-4o", {}, { transport: "openrouter" }),
+        ).toBe("openrouter");
+        expect(
+            evalTransportFor("openai/gpt-4o", { openrouter: "or-test" }),
+        ).toBe("openrouter");
+        expect(evalTransportFor("gpt-4o", { openai: "sk-test" })).toBe(
+            "openai",
+        );
+        expect(evalTransportFor("gpt-4o", {}, { provider: "vercel-ai" })).toBe(
+            "openai",
+        );
+        expect(evalTransportFor("gpt-4o", {})).toBeUndefined();
+    });
+
+    it("prefers a route that can follow data rules in auto mode", async () => {
+        delete env.FLASH_EVALS_LLM_PROVIDER;
+        const keys = { openai: "sk-test", gateway: "gw-test" };
+        const rules = { onlyHosts: ["azure"] };
+        expect(evalTransportFor("gpt-4o", keys, {}, rules)).toBe("gateway");
+        // Without rules, OpenAI's own key still goes first.
+        expect(evalTransportFor("gpt-4o", keys)).toBe("openai");
+        const gateway = provider();
+        const openai = provider();
+        await getEvalProvider(keys, {
+            createGatewayProvider: () => gateway,
+            createOpenAIProvider: () => openai,
+        }).complete({
+            model: "gpt-4o",
+            prompt: "hello",
+            maxTokens: 10,
+            dataPolicy: rules,
+        });
+        expect(gateway.complete).toHaveBeenCalled();
+        expect(openai.complete).not.toHaveBeenCalled();
+        // No route that can follow the rules: unchanged (the call says why).
+        expect(
+            evalTransportFor("gpt-4o", { openai: "sk-test" }, {}, rules),
+        ).toBe("openai");
+    });
+});
+
+describe("providerModeFromEnv names", () => {
+    it("reads vercel-ai-gateway as the Vercel gateway", () => {
+        const env = process.env.FLASH_EVALS_LLM_PROVIDER;
+        try {
+            process.env.FLASH_EVALS_LLM_PROVIDER = "vercel-ai-gateway";
+            expect(providerModeFromEnv()).toBe("gateway");
+            process.env.FLASH_EVALS_LLM_PROVIDER = "gateway";
+            expect(providerModeFromEnv()).toBe("gateway");
+        } finally {
+            if (env === undefined) delete process.env.FLASH_EVALS_LLM_PROVIDER;
+            else process.env.FLASH_EVALS_LLM_PROVIDER = env;
+        }
     });
 });

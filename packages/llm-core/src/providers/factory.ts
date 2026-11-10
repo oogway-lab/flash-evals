@@ -1,16 +1,23 @@
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import {
+    isDirectMakerTransport,
     transportsForModel,
+    type DirectMakerTransport,
     type EvalProviderTransport,
 } from "../models/registry.js";
-import type {
-    ApiKeys,
-    CompletionRequest,
-    IEvalCompletionProvider,
+import {
+    hasDataPolicy,
+    type ApiKeys,
+    type CompletionRequest,
+    type IEvalCompletionProvider,
 } from "../types.js";
 import {
     GatewayEvalProvider,
     type IGatewayEvalProviderDeps,
 } from "./gateway.js";
+import { bifrostApiBaseUrl, bifrostModelIdFor } from "./bifrost.js";
+import { ANTHROPIC_API_BASE_URL } from "./endpoints.js";
 import { OpenAIEvalProvider } from "./openai.js";
 import { VercelAIEvalProvider } from "./vercelAi.js";
 
@@ -34,6 +41,11 @@ export interface IEvalProviderOptions {
         deps: IGatewayEvalProviderDeps,
     ) => IEvalCompletionProvider;
     createVercelAIProvider?: (apiKey: string) => IEvalCompletionProvider;
+    /** Builds the provider for a direct Anthropic or Google call. */
+    createDirectMakerProvider?: (
+        transport: DirectMakerTransport,
+        apiKey: string,
+    ) => IEvalCompletionProvider;
     gatewayFallbackModels?: string[];
     exactTransportModelId?: string;
 }
@@ -73,7 +85,10 @@ export function getEvalProvider(
 
     if (mode === "openrouter") {
         if (!apiKeys.openrouter) {
-            throw new Error("Please add your OpenRouter API key to run evals.");
+            throw new Error(
+                apiKeys.unusable?.openrouter ??
+                    "Please add your OpenRouter API key to run evals.",
+            );
         }
         return routeForExplicitTransport(
             openAICompatibleProvider(
@@ -94,26 +109,35 @@ export function getEvalProvider(
 
     if (mode === "bifrost") {
         if (!apiKeys.bifrost) {
-            throw new Error("Please add your Bifrost API key to run evals.");
+            throw new Error(
+                apiKeys.unusable?.bifrost ??
+                    "Please add your Bifrost API key to run evals.",
+            );
         }
         if (!apiKeys.bifrostBaseUrl) {
             throw new Error(
                 "Please add BIFROST_BASE_URL to run Bifrost evals.",
             );
         }
+        // Every Bifrost call, chosen per call or as the default provider,
+        // sends the model's Bifrost id (see bifrostModelIdFor).
         return routeForExplicitTransport(
             openAICompatibleProvider(
                 apiKeys.bifrost,
                 {
-                    baseURL: apiKeys.bifrostBaseUrl,
+                    baseURL: bifrostApiBaseUrl(apiKeys.bifrostBaseUrl),
                     providerLabel: "Bifrost",
                     transport: "bifrost",
                 },
                 options,
             ),
-            options.transport,
+            "bifrost",
             options.exactTransportModelId,
         );
+    }
+
+    if (isDirectMakerTransport(mode)) {
+        return directMakerTransportProvider(mode, apiKeys, options);
     }
 
     if (mode === "auto") {
@@ -146,13 +170,56 @@ export function getEvalProvider(
     }
 }
 
+const DIRECT_MAKER_KEY_NAMES: Record<DirectMakerTransport, string> = {
+    anthropic: "Anthropic",
+    google: "Gemini",
+};
+
+function directMakerTransportProvider(
+    transport: DirectMakerTransport,
+    apiKeys: ApiKeys,
+    options: IEvalProviderOptions,
+): IEvalCompletionProvider {
+    const apiKey = apiKeys[transport];
+    if (!apiKey) {
+        throw new Error(
+            `Please add your ${DIRECT_MAKER_KEY_NAMES[transport]} API key in Settings to run evals.`,
+        );
+    }
+    const createProvider =
+        options.createDirectMakerProvider ?? directMakerProvider;
+    return routeForExplicitTransport(
+        createProvider(transport, apiKey),
+        transport,
+        options.exactTransportModelId,
+    );
+}
+
+function directMakerProvider(
+    transport: DirectMakerTransport,
+    apiKey: string,
+): IEvalCompletionProvider {
+    return new VercelAIEvalProvider(apiKey, {
+        directMaker: transport,
+        providerLabel: transport === "anthropic" ? "Anthropic" : "Gemini API",
+        modelFor:
+            transport === "anthropic"
+                ? createAnthropic({ apiKey, baseURL: ANTHROPIC_API_BASE_URL })
+                : createGoogleGenerativeAI({ apiKey }),
+    });
+}
+
 function autoProvider(
     apiKeys: ApiKeys,
     options: IEvalProviderOptions,
 ): IEvalCompletionProvider {
     return {
         complete(req: CompletionRequest) {
-            const transport = transportForAutoRequest(req.model, apiKeys);
+            const transport = transportForAutoRequest(
+                req.model,
+                apiKeys,
+                req.dataPolicy,
+            );
             return getEvalProvider(apiKeys, { ...options, transport }).complete(
                 req,
             );
@@ -160,15 +227,57 @@ function autoProvider(
     };
 }
 
+/**
+ * The transport a call through `getEvalProvider(apiKeys, options)` for
+ * `modelId` goes over, so callers can limit calls per provider. "auto" picks
+ * as the auto provider would; "vercel-ai" is the OpenAI key. Undefined when
+ * no transport can be chosen (the call itself then fails).
+ */
+export function evalTransportFor(
+    modelId: string,
+    apiKeys: ApiKeys,
+    options: Pick<IEvalProviderOptions, "provider" | "transport"> = {},
+    dataPolicy?: CompletionRequest["dataPolicy"],
+): EvalProviderTransport | undefined {
+    const mode =
+        options.transport ??
+        options.provider ??
+        providerModeFromEnv() ??
+        "auto";
+    if (mode === "vercel-ai") return "openai";
+    if (mode !== "auto") return mode;
+    try {
+        return transportForAutoRequest(modelId, apiKeys, dataPolicy);
+    } catch {
+        return undefined;
+    }
+}
+
 function transportForAutoRequest(
     modelId: string,
     apiKeys: ApiKeys,
+    dataPolicy?: CompletionRequest["dataPolicy"],
 ): EvalProviderTransport {
+    // Data rules (hosts, retention, training) can be passed on only through
+    // Vercel AI Gateway or OpenRouter; OpenAI and the makers' own APIs refuse
+    // such a call, so prefer a route that can follow them.
+    if (hasDataPolicy(dataPolicy)) {
+        const routed = modelId.includes("/");
+        const transports = transportsForModel(modelId);
+        for (const transport of ["gateway", "openrouter"] as const)
+            if (apiKeys[transport] && (routed || transports?.[transport]))
+                return transport;
+    }
     // Provider-qualified model ids cannot be submitted to OpenAI directly.
     if (modelId.includes("/")) {
         if (apiKeys.gateway) return "gateway";
         if (apiKeys.openrouter) return "openrouter";
         if (apiKeys.bifrost && apiKeys.bifrostBaseUrl) return "bifrost";
+    }
+    // Only a maker's key is saved: call the maker when it serves the model.
+    const transports = transportsForModel(modelId);
+    for (const maker of ["anthropic", "google"] as const) {
+        if (apiKeys[maker] && transports?.[maker]) return maker;
     }
     if (apiKeys.openai) return "openai";
     if (apiKeys.gateway) return "gateway";
@@ -187,7 +296,9 @@ function routeForExplicitTransport(
         async complete(req: CompletionRequest) {
             const modelId =
                 exactTransportModelId ??
-                transportsForModel(req.model)?.[transport];
+                (transport === "bifrost"
+                    ? bifrostModelIdFor(req.model)
+                    : transportsForModel(req.model)?.[transport]);
             if (!modelId) {
                 throw new Error(
                     `Model "${req.model}" does not support the "${transport}" transport.`,
@@ -222,12 +333,14 @@ export function providerModeFromEnv(): EvalProviderMode | undefined {
     const mode = env?.trim();
 
     if (!mode) return undefined;
+    // The documented name; "gateway" stays accepted as the old spelling.
+    if (mode === "vercel-ai-gateway") return "gateway";
 
     if (isEvalProviderMode(mode)) {
         return mode;
     }
     throw new Error(
-        `Invalid ${PROVIDER_ENV_KEY} value "${env}". Expected one of: auto, vercel-ai, openai, gateway, openrouter, bifrost.`,
+        `Invalid ${PROVIDER_ENV_KEY} value "${env}". Expected one of: auto, vercel-ai-gateway, openrouter, openai, bifrost (legacy: gateway, vercel-ai).`,
     );
 }
 

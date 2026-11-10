@@ -90,6 +90,12 @@ export interface IWorkflowLlmRouteCandidateSupport {
 export interface IWorkflowLlmRouteCandidate {
     transport: WorkflowLlmTransport;
     modelId: string;
+    /**
+     * The exact id the provider listed, when it differs per upstream (Bifrost:
+     * e.g. `openrouter/google/gemini-2.5-flash`). A Simple-mode step saves it
+     * as its model so the call goes to that upstream.
+     */
+    transportModelId?: string;
     label: string;
     modelProvider: WorkflowLlmModelProvider;
     modelProviderLabel: string;

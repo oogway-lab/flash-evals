@@ -1,5 +1,6 @@
 import { unstable_rethrow } from "next/navigation";
-import { clientErrorMessage } from "@/server/lib/errors";
+import type { IRunDataPolicy } from "@flash-evals/api-contract";
+import { clientErrorMessage, UserFacingError } from "@/server/lib/errors";
 import type { IActionState, IPromptWorkbenchState } from "./types";
 
 export function parseJsonField<T>(
@@ -56,4 +57,36 @@ export async function withActionTimeout<T>(
 export function actionErrorState(err: unknown): IActionState {
     unstable_rethrow(err);
     return { formError: clientErrorMessage(err) };
+}
+
+/** A run's spend limit in USD from the form's `maxCostUsd`. Empty means no limit. */
+export function parseRunMaxCostUsd(
+    formData: FormData,
+): number | "invalid" | undefined {
+    const raw = String(formData.get("maxCostUsd") || "").trim();
+    if (!raw) return undefined;
+    const value = Number(raw);
+    return Number.isFinite(value) && value > 0 ? value : "invalid";
+}
+
+/** The message shown when the spend limit field is not a positive amount. */
+export const INVALID_SPEND_LIMIT_MESSAGE =
+    "Enter a spend limit above $0, or leave it empty for no limit.";
+
+// Sent as JSON only when a rule is set; the API checks host names and that
+// every call runs through a gateway that can follow the rules.
+export function parseRunDataPolicy(
+    formData: FormData,
+): IRunDataPolicy | undefined {
+    const raw = String(formData.get("dataPolicy") || "").trim();
+    if (!raw) return undefined;
+    if (raw.length > 4_000)
+        throw new UserFacingError("Data rules are too large.");
+    const result = parseJsonField<IRunDataPolicy | undefined>(
+        raw,
+        "dataPolicy",
+        undefined,
+    );
+    if (!result.ok) throw new UserFacingError(result.error);
+    return result.value;
 }

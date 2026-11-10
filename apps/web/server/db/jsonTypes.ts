@@ -1,4 +1,6 @@
 import type {
+    IRunBenchmarkConfig,
+    IRunDataPolicy,
     ISttRunConfig,
     ISttRunVariant,
     IPromptOptimizerGuidanceSource as ContractPromptOptimizerGuidanceSource,
@@ -9,6 +11,9 @@ import type {
     IWorkflowNodeConfig,
     IWorkflowNodeArtifact,
     IWorkflowLlmResolvedExecution,
+    WorkflowRunCondition,
+    IPipelineFinalAnswer,
+    IWorkflowStepSettings,
 } from "@flash-evals/api-contract";
 
 export type FieldMatcher = "exact" | "numeric_tolerance" | "set_overlap";
@@ -152,6 +157,10 @@ export interface IWorkflowSnapshotNode {
     reasoningConfig?: IReasoningConfig;
     evalConfig: IWorkflowNodeEvalConfig;
     position?: IWorkflowNodePosition;
+    /** Run only when earlier steps' answers match (all conditions); else skip. */
+    runCondition?: WorkflowRunCondition;
+    /** Per-step call settings (temperature, output limit). */
+    stepSettings?: IWorkflowStepSettings;
 }
 
 export interface IWorkflowSnapshotEdge {
@@ -159,6 +168,8 @@ export interface IWorkflowSnapshotEdge {
     fromNodeId: string;
     toNodeId: string;
     carryOriginalInput: boolean;
+    /** The target waits for the source but doesn't read its answer. */
+    orderOnly?: boolean;
 }
 
 export interface IWorkflowSnapshot {
@@ -168,6 +179,10 @@ export interface IWorkflowSnapshot {
     nodes: IWorkflowSnapshotNode[];
     edges: IWorkflowSnapshotEdge[];
     sttConfig?: ISttRunConfig;
+    /** Final answer mapping, with the output schema captured at launch. */
+    finalAnswer?: IPipelineFinalAnswer & {
+        schema?: { digest: string; schema: Record<string, unknown> };
+    };
 }
 
 export type WorkflowNodeArtifact = IWorkflowNodeArtifact;
@@ -230,6 +245,8 @@ export interface IAudioTranscriptMetadata {
     /** A timed-out request may have been billed; costs exclude it. */
     costUncertain?: boolean;
     attempts?: ITranscriptionAttemptRecord[];
+    /** The recording was loudness-levelled before transcription. */
+    volumeLevelled?: boolean;
     audioPreparation?: IAudioPreparationMetadata;
     raw?: unknown;
 }
@@ -244,6 +261,8 @@ export interface ITranscriptionAttemptRecord {
 
 export interface IAudioPreparationMetadata {
     version: string;
+    /** FFmpeg loudness filter applied before chunking, when levelling was on. */
+    volumeLevelling?: string;
     sourceBytes: number;
     sourceMimeType: string;
     sourceDurationMs: number;
@@ -268,6 +287,10 @@ export interface IWorkflowSttProviderMetadata {
     requestId?: string;
     providerMode?: string;
     providerBaseUrl?: string;
+    /** The audio was loudness-levelled before transcription. */
+    volumeLevelled?: boolean;
+    /** How the audio was prepared (sizes, chunks); no provider data. */
+    audioPreparation?: IAudioPreparationMetadata;
 }
 
 export interface IWorkflowSttScoreDetails {
@@ -283,6 +306,11 @@ export interface IAudioTranscriptVariantMetadata {
     providerMode?: string;
     providerBaseUrl?: string;
     sourceHash?: string;
+    /** What the transliteration call cost, when known. */
+    costUsd?: number;
+    costSource?: "computed" | "unavailable";
+    /** The hosting company that served the call, when the gateway says. */
+    servedBy?: string;
 }
 
 export type PromptKind = "eval" | "judge";
@@ -299,10 +327,14 @@ export interface IJudgeSpec {
 export interface RunModelSpec {
     modelId: string;
     transport?: ProviderTransport;
+    /** The id sent to the provider when it isn't the registry's (Bifrost). */
+    transportModelId?: string;
     promptVersionId?: string | null;
     schemaVersionId?: string;
     promptSnapshot?: IRunModelPromptSnapshot;
     reasoningConfig?: IReasoningConfig;
+    /** Sampling temperature sent on every call; unset: the provider's default. */
+    temperature?: number;
     isReference: boolean;
 }
 
@@ -319,6 +351,11 @@ export interface RunConfigSnapshot {
     sttConfig?: ISttRunConfig;
     sttVariants?: Record<string, ISttRunVariant>;
     audioRunMode?: "stt_metrics" | "prompt_eval";
+    benchmark?: IRunBenchmarkConfig;
+    /** Who may serve the run's calls and what they may keep. */
+    dataPolicy?: IRunDataPolicy;
+    /** Stop claiming cells once the run's spend reaches this (USD). */
+    maxCostUsd?: number;
 }
 
 export interface FieldResult {
@@ -351,3 +388,8 @@ export interface IJudgeCriterion {
     score: number;
     reasoning: string;
 }
+export type {
+    IPipelineFinalAnswer,
+    IWorkflowStepSettings,
+    WorkflowRunCondition,
+};

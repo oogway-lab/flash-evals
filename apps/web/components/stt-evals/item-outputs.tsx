@@ -3,7 +3,10 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { ChevronDown, PanelRight, Search } from "lucide-react";
-import type { IWorkflowRunDetailResponse } from "@flash-evals/api-contract";
+import type {
+    IWorkflowRunDetailResponse,
+    WorkflowLlmCostSource,
+} from "@flash-evals/api-contract";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +15,7 @@ import { Num } from "@/components/ui/num";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
     CellStatusBadge,
+    StatusBadge,
     PendingScore,
     RunningDot,
     isCellInFlight,
@@ -21,6 +25,10 @@ import { cn } from "@/lib/cn";
 import { MISSING_VALUE, fmtScore, formatCostColumn } from "@/lib/format";
 import { humanize } from "@/lib/labels";
 import {
+    formatPossiblyPartialCost,
+    transcriptCostIncomplete,
+} from "@/components/runs/stt-variant-display";
+import {
     AudioRecording,
     InlineRates,
     STT_SCORE_DIGITS,
@@ -28,6 +36,7 @@ import {
     isAudioItem,
 } from "./run-artifacts";
 import { BlockedCellLink, blockedByCell } from "./workflow-cell-link";
+import { FinalAnswerBlock } from "./final-answer-block";
 
 /**
  * Sort key per node: shared upstream nodes (e.g. the audio input) first, then
@@ -86,6 +95,8 @@ export interface ResultRow {
     metricScore: WorkflowScore | undefined;
     judgeScore: WorkflowScore | undefined;
     metricDetails: ReturnType<typeof toTranscriptMetricDetails>;
+    /** The run stopped (cancelled) before this step ran. */
+    notRun?: boolean;
 }
 
 /** One dataset item and its steps, in pipeline order. */
@@ -124,6 +135,11 @@ function cellCost(cell: WorkflowCell): number | undefined {
     return cell.outputJson?.usage?.costUsd ?? cell.costUsd ?? undefined;
 }
 
+/** A speech-to-text part with unknown cost: the cell's cost is the known part. */
+function cellCostIncomplete(cell: WorkflowCell): boolean {
+    return transcriptCostIncomplete(cell.outputJson ?? {});
+}
+
 function sumDefined(values: Array<number | null | undefined>) {
     const present = values.filter(
         (value): value is number => typeof value === "number",
@@ -138,14 +154,21 @@ function formatStepLatency(ms: number | null | undefined): string {
     return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
+/** A step still pending or running in a run that has not stopped. */
+function rowInFlight(row: ResultRow): boolean {
+    return !row.notRun && isCellInFlight(row.cell.status);
+}
+
 function groupCounts(group: ItemGroup) {
     const statuses = group.rows.map((row) => row.cell.status);
     return {
         failed: statuses.filter((status) => status === "failed").length,
-        inFlight: statuses.filter(isCellInFlight).length,
+        inFlight: group.rows.filter(rowInFlight).length,
+        notRun: group.rows.filter((row) => row.notRun).length,
         done: statuses.filter(
             (status) => status === "succeeded" || status === "cached",
         ).length,
+        skipped: statuses.filter((status) => status === "skipped").length,
     };
 }
 
@@ -369,6 +392,10 @@ function ItemGroupRows({
     const stepsId = `item-steps-${group.item.id}`;
     const latency = sumDefined(group.rows.map((row) => row.cell.latencyMs));
     const cost = sumDefined(group.rows.map((row) => cellCost(row.cell)));
+    const costIncomplete = group.rows.some((row) =>
+        cellCostIncomplete(row.cell),
+    );
+    const itemCost = formatPossiblyPartialCost(cost, costIncomplete, fmtCost);
     return (
         <li className="group/item border-b border-border transition-colors last:border-b-0 hover:bg-muted/40">
             <div
@@ -407,10 +434,10 @@ function ItemGroupRows({
                 </div>
                 <p className="text-right text-label-12 text-muted-foreground">
                     <Num>{formatStepLatency(latency)}</Num>
-                    <Num className="block lg:hidden">{fmtCost(cost)}</Num>
+                    <Num className="block lg:hidden">{itemCost}</Num>
                 </p>
                 <p className="hidden text-right text-label-12 text-muted-foreground lg:block">
-                    <Num>{fmtCost(cost)}</Num>
+                    <Num>{itemCost}</Num>
                 </p>
                 {showScores ? <span className="hidden md:block" /> : null}
                 <span className="hidden md:block" />
@@ -434,13 +461,23 @@ function ItemGroupRows({
                     />
                 ))}
             </ol>
+            {!collapsed && detail.answers ? (
+                <FinalAnswerBlock
+                    answer={detail.answers.find(
+                        (answer) => answer.datasetItemId === group.item.id,
+                    )}
+                    fmtCost={fmtCost}
+                    costIncomplete={costIncomplete}
+                />
+            ) : null}
         </li>
     );
 }
 
 function ItemSummary({ group }: { group: ItemGroup }) {
-    const { failed, inFlight, done } = groupCounts(group);
+    const { failed, inFlight, notRun, done, skipped } = groupCounts(group);
     if (failed > 0) return <Badge variant="danger">{failed} failed</Badge>;
+    if (notRun > 0) return <Badge variant="outline">{notRun} not run</Badge>;
     if (inFlight > 0)
         return (
             <Badge variant="default" className="gap-2">
@@ -451,6 +488,7 @@ function ItemSummary({ group }: { group: ItemGroup }) {
     return (
         <span className="text-label-12 text-muted-foreground">
             {done} of {group.rows.length} succeeded
+            {skipped > 0 ? `, ${skipped} skipped` : ""}
         </span>
     );
 }
@@ -461,6 +499,7 @@ const DOT_TONES: Record<WorkflowCell["status"], string> = {
     failed: "bg-danger",
     running: "bg-foreground motion-safe:animate-pulse",
     pending: "bg-border-strong",
+    skipped: "bg-muted",
 };
 
 function StepDots({ rows }: { rows: ResultRow[] }) {
@@ -486,6 +525,7 @@ const MARKER_TONES: Record<WorkflowCell["status"], string> = {
     running:
         "bg-neutral text-foreground ring-border-strong motion-safe:animate-pulse",
     pending: "bg-muted text-muted-foreground ring-border",
+    skipped: "bg-surface text-muted-foreground ring-border",
 };
 
 /** Numbered step marker on a line that joins the steps of one item. */
@@ -553,9 +593,9 @@ function StepRow({
     onReveal: (id: string, href: string) => void;
 }) {
     const label = row.node?.label ?? row.cell.nodeKey;
-    const route = stepRoute(row.node, row.cell.llmExecution);
+    const route = stepRoute(row.node, row.cell.llmExecution, row.cell.servedBy);
     const subtitle = stepSubtitle(row, showBranch);
-    const inFlight = isCellInFlight(row.cell.status);
+    const inFlight = rowInFlight(row);
     return (
         <li
             data-workflow-cell-id={row.cell.id}
@@ -595,7 +635,16 @@ function StepRow({
                 >
                     {subtitle}
                 </p>
-                {row.cell.status === "succeeded" ? null : (
+                <StepThinking artifact={row.cell.outputJson} />
+                {row.notRun ? (
+                    <span className="mt-1">
+                        <StatusBadge
+                            kind="Cell"
+                            label="Not run"
+                            variant="outline"
+                        />
+                    </span>
+                ) : row.cell.status === "succeeded" ? null : (
                     <span className="mt-1">
                         <CellStatusBadge status={row.cell.status} />
                     </span>
@@ -645,6 +694,12 @@ function StepOutput({
 }) {
     if (row.node?.nodeType === "input" && isAudioItem(row.item))
         return <AudioRecording item={row.item} compact />;
+    if (row.notRun)
+        return (
+            <p className="text-copy-14 text-muted-foreground">
+                The run stopped before this step.
+            </p>
+        );
     if (isCellInFlight(row.cell.status)) return <PendingPreview />;
     return (
         <ArtifactPreview
@@ -665,8 +720,13 @@ function StepOutput({
     );
 }
 
+const LIST_PRICE_LABELS: Partial<Record<WorkflowLlmCostSource, string>> = {
+    bifrost_list_price: "Bifrost list price",
+    catalog_estimate: "registry list price",
+};
+
 /** Latency, with cost folded underneath below desktop, plus the desktop cost column. */
-function StepNumbers({
+export function StepNumbers({
     cell,
     hidden,
     fmtCost,
@@ -675,7 +735,17 @@ function StepNumbers({
     hidden: boolean;
     fmtCost: ReturnType<typeof formatCostColumn>;
 }) {
-    const cost = fmtCost(cellCost(cell));
+    const cost = formatPossiblyPartialCost(
+        cellCost(cell),
+        cellCostIncomplete(cell),
+        fmtCost,
+    );
+    // A cost the provider didn't report is a list price: Bifrost's list's,
+    // else the model registry's.
+    const listPrice =
+        cell.llmExecution?.availability === "complete"
+            ? LIST_PRICE_LABELS[cell.llmExecution.currentCost.source]
+            : undefined;
     return (
         <>
             <p className="text-right text-copy-14 text-muted-foreground max-md:col-start-3 max-md:row-start-1">
@@ -690,6 +760,9 @@ function StepNumbers({
             </p>
             <p className="hidden text-right text-copy-14 text-muted-foreground lg:block">
                 {hidden ? null : <Num>{cost}</Num>}
+                {!hidden && listPrice ? (
+                    <span className="block text-label-12">{listPrice}</span>
+                ) : null}
             </p>
         </>
     );
@@ -705,27 +778,55 @@ function stepSubtitle(row: ResultRow, showBranch: boolean): string {
     );
 }
 
-interface StepRoute {
+export interface StepRoute {
     model: string;
     via?: string;
 }
 
-/** The model a step used: routing evidence first, then the node's own config. */
-function stepRoute(
+/**
+ * A Bifrost step: Bifrost ids name the upstream (e.g. openrouter/…), so it
+ * shows the id sent, and says when the response didn't name the host.
+ */
+function bifrostStepRoute(
+    execution: Exclude<
+        NonNullable<WorkflowCell["llmExecution"]>,
+        { availability: "legacy_unavailable" }
+    >,
+    servedBy: string | undefined,
+): StepRoute {
+    return {
+        model:
+            execution.resolved.capability?.transport?.transportModelId ??
+            execution.resolved.route.modelId,
+        via: servedBy
+            ? `bifrost, served by ${servedBy}`
+            : "bifrost, host not reported",
+    };
+}
+
+/**
+ * The model a step used and the hosting company that served it: routing
+ * evidence first, then the node's own config.
+ */
+export function stepRoute(
     node: WorkflowNode | undefined,
     execution: WorkflowCell["llmExecution"],
+    servedBy: string | undefined,
 ): StepRoute | undefined {
     if (execution && execution.availability !== "legacy_unavailable") {
         const transport = execution.resolved.route.transportConfig.transport;
         const actualProvider =
-            execution.availability === "complete" &&
+            servedBy ??
+            (execution.availability === "complete" &&
             "identity" in execution.actual
                 ? execution.actual.identity?.upstreamProvider
-                : undefined;
+                : undefined);
+        if (transport === "bifrost")
+            return bifrostStepRoute(execution, actualProvider);
         return {
             model: execution.resolved.route.modelId,
             via: actualProvider
-                ? `${transport} → ${actualProvider}`
+                ? `${transport}, served by ${actualProvider}`
                 : transport,
         };
     }
@@ -860,5 +961,50 @@ function InspectButton({
         >
             <PanelRight className="size-4" aria-hidden="true" />
         </Button>
+    );
+}
+
+/**
+ * Whether the step's thinking level was sent and how many thinking tokens
+ * its call used, so it's visible whether thinking happened; and any notes
+ * about the call (e.g. an output limit above the model's maximum).
+ */
+export function StepThinking({
+    artifact,
+}: {
+    artifact: IWorkflowRunDetailResponse["cells"][number]["outputJson"];
+}) {
+    const thinking = artifact?.thinking;
+    const tokens = artifact?.usage?.thinkingTokens;
+    const warnings = artifact?.warnings ?? [];
+    if (!thinking && tokens === undefined && warnings.length === 0) return null;
+    const parts = [
+        thinking ? `Thinking ${thinking.requested}` : undefined,
+        tokens !== undefined
+            ? `${tokens.toLocaleString("en-US")} thinking tokens`
+            : undefined,
+    ].filter(Boolean);
+    return (
+        <>
+            {parts.length > 0 ? (
+                <p className="text-label-12 text-muted-foreground">
+                    {parts.join(" · ")}
+                </p>
+            ) : null}
+            {thinking && !thinking.sent ? (
+                <p role="note" className="text-label-12 text-warning">
+                    {`Not sent${thinking.reason ? `: ${thinking.reason}` : "."}`}
+                </p>
+            ) : null}
+            {warnings.map((warning) => (
+                <p
+                    key={warning}
+                    role="note"
+                    className="text-label-12 text-warning"
+                >
+                    {warning}
+                </p>
+            ))}
+        </>
     );
 }

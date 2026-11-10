@@ -14,6 +14,8 @@ export interface ISttVariantDraft {
     modelId: string;
     language: string;
     config: Record<string, unknown>;
+    /** Level volume first (ISttRunConfig.levelVolume). */
+    levelVolume: boolean;
 }
 
 function newVariantKey(): string {
@@ -36,6 +38,7 @@ export function useSttVariantsController(
                   modelId: variant.config.modelId,
                   language: variant.config.language ?? "",
                   config: variant.config.config ?? {},
+                  levelVolume: variant.config.levelVolume === true,
               }))
             : [
                   {
@@ -44,6 +47,7 @@ export function useSttVariantsController(
                       modelId: defaultModelId,
                       language: "",
                       config: {},
+                      levelVolume: false,
                   },
               ],
     );
@@ -73,6 +77,7 @@ export function useSttVariantsController(
                         modelId: defaultModelId,
                         language: "",
                         config: {},
+                        levelVolume: false,
                     },
                 ];
             });
@@ -109,6 +114,9 @@ export function useSttVariantsController(
         },
         updateLanguage(variantKey: string, language: string) {
             update(variantKey, (variant) => ({ ...variant, language }));
+        },
+        updateLevelVolume(variantKey: string, levelVolume: boolean) {
+            update(variantKey, (variant) => ({ ...variant, levelVolume }));
         },
         updateConfig(variantKey: string, config: Record<string, unknown>) {
             update(variantKey, (variant) => ({

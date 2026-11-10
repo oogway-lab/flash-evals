@@ -19,9 +19,17 @@ export default async function RunsPage() {
                 title="Runs"
                 description="Evaluation runs across datasets and model candidates."
                 action={
-                    <Link href="/runs/new" className={buttonVariants()}>
-                        New run
-                    </Link>
+                    <div className="flex flex-col items-stretch gap-2 sm:flex-row">
+                        <Link href="/runs/compare" className={buttonVariants()}>
+                            Compare setups
+                        </Link>
+                        <Link
+                            href="/runs/new"
+                            className={buttonVariants({ variant: "secondary" })}
+                        >
+                            New run
+                        </Link>
+                    </div>
                 }
             />
 

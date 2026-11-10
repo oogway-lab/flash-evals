@@ -3,15 +3,24 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type {
+    IPipelineFinalAnswer,
     IWorkflowEdgeInput,
     IWorkflowNodeInput,
     WorkflowRunTarget,
 } from "@flash-evals/api-contract";
-import { createMultiWorkflowSeed, FlashEvalsApiError } from "@flash-evals/api-contract";
+import {
+    createMultiWorkflowSeed,
+    FlashEvalsApiError,
+} from "@flash-evals/api-contract";
 import { serverApiClient } from "@/server/api/client";
 import { clientErrorMessage, UserFacingError } from "@/server/lib/errors";
 import { requireActiveProject } from "@/server/projects/activeProject";
-import { actionErrorState } from "./shared";
+import {
+    actionErrorState,
+    INVALID_SPEND_LIMIT_MESSAGE,
+    parseRunDataPolicy,
+    parseRunMaxCostUsd,
+} from "./shared";
 import type { IActionState } from "./types";
 
 function parseJsonArray<T>(data: FormData, name: string): T[] {
@@ -19,6 +28,22 @@ function parseJsonArray<T>(data: FormData, name: string): T[] {
     if (!Array.isArray(parsed))
         throw new UserFacingError(`${name} must be an array.`);
     return parsed as T[];
+}
+
+/** The canvas's final answer: an object, or null to remove it. */
+function parseFinalAnswer(data: FormData): IPipelineFinalAnswer | null {
+    const parsed: unknown = JSON.parse(
+        String(data.get("finalAnswer") ?? "null"),
+    );
+    if (parsed === null) return null;
+    if (typeof parsed !== "object" || Array.isArray(parsed))
+        throw new UserFacingError("The final answer must be an object.");
+    return parsed as IPipelineFinalAnswer;
+}
+
+/** The saved kind is kept; anything unknown is treated as speech to text. */
+function parseWorkflowKind(value: unknown): "multi" | "prompt" | "stt" {
+    return value === "multi" || value === "prompt" ? value : "stt";
 }
 
 function parseInputModality(value: unknown): "audio" | "image" | "text" {
@@ -77,9 +102,12 @@ export async function saveSttEvalAction(
             workflowId,
             name: String(formData.get("name") ?? "").trim(),
             description: String(formData.get("description") ?? "").trim(),
-            kind: formData.get("kind") === "multi" ? "multi" : "stt",
+            kind: parseWorkflowKind(formData.get("kind")),
             nodes: parseJsonArray<IWorkflowNodeInput>(formData, "nodes"),
             edges: parseJsonArray<IWorkflowEdgeInput>(formData, "edges"),
+            ...(formData.has("finalAnswer")
+                ? { finalAnswer: parseFinalAnswer(formData) }
+                : {}),
         });
         revalidatePath(`/multiworkflow/${workflowId}`);
         return { ok: true };
@@ -94,11 +122,21 @@ export async function createSttEvalRunAction(
 ): Promise<IActionState> {
     const principal = await requireActiveProject();
     const workflowId = String(formData.get("workflowId") ?? "");
+    const maxCostUsd = parseRunMaxCostUsd(formData);
+    if (maxCostUsd === "invalid")
+        return {
+            formError: INVALID_SPEND_LIMIT_MESSAGE,
+            fieldErrors: { maxCostUsd: [INVALID_SPEND_LIMIT_MESSAGE] },
+        };
     let workflowRunId: string;
     try {
         const runTarget = String(
             formData.get("runTarget") ?? "dataset",
         ) as WorkflowRunTarget;
+        const dataPolicy = parseRunDataPolicy(formData);
+        const compareWithRunId = String(
+            formData.get("compareWithRunId") ?? "",
+        ).trim();
         const result = await serverApiClient().createWorkflowRun({
             teamId: principal.teamId,
             projectId: principal.projectId,
@@ -110,6 +148,9 @@ export async function createSttEvalRunAction(
                 : {}),
             idempotencyKey: String(formData.get("idempotencyKey") ?? ""),
             createdBy: principal.userId,
+            ...(maxCostUsd !== undefined ? { maxCostUsd } : {}),
+            ...(dataPolicy ? { dataPolicy } : {}),
+            ...(compareWithRunId ? { compareWithRunId } : {}),
         });
         workflowRunId = result.workflowRunId;
     } catch (error) {
@@ -126,7 +167,37 @@ export async function retryWorkflowRunAction(
     const workflowId = String(formData.get("workflowId") ?? "");
     const workflowRunId = String(formData.get("runId") ?? "");
     try {
-        await serverApiClient().retryWorkflowRun({
+        const result = await serverApiClient().retryWorkflowRun({
+            teamId: principal.teamId,
+            projectId: principal.projectId,
+            workflowId,
+            workflowRunId,
+        });
+        if (result?.requeued === false)
+            return {
+                formError:
+                    "Nothing to retry: the run is still waiting in the queue. If it stays pending, check that the worker is running.",
+            };
+    } catch (error) {
+        return workflowActionError(error);
+    }
+    revalidatePath(`/multiworkflow/${workflowId}/runs/${workflowRunId}`);
+    return { ok: true };
+}
+
+/**
+ * Asks the worker to stop a pending or running pipeline run. Calls already
+ * sent finish; steps not started are not run.
+ */
+export async function cancelWorkflowRunAction(
+    _state: IActionState,
+    formData: FormData,
+): Promise<IActionState> {
+    const principal = await requireActiveProject();
+    const workflowId = String(formData.get("workflowId") ?? "");
+    const workflowRunId = String(formData.get("runId") ?? "");
+    try {
+        await serverApiClient().cancelWorkflowRun({
             teamId: principal.teamId,
             projectId: principal.projectId,
             workflowId,
