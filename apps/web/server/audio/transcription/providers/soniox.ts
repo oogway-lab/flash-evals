@@ -186,6 +186,12 @@ function sonioxDurationMs(parsed: unknown): number | undefined {
     return end;
 }
 
+/**
+ * Soniox tokens are pieces of words: a token that starts a word carries its
+ * own leading space (" है,"), one inside a word has none ("लो"), and the
+ * transcript's text is the tokens joined as they are. Segments join them the
+ * same way, so a word is never split by an added space ("मु झ से").
+ */
 function sonioxSegments(parsed: unknown): ITranscriptSegment[] {
     if (!isRecord(parsed) || !Array.isArray(parsed.tokens)) return [];
     const segments: ITranscriptSegment[] = [];
@@ -194,13 +200,15 @@ function sonioxSegments(parsed: unknown): ITranscriptSegment[] {
         if (!segment) continue;
         const previous = segments[segments.length - 1];
         if (previous && canMergeSonioxSegments(previous, segment)) {
-            previous.text = `${previous.text}${tokenJoiner(previous.text, segment.text)}${segment.text}`;
+            previous.text = `${previous.text}${segment.text}`;
             previous.endMs = segment.endMs ?? previous.endMs;
             continue;
         }
         segments.push(segment);
     }
-    return segments;
+    return segments
+        .map((segment) => ({ ...segment, text: segment.text.trim() }))
+        .filter((segment) => segment.text.length > 0);
 }
 
 function segmentFromSonioxToken(
@@ -241,10 +249,6 @@ function canMergeSonioxSegments(
         next.startMs !== undefined &&
         next.startMs - previous.endMs <= 250
     );
-}
-
-function tokenJoiner(left: string, right: string): string {
-    return /^[.,!?;:)]/.test(right) || left.endsWith("(") ? "" : " ";
 }
 
 async function parseSonioxJson(

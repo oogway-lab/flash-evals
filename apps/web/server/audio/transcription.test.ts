@@ -757,7 +757,9 @@ describe("getOrCreateAudioTranscript", () => {
                                 language: "en",
                             },
                             {
-                                text: "text",
+                                // Soniox puts a word's leading space on its
+                                // first token.
+                                text: " text",
                                 speaker: "S1",
                                 start_ms: 420,
                                 end_ms: 800,
@@ -1033,6 +1035,94 @@ describe("getOrCreateAudioTranscript", () => {
             vi.mocked(fetch).mock.calls[1]?.[1]?.body as string,
         ) as Record<string, unknown>;
         expect(createBody.enable_speaker_diarization).toBe(false);
+    });
+
+    it("joins Soniox sub-word tokens into whole Devanagari words in segments", async () => {
+        mocks.loadAudioBytes.mockResolvedValue(Buffer.from("audio"));
+        // Soniox splits words into tokens; a word's first token carries its
+        // leading space and the transcript text is the tokens joined as is.
+        const tokens = [
+            ["हे", "S1", 0, 100],
+            ["लो", "S1", 100, 200],
+            ["।", "S1", 200, 250],
+            [" मु", "S1", 300, 400],
+            ["झ", "S1", 400, 450],
+            ["से", "S1", 450, 500],
+            [" बात", "S1", 520, 600],
+            [" करो,", "S1", 620, 700],
+            // A new speaker starts a new segment; its leading space is not kept.
+            [" ठी", "S2", 900, 1_000],
+            ["क", "S2", 1_000, 1_050],
+            [" है।", "S2", 1_060, 1_200],
+        ] as const;
+        const text = tokens.map(([token]) => token).join("");
+        vi.mocked(fetch)
+            .mockResolvedValueOnce(
+                new Response(JSON.stringify({ id: "file-1" }), { status: 200 }),
+            )
+            .mockResolvedValueOnce(
+                new Response(JSON.stringify({ id: "tx-1" }), { status: 200 }),
+            )
+            .mockResolvedValueOnce(
+                new Response(JSON.stringify({ status: "completed" }), {
+                    status: 200,
+                }),
+            )
+            .mockResolvedValueOnce(
+                new Response(
+                    JSON.stringify({
+                        text,
+                        tokens: tokens.map(([token, speaker, start, end]) => ({
+                            text: token,
+                            speaker,
+                            start_ms: start,
+                            end_ms: end,
+                            language: "hi",
+                        })),
+                    }),
+                    { status: 200 },
+                ),
+            );
+
+        await expect(
+            getOrCreateAudioTranscript({
+                datasetItemId: "item-1",
+                storageKey: "11111111-1111-4111-8111-111111111111",
+                mimeType: "audio/webm",
+                modelId: "soniox:stt-async-v5",
+                language: "hi",
+                config: { diarization: true },
+                sonioxApiKey: "soniox-test",
+            }),
+        ).resolves.toBe("हेलो। मुझसे बात करो, ठीक है।");
+
+        expect(mocks.insertValues).toHaveBeenCalledWith(
+            expect.objectContaining({
+                segmentsJson: [
+                    {
+                        text: "हेलो। मुझसे बात करो,",
+                        speaker: "S1",
+                        language: "hi",
+                        startMs: 0,
+                        endMs: 700,
+                    },
+                    {
+                        text: "ठीक है।",
+                        speaker: "S2",
+                        language: "hi",
+                        startMs: 900,
+                        endMs: 1_200,
+                    },
+                ],
+            }),
+        );
+        // Segments read back as the transcript does.
+        const segments = (
+            vi.mocked(mocks.insertValues).mock.calls[0]![0] as {
+                segmentsJson: Array<{ text: string }>;
+            }
+        ).segmentsJson;
+        expect(segments.map((segment) => segment.text).join(" ")).toBe(text);
     });
 
     it("requires the Soniox key for Soniox STT model ids", async () => {
