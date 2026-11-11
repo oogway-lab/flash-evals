@@ -157,6 +157,17 @@ in the run. Results use the variant labels in the models table, matrix, and
 transcript views. When variants share a base model, badges call out every config
 value that differs.
 
+Long transcripts are transliterated in pieces of at most 1,200 characters, split
+at line breaks, then sentence ends, then spaces. Each piece must come back with
+about as many words as it was sent (75% to 150%); a piece that falls short is
+sent once more in parts of at most 500 characters, and if it is still short the
+transliteration fails instead of storing a Latin transcript with text missing.
+Every call is counted in the run's cost, retries and failed calls included.
+
+Speaker metrics (DER, cpWER, per-speaker WER) have safe limits on speaker count
+and workload. When a recording is past them, the transcript score keeps WER and
+the other metrics and shows "Speaker metrics not computed" with the reason.
+
 ## Importing gold answers
 
 The gold-answer wizard accepts JSON arrays, keyed JSON objects, and JSONL. It
