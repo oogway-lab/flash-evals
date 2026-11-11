@@ -103,6 +103,9 @@ lease columns are new. The same holds for the workflow run columns
 ## Concurrency and provider limits
 
 `EVAL_CONCURRENCY` (default 5) sets how many cells one run works on at once.
+`bun run dev` starts the local worker with `EVAL_CONCURRENCY=100` and
+`FLASH_EVALS_PROVIDER_CONCURRENCY=100` unless the shell sets them; deployed
+workers keep their own values.
 Every eval model call and judge call (benchmark head-to-head and rubric
 judges, judge prompts, legacy and field judges) also waits for a slot on its
 provider (transport: OpenAI, Vercel AI Gateway, OpenRouter, Bifrost, Anthropic

@@ -4,6 +4,8 @@ import {
     forEachPool,
     createSemaphore,
     positiveIntegerSetting,
+    innerConcurrency,
+    runSlots,
 } from "./concurrency";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -135,5 +137,27 @@ describe("createSemaphore", () => {
         expect(order).toEqual(["a", "b", "late"]);
         (await waiting[1]!)();
         (await late)();
+    });
+});
+
+describe("innerConcurrency", () => {
+    it("keeps the caller's default without a setting", () => {
+        expect(innerConcurrency(4, undefined)).toBe(4);
+        expect(innerConcurrency(3, "")).toBe(3);
+    });
+    it("uses a whole positive setting and ignores bad ones", () => {
+        expect(innerConcurrency(4, "100")).toBe(100);
+        expect(innerConcurrency(4, "0")).toBe(4);
+        expect(innerConcurrency(4, "abc")).toBe(4);
+    });
+});
+
+describe("runSlots", () => {
+    it("defaults to one run at a time", () => {
+        expect(runSlots(undefined)).toBe(1);
+        expect(runSlots("-2")).toBe(1);
+    });
+    it("uses a whole positive setting", () => {
+        expect(runSlots("100")).toBe(100);
     });
 });

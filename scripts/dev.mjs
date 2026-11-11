@@ -40,6 +40,16 @@ const browserApiOrigin =
 const seedTeamId = "f3b1a534-d8ef-4146-aead-96301d99d496";
 const seedUserId = "5b7ecdb4-ac4b-4219-89ea-f5f50aeae7bd";
 
+// Every local process that calls a model: 100 calls per provider at once,
+// fan-out inside one task at 100, and a bigger DB pool to keep up.
+const localParallelEnv = {
+    FLASH_EVALS_PROVIDER_CONCURRENCY:
+        process.env.FLASH_EVALS_PROVIDER_CONCURRENCY || "100",
+    FLASH_EVALS_INNER_CONCURRENCY:
+        process.env.FLASH_EVALS_INNER_CONCURRENCY || "100",
+    FLASH_EVALS_DB_POOL_MAX: process.env.FLASH_EVALS_DB_POOL_MAX || "25",
+};
+
 const commands = [
     {
         name: "api",
@@ -52,6 +62,13 @@ const commands = [
             FLASH_EVALS_API_PUBLIC_URL: browserApiOrigin,
             PORT: apiPort,
             FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS: "true",
+            ...localParallelEnv,
+            // Per-minute caps on model calls and new runs are off locally
+            // (0 disables; a shell value still wins).
+            FLASH_EVALS_RATE_LIMIT_LLM_PER_MINUTE:
+                process.env.FLASH_EVALS_RATE_LIMIT_LLM_PER_MINUTE || "0",
+            FLASH_EVALS_RATE_LIMIT_RUNS_PER_MINUTE:
+                process.env.FLASH_EVALS_RATE_LIMIT_RUNS_PER_MINUTE || "0",
         },
     },
     {
@@ -65,6 +82,7 @@ const commands = [
                 apiOrigin,
             NEXT_PUBLIC_API_BASE_URL: browserApiOrigin,
             FLASH_EVALS_DEV_WEB_ORIGIN: webOrigin,
+            ...localParallelEnv,
             AUTH_DEV: "true",
             AUTH_DEV_ALLOW_INSECURE: "1",
             FLASH_EVALS_DEFAULT_TEAM_ID:
@@ -78,6 +96,12 @@ const commands = [
         command: "bun",
         args: ["run", "--cwd", "apps/web", "worker"],
         env: {
+            // Local runs go 100 at a time (the code defaults of 1-5 made a
+            // 500-call run take about an hour). A shell value still wins;
+            // deployed workers keep their own settings.
+            ...localParallelEnv,
+            EVAL_CONCURRENCY: process.env.EVAL_CONCURRENCY || "100",
+            FLASH_EVALS_RUN_SLOTS: process.env.FLASH_EVALS_RUN_SLOTS || "100",
             AUTH_DEV: "true",
             AUTH_DEV_ALLOW_INSECURE: "1",
             FLASH_EVALS_DEFAULT_TEAM_ID:

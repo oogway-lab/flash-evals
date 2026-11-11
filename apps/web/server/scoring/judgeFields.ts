@@ -1,7 +1,7 @@
 import { getBareModelName, type ApiKeys } from "@flash-evals/llm-core";
 import { runJudge, type JudgeInput, type JudgeOutcome } from "./judge";
 import { isRecord } from "../lib/objects";
-import { mapPool } from "../lib/concurrency";
+import { innerConcurrency, mapPool } from "../lib/concurrency";
 import type {
     IGenerativeFieldResult,
     IPipelineFieldConfig,
@@ -61,7 +61,7 @@ export async function judgeFields(
     const costs: number[] = [];
     const fields = await mapPool(
         generative,
-        JUDGE_FIELD_CONCURRENCY,
+        innerConcurrency(JUDGE_FIELD_CONCURRENCY),
         async (config): Promise<IGenerativeFieldResult> => {
             const pricing = await args.pricingFor?.(config.modelId);
             const value = isRecord(args.output)

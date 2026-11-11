@@ -15,7 +15,7 @@ import type { ISttTransliterationConfig } from "@flash-evals/api-contract";
 import { db } from "../db/client";
 import type { IAudioTranscriptVariantMetadata } from "../db/jsonTypes";
 import { audioTranscriptVariants } from "../db/schema";
-import { mapPool } from "../lib/concurrency";
+import { innerConcurrency, mapPool } from "../lib/concurrency";
 import { errorMessage } from "../lib/errors";
 import { resolvePricingFor } from "../llm/pricing";
 import { normalizedDataPolicy } from "../runs/dataPolicyReuse";
@@ -352,7 +352,7 @@ interface IPieceOutcome {
     retried: boolean;
 }
 
-/** Pieces sent at the same time. */
+/** Pieces sent at the same time (FLASH_EVALS_INNER_CONCURRENCY overrides). */
 const PIECE_CONCURRENCY = 3;
 
 /**
@@ -381,7 +381,7 @@ async function transliterateTranscript(
     let servedBy: string | undefined;
     const outcomes = await mapPool(
         pieces.map((piece, index) => ({ piece, index })),
-        PIECE_CONCURRENCY,
+        innerConcurrency(PIECE_CONCURRENCY),
         async ({ piece, index }): Promise<IPieceOutcome | undefined> => {
             // After a failed piece no more are started (and paid for).
             if (stopped) return undefined;

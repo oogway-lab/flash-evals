@@ -3,6 +3,7 @@ import { and, eq, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import { redactSecrets } from "@flash-evals/secrets";
 import { db } from "../db/client";
 import { errorMessage } from "../lib/errors";
+import { runSlots } from "../lib/concurrency";
 import { runs, workflowRunCells, workflowRuns } from "../db/schema";
 import { executeWorkflowRun } from "../workflowRuns/executor";
 import { parseStaleClaimMs } from "./claimLease";
@@ -178,9 +179,13 @@ export function startWorkflowRunWorker(): Promise<void> {
         if (stopping) return;
         const b = await getBoss();
         if (stopping) return;
-        await b.work<IWorkflowRunJob, void, { includeMetadata: true }>(
+        await b.work<
+            IWorkflowRunJob,
+            void,
+            { includeMetadata: true; localConcurrency: number }
+        >(
             WORKFLOW_RUN_QUEUE,
-            { includeMetadata: true },
+            { includeMetadata: true, localConcurrency: runSlots() },
             async (jobs) => {
                 for (const job of jobs) {
                     const startedAt = Date.now();

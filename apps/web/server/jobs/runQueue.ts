@@ -6,6 +6,7 @@ import { runs, runCells } from "../db/schema";
 import { executeRun } from "../runs/executor";
 import { queueWaitingComparisonPipelines } from "./workflowRunQueue";
 import { errorMessage } from "../lib/errors";
+import { runSlots } from "../lib/concurrency";
 import { parseStaleClaimMs } from "./claimLease";
 import {
     acquireRunExecutionLease,
@@ -97,9 +98,13 @@ export function startRunWorker(): Promise<void> {
         if (stopping) return;
         const b = await getBoss();
         if (stopping) return;
-        await b.work<RunJob, void, { includeMetadata: true }>(
+        await b.work<
+            RunJob,
+            void,
+            { includeMetadata: true; localConcurrency: number }
+        >(
             RUN_QUEUE,
-            { includeMetadata: true },
+            { includeMetadata: true, localConcurrency: runSlots() },
             async (jobs) => {
                 for (const job of jobs) await handleRunJob(job);
             },

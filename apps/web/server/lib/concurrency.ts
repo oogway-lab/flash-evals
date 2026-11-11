@@ -45,6 +45,26 @@ export async function forEachPool<T>(
  * A whole positive number read from the environment, or `fallback` when the
  * value is unset, empty or not a whole positive number.
  */
+/**
+ * Calls one task fans out at once (field judges of one answer, pieces of one
+ * transliteration). FLASH_EVALS_INNER_CONCURRENCY overrides the caller's
+ * default; provider slots still cap the total.
+ */
+export function innerConcurrency(
+    fallback: number,
+    value = process.env.FLASH_EVALS_INNER_CONCURRENCY,
+): number {
+    return positiveIntegerSetting(value, fallback);
+}
+
+/**
+ * Runs (or pipeline runs) one worker process takes at once, from
+ * FLASH_EVALS_RUN_SLOTS (default 1). Provider slots still cap the calls.
+ */
+export function runSlots(value = process.env.FLASH_EVALS_RUN_SLOTS): number {
+    return positiveIntegerSetting(value, 1);
+}
+
 export function positiveIntegerSetting(
     value: string | undefined,
     fallback: number,
