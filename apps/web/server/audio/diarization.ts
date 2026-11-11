@@ -19,6 +19,18 @@ export interface IDiarizationMetricDetails {
     };
 }
 
+/**
+ * Speaker scoring was not run because its workload is above a safe limit.
+ * Transcript scoring records the metric as not computed (with this message)
+ * and keeps every other metric.
+ */
+export class DiarizationLimitError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "DiarizationLimitError";
+    }
+}
+
 export function scoreDiarizationMetrics(input: {
     referenceTurns?: IAudioSpeakerTurn[];
     candidateSegments?: ITranscriptSegment[];
@@ -91,6 +103,49 @@ function speakerAttributedWer(
         return null;
     }
 
+    // A mapping sends each candidate speaker to one reference speaker, so a
+    // reference speaker's score depends only on which candidate speakers map
+    // to it. Each (reference speaker, candidate set) is scored once, however
+    // many mappings share it.
+    const referenceTokens = new Map(
+        referenceSpeakers.map((speaker) => [
+            speaker,
+            tokens(
+                referenceTurns
+                    .filter((turn) => turn.speaker === speaker)
+                    .map((turn) => turn.text)
+                    .join(" "),
+            ),
+        ]),
+    );
+    const scored = new Map<
+        string,
+        { distance: number; referenceLength: number }
+    >();
+    const scoreFor = (referenceSpeaker: string, mapped: string[]) => {
+        const key = JSON.stringify([referenceSpeaker, mapped]);
+        const known = scored.get(key);
+        if (known) return known;
+        const mappedSet = new Set(mapped);
+        const candidateText = candidateSegments
+            .filter(
+                (segment) => segment.speaker && mappedSet.has(segment.speaker),
+            )
+            .map((segment) => segment.text)
+            .join(" ");
+        const counts = editCounts(
+            referenceTokens.get(referenceSpeaker) ?? [],
+            tokens(candidateText),
+        );
+        const result = {
+            distance:
+                counts.substitutions + counts.deletions + counts.insertions,
+            referenceLength: counts.referenceLength,
+        };
+        scored.set(key, result);
+        return result;
+    };
+
     let best:
         | {
               distance: number;
@@ -106,29 +161,17 @@ function speakerAttributedWer(
         let referenceLength = 0;
         const perSpeakerWer: Record<string, number> = {};
         for (const referenceSpeaker of referenceSpeakers) {
-            const referenceText = referenceTurns
-                .filter((turn) => turn.speaker === referenceSpeaker)
-                .map((turn) => turn.text)
-                .join(" ");
-            const candidateText = candidateSegments
-                .filter(
-                    (segment) =>
-                        segment.speaker &&
-                        mapping.get(segment.speaker) === referenceSpeaker,
-                )
-                .map((segment) => segment.text)
-                .join(" ");
-            const counts = editCounts(
-                tokens(referenceText),
-                tokens(candidateText),
+            const counts = scoreFor(
+                referenceSpeaker,
+                candidateSpeakers.filter(
+                    (speaker) => mapping.get(speaker) === referenceSpeaker,
+                ),
             );
-            const speakerDistance =
-                counts.substitutions + counts.deletions + counts.insertions;
-            distance += speakerDistance;
+            distance += counts.distance;
             referenceLength += counts.referenceLength;
             perSpeakerWer[referenceSpeaker] =
                 counts.referenceLength > 0
-                    ? speakerDistance / counts.referenceLength
+                    ? counts.distance / counts.referenceLength
                     : 0;
         }
         if (!best || distance < best.distance) {
@@ -223,6 +266,21 @@ function bestOverlapSpeakerMapping(
             .map((segment) => segment.speaker)
             .filter((speaker): speaker is string => Boolean(speaker)),
     );
+    // Overlap per (candidate speaker, reference speaker), measured once; a
+    // mapping's score is then a sum over its candidate speakers, so the
+    // turn-by-segment comparison is not repeated for every mapping.
+    const overlapByPair = new Map<string, number>();
+    const pairKey = (candidate: string, reference: string) =>
+        JSON.stringify([candidate, reference]);
+    for (const ref of referenceTurns) {
+        for (const cand of candidateSegments) {
+            if (!cand.speaker) continue;
+            const overlapMs = overlap(ref, cand);
+            if (overlapMs <= 0) continue;
+            const key = pairKey(cand.speaker, ref.speaker);
+            overlapByPair.set(key, (overlapByPair.get(key) ?? 0) + overlapMs);
+        }
+    }
     let bestMapping = new Map<string, string>();
     let bestScore = -1;
     for (const mapping of speakerMappings(
@@ -230,12 +288,8 @@ function bestOverlapSpeakerMapping(
         referenceSpeakers,
     )) {
         let score = 0;
-        for (const ref of referenceTurns) {
-            for (const cand of candidateSegments) {
-                if (cand.speaker && mapping.get(cand.speaker) === ref.speaker) {
-                    score += overlap(ref, cand);
-                }
-            }
+        for (const [candidate, reference] of mapping) {
+            score += overlapByPair.get(pairKey(candidate, reference)) ?? 0;
         }
         if (score > bestScore) {
             bestScore = score;
@@ -340,38 +394,43 @@ function assertDiarizationWorkload(
         referenceSpeakerCount > MAX_SPEAKERS ||
         candidateSpeakerCount > MAX_SPEAKERS
     ) {
-        throw new Error(
+        throw new DiarizationLimitError(
             `Diarization scoring rejected ${referenceSpeakerCount} reference and ${candidateSpeakerCount} candidate speakers; maximum accepted speaker count is ${MAX_SPEAKERS}.`,
         );
     }
     let mappings = 1;
     for (let index = 0; index < candidateSpeakerCount; index += 1) {
         if (mappings > MAX_SPEAKER_MAPPINGS / referenceSpeakerCount) {
-            throw new Error(
+            throw new DiarizationLimitError(
                 `Diarization scoring rejected ${referenceSpeakerCount} reference and ${candidateSpeakerCount} candidate speakers; speaker mapping exceeds the safe limit of ${MAX_SPEAKER_MAPPINGS}.`,
             );
         }
         mappings *= referenceSpeakerCount;
     }
-    const workPerMapping =
-        referenceSpeakerCount *
-        (referenceTurns.length + candidateSegments.length);
-    const timedReferenceCount = referenceTurns.filter(hasTiming).length;
-    const timedCandidateCount = candidateSegments.filter(hasTiming).length;
-    const timingPairs = timedReferenceCount * timedCandidateCount;
-    if (
-        mappings > MAX_DIARIZATION_WORK / workPerMapping ||
-        (timingPairs > 0 && mappings > MAX_DIARIZATION_WORK / timingPairs)
-    ) {
-        throw new Error(
+    // Each mapping is scored from per-speaker totals (one step per speaker);
+    // the transcript is only walked once per distinct set of candidate
+    // speakers sent to one reference speaker (at most 2^candidates sets).
+    const distinctSpeakerSets = Math.min(
+        mappings,
+        2 ** Math.min(candidateSpeakerCount, 30),
+    );
+    const work =
+        mappings * (referenceSpeakerCount + candidateSpeakerCount) +
+        distinctSpeakerSets *
+            referenceSpeakerCount *
+            (referenceTurns.length + candidateSegments.length);
+    if (work > MAX_DIARIZATION_WORK) {
+        throw new DiarizationLimitError(
             `Diarization scoring rejected a speaker attribution workload above the safe limit of ${MAX_DIARIZATION_WORK}.`,
         );
     }
+    const timedReferenceCount = referenceTurns.filter(hasTiming).length;
+    const timedCandidateCount = candidateSegments.filter(hasTiming).length;
     if (
         timedCandidateCount > 0 &&
         timedReferenceCount > MAX_TIMING_PAIRS / timedCandidateCount
     ) {
-        throw new Error(
+        throw new DiarizationLimitError(
             `Diarization scoring rejected ${referenceTurns.length} reference turns and ${candidateSegments.length} candidate segments; timing comparison exceeds the safe limit of ${MAX_TIMING_PAIRS}.`,
         );
     }

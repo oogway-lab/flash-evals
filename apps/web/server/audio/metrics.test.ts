@@ -314,6 +314,34 @@ describe("scoreTranscriptMetrics", () => {
         expect(result?.details.hardFailures).toEqual([]);
     });
 
+    it("keeps word error rate and records why speaker metrics were skipped", () => {
+        // 9 x 9 speakers is past the speaker-mapping limit.
+        const result = scoreTranscriptMetrics({
+            candidateText: "hello there",
+            candidateSegments: Array.from({ length: 9 }, (_, index) => ({
+                speaker: `S${index}`,
+                text: `part ${index}`,
+            })),
+            label: {
+                expectedTranscript: "hello there friend",
+                expectedSpeakerTurns: Array.from({ length: 9 }, (_, index) => ({
+                    speaker: `R${index}`,
+                    text: `part ${index}`,
+                })),
+            },
+        });
+
+        expect(result?.details.wer).toBeCloseTo(1 / 3);
+        expect(result?.score).toBeCloseTo(2 / 3);
+        expect(result?.details.diarization).toBeUndefined();
+        expect(result?.details.diarizationSkippedReason).toMatch(
+            /speaker mapping exceeds the safe limit/,
+        );
+        expect(result?.details.hardFailures).not.toContain(
+            "wrong_speaker_count",
+        );
+    });
+
     it("flags wrong speaker counts from diarization metrics", () => {
         const result = scoreTranscriptMetrics({
             candidateText: "hello there from two people",

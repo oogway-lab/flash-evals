@@ -155,6 +155,8 @@ export interface TranscriptMetricDetails {
         missed: number[];
     };
     hardFailures?: string[];
+    /** Why speaker metrics were not computed, when they were skipped. */
+    diarizationSkippedReason?: string;
     diarization?: {
         speakerCountDelta: number;
         coverageRatio: number | null;
@@ -212,6 +214,10 @@ export function toTranscriptMetricDetails(
             : undefined,
         hardFailures: stringArray(v.hardFailures),
         diarization: parseDiarizationDetails(v.diarization),
+        diarizationSkippedReason:
+            typeof v.diarizationSkippedReason === "string"
+                ? v.diarizationSkippedReason
+                : undefined,
     };
 }
 

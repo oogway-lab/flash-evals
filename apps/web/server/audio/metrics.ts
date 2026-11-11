@@ -1,6 +1,7 @@
 import { isRecord } from "../lib/objects";
 import { audioReferenceFromLabel } from "./reference";
 import {
+    DiarizationLimitError,
     scoreDiarizationMetrics,
     type IDiarizationMetricDetails,
 } from "./diarization";
@@ -31,6 +32,12 @@ export interface ITranscriptMetricDetails {
     domainTermRecall?: IDomainTermRecallDetails;
     numericAccuracy?: INumericAccuracyDetails;
     diarization?: IDiarizationMetricDetails;
+    /**
+     * Why speaker metrics were not computed although both sides had speaker
+     * turns (a recording too long for speaker scoring). Word error rate and
+     * the other metrics are still computed.
+     */
+    diarizationSkippedReason?: string;
     latencyMsTotal?: number;
     costUsd?: number;
     costSource?: "computed" | "unavailable";
@@ -134,7 +141,7 @@ export function scoreTranscriptMetrics(input: {
         expectedNumbers: audioReference?.expectedNumbers,
         candidateText: candidate,
     });
-    const diarization = scoreDiarizationMetrics({
+    const { diarization, diarizationSkippedReason } = diarizationOrSkipped({
         referenceTurns: audioReference?.expectedSpeakerTurns,
         candidateSegments: input.candidateSegments,
     });
@@ -167,9 +174,30 @@ export function scoreTranscriptMetrics(input: {
             domainTermRecall,
             numericAccuracy,
             diarization,
+            diarizationSkippedReason,
             hardFailures,
         }),
     };
+}
+
+/**
+ * Speaker metrics, or why they were skipped: on a long recording the speaker
+ * workload can pass its safe limit, and that must not fail the whole
+ * transcript score.
+ */
+function diarizationOrSkipped(
+    input: Parameters<typeof scoreDiarizationMetrics>[0],
+): {
+    diarization?: IDiarizationMetricDetails;
+    diarizationSkippedReason?: string;
+} {
+    try {
+        return { diarization: scoreDiarizationMetrics(input) };
+    } catch (error) {
+        if (error instanceof DiarizationLimitError)
+            return { diarizationSkippedReason: error.message };
+        throw error;
+    }
 }
 
 function transcriptMetricDetails(input: {
@@ -189,6 +217,7 @@ function transcriptMetricDetails(input: {
     domainTermRecall: IDomainTermRecallDetails | undefined;
     numericAccuracy: INumericAccuracyDetails | undefined;
     diarization: IDiarizationMetricDetails | undefined;
+    diarizationSkippedReason: string | undefined;
     hardFailures: TranscriptHardFailure[];
 }): ITranscriptMetricDetails {
     return {
@@ -221,6 +250,9 @@ function transcriptMetricDetails(input: {
             ? { numericAccuracy: input.numericAccuracy }
             : {}),
         ...(input.diarization ? { diarization: input.diarization } : {}),
+        ...(input.diarizationSkippedReason
+            ? { diarizationSkippedReason: input.diarizationSkippedReason }
+            : {}),
         ...(input.input.latencyMsTotal !== undefined
             ? { latencyMsTotal: input.input.latencyMsTotal }
             : {}),

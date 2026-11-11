@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scoreDiarizationMetrics } from "./diarization";
+import { DiarizationLimitError, scoreDiarizationMetrics } from "./diarization";
 import { MAX_TRANSCRIPT_CHARACTERS } from "./editDistance";
 
 describe("scoreDiarizationMetrics", () => {
@@ -47,25 +47,93 @@ describe("scoreDiarizationMetrics", () => {
     });
 
     it("caps combined mapping and transcript traversal work", () => {
-        const speakers = ["A", "B", "C", "D", "E"];
+        // 4^8 mappings, each set of candidate speakers walking 20,000 turns.
+        const referenceSpeakers = ["A", "B", "C", "D"];
         expect(() =>
             scoreDiarizationMetrics({
-                referenceTurns: Array.from({ length: 1_000 }, (_, index) => ({
-                    speaker: speakers[index % speakers.length],
+                referenceTurns: Array.from({ length: 10_000 }, (_, index) => ({
+                    speaker: referenceSpeakers[index % 4],
                     text: "hello",
                 })),
                 candidateSegments: Array.from(
-                    { length: 1_000 },
+                    { length: 10_000 },
                     (_, index) => ({
-                        speaker: `S${index % speakers.length}`,
+                        speaker: `S${index % 8}`,
                         text: "hello",
                     }),
                 ),
             }),
-        ).toThrow("speaker attribution workload above the safe limit");
+        ).toThrow(DiarizationLimitError);
     });
 
-    it("counts overlap comparisons across every speaker mapping", () => {
+    it("scores a long recording with many reference speakers", () => {
+        // The shape that used to fail: 9 reference speakers, 3 candidate
+        // speakers (729 mappings), hundreds of timed turns on each side.
+        const referenceTurns = Array.from({ length: 216 }, (_, index) => ({
+            speaker: `R${index % 9}`,
+            text: `शब्द ${index} बात`,
+            startMs: index * 3_000,
+            endMs: index * 3_000 + 2_800,
+        }));
+        const candidateSegments = Array.from({ length: 538 }, (_, index) => ({
+            speaker: `C${index % 3}`,
+            text: `शब्द ${index}`,
+            startMs: index * 1_200,
+            endMs: index * 1_200 + 1_100,
+        }));
+
+        const result = scoreDiarizationMetrics({
+            referenceTurns,
+            candidateSegments,
+        });
+
+        expect(result?.der).toEqual(expect.any(Number));
+        expect(result?.cpWer).toEqual(expect.any(Number));
+        expect(Object.keys(result?.perSpeakerWer ?? {})).toHaveLength(9);
+        expect(result?.speakerCountDelta).toBe(-6);
+    });
+
+    it("maps speakers by total overlap and scores cpWER over merged speakers", () => {
+        // S2 speaks for both B and C: one of them is confused and cpWER
+        // counts two insertions and two deletions out of six words.
+        const result = scoreDiarizationMetrics({
+            referenceTurns: [
+                { speaker: "A", text: "one two", startMs: 0, endMs: 1_000 },
+                {
+                    speaker: "B",
+                    text: "three four",
+                    startMs: 1_000,
+                    endMs: 2_000,
+                },
+                {
+                    speaker: "C",
+                    text: "five six",
+                    startMs: 2_000,
+                    endMs: 3_000,
+                },
+            ],
+            candidateSegments: [
+                { speaker: "S1", text: "one two", startMs: 0, endMs: 1_000 },
+                {
+                    speaker: "S2",
+                    text: "three four five six",
+                    startMs: 1_000,
+                    endMs: 3_000,
+                },
+            ],
+        });
+
+        // After the 250 ms collar each reference turn keeps 500 ms; C's
+        // 500 ms is heard from S2, which maps to B.
+        expect(result?.der).toBeCloseTo(1 / 3);
+        expect(result?.speakerConfusionRate).toBeCloseTo(1 / 3);
+        expect(result?.missedDetectionRate).toBe(0);
+        expect(result?.falseAlarmRate).toBe(0);
+        expect(result?.cpWer).toBeCloseTo(4 / 6);
+        expect(result?.perSpeakerWer).toEqual({ A: 0, B: 1, C: 1 });
+    });
+
+    it("does not multiply overlap comparisons by speaker mappings", () => {
         const referenceTurns = Array.from({ length: 1_000 }, (_, index) => ({
             speaker: `R${index % 4}`,
             text: "hello",
@@ -79,9 +147,9 @@ describe("scoreDiarizationMetrics", () => {
             endMs: index * 10 + 5,
         }));
 
-        expect(() =>
+        expect(
             scoreDiarizationMetrics({ referenceTurns, candidateSegments }),
-        ).toThrow("speaker attribution workload above the safe limit");
+        ).toEqual(expect.objectContaining({ der: 0, cpWer: 0 }));
     });
 
     it("does not charge untimed turns against the overlap budget", () => {

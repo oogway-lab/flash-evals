@@ -34,6 +34,37 @@ describe("toJudgeCriteria", () => {
 });
 
 describe("toTranscriptMetricDetails", () => {
+    it("keeps why speaker metrics were skipped", () => {
+        const details = toTranscriptMetricDetails({
+            wer: 0.2,
+            cer: 0.1,
+            wordCounts: {
+                substitutions: 1,
+                deletions: 0,
+                insertions: 0,
+                referenceLength: 5,
+            },
+            diarizationSkippedReason:
+                "Diarization scoring rejected a speaker attribution workload above the safe limit of 20000000.",
+        });
+
+        expect(details?.diarization).toBeUndefined();
+        expect(details?.diarizationSkippedReason).toMatch(/safe limit/);
+        expect(
+            toTranscriptMetricDetails({
+                wer: 0.2,
+                cer: 0.1,
+                wordCounts: {
+                    substitutions: 1,
+                    deletions: 0,
+                    insertions: 0,
+                    referenceLength: 5,
+                },
+                diarizationSkippedReason: 42,
+            })?.diarizationSkippedReason,
+        ).toBeUndefined();
+    });
+
     it("parses supplemental transcript metrics", () => {
         const details = toTranscriptMetricDetails({
             metricKind: "mechanical_stt",
