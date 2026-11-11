@@ -453,10 +453,9 @@ describe("getOrCreateTransliteration", () => {
                 apiKeys: { openai: "sk-test" },
             }),
         ).rejects.toThrow(/output limit/);
+        // A long transcript goes in pieces, each with its own output limit.
         expect(mocks.complete).toHaveBeenCalledWith(
-            expect.objectContaining({
-                maxTokens: transliterationMaxTokens(source),
-            }),
+            expect.objectContaining({ maxTokens: 4_000 }),
         );
         expect(mocks.insertValues).toHaveBeenCalledWith(
             expect.objectContaining({ status: "failed" }),
@@ -575,7 +574,7 @@ describe("getOrCreateTransliteration", () => {
     it("does not reuse a long variant that the old 4,000-token limit may have cut", async () => {
         const hashFor = async (sourceTranscript: string) => {
             mocks.insertValues.mockClear();
-            mocks.complete.mockResolvedValueOnce({
+            mocks.complete.mockResolvedValue({
                 text: "kya haal hai",
                 usage: { completionTokens: 5 },
                 latencyMs: 100,
@@ -644,6 +643,190 @@ describe("getOrCreateTransliteration", () => {
             (call) => (call[0] as { promptHash: string }).promptHash,
         );
         expect(hashes[0]).not.toBe(hashes[1]);
+    });
+});
+
+describe("getOrCreateTransliteration on long transcripts", () => {
+    const SENTENCE = "आज मौसम बहुत अच्छा है और हम बाज़ार जा रहे हैं।";
+    const LATIN = "aaj mausam bahut achchha hai aur hum bazaar ja rahe hain.";
+    // About 4,600 characters, like the transcript that lost most of its text.
+    const LONG_SOURCE = Array.from({ length: 100 }, () => SENTENCE).join(" ");
+    const config = {
+        enabled: true,
+        targetScript: "latin",
+        modelId: "gpt-4o-mini",
+    } as const;
+    const run = (sourceTranscript = LONG_SOURCE) =>
+        getOrCreateTransliteration({
+            datasetItemId: "item-1",
+            storageKey: "audio/key.webm",
+            sourceTranscript,
+            config,
+            apiKeys: { openai: "sk-test" },
+        });
+    const sentPiece = (call: unknown[]) =>
+        /<transcript>\n([\s\S]*)\n<\/transcript>/.exec(
+            (call[0] as { prompt: string }).prompt,
+        )![1]!;
+    /** A model that transliterates each sentence it is sent, word for word. */
+    const faithfulReply = (request: { prompt: string }) => {
+        const piece = sentPiece([request]);
+        const sentences = piece.split("।").filter((part) => part.trim());
+        return {
+            text: sentences.map(() => LATIN).join(" "),
+            usage: { promptTokens: 1_000, completionTokens: 500 },
+            latencyMs: 100,
+        };
+    };
+    // 1,000 prompt + 500 completion tokens at the mocked prices.
+    const CALL_COST = 0.002;
+
+    it("sends a long transcript in bounded pieces and stores it whole", async () => {
+        mocks.complete.mockImplementation(async (request) =>
+            faithfulReply(request),
+        );
+
+        const result = await run();
+
+        const calls = mocks.complete.mock.calls;
+        expect(calls.length).toBeGreaterThan(1);
+        for (const call of calls) {
+            expect(sentPiece(call).length).toBeLessThanOrEqual(1_200);
+        }
+        // Every sentence of the source was sent exactly once.
+        expect(calls.map(sentPiece).join(" ")).toBe(LONG_SOURCE);
+        expect(result.text).toBe(
+            Array.from({ length: 100 }, () => LATIN).join(" "),
+        );
+        expect(result.cacheHit).toBe(false);
+        expect(result.costUsd).toBeCloseTo(CALL_COST * calls.length);
+        expect(result.incurredCostUsd).toBeCloseTo(CALL_COST * calls.length);
+        expect(mocks.insertValues).toHaveBeenCalledWith(
+            expect.objectContaining({
+                status: "completed",
+                providerMetadata: expect.objectContaining({
+                    pieceCount: calls.length,
+                    costSource: "computed",
+                }),
+            }),
+        );
+    });
+
+    it("fails, never stores as completed, a reply that stopped early", async () => {
+        // A normal finish well inside the output limit, with most text gone.
+        mocks.complete.mockResolvedValue({
+            text: LATIN,
+            usage: { promptTokens: 1_000, completionTokens: 500 },
+            latencyMs: 100,
+        });
+
+        const error = await run().catch((caught: unknown) => caught);
+
+        expect(String(error)).toMatch(/incomplete/);
+        expect(String(error)).toMatch(/also when retried in smaller parts/);
+        // Every paid call is reported, the failed first tries included.
+        const calls = mocks.complete.mock.calls.length;
+        expect(transliterationFailureCostUsd(error)).toBeCloseTo(
+            CALL_COST * calls,
+        );
+        expect(mocks.insertValues).toHaveBeenCalledWith(
+            expect.objectContaining({ status: "failed", transcript: "" }),
+        );
+        expect(mocks.insertValues).not.toHaveBeenCalledWith(
+            expect.objectContaining({ status: "completed" }),
+        );
+    });
+
+    it("tries an incomplete piece once more in smaller parts", async () => {
+        let first = true;
+        mocks.complete.mockImplementation(async (request) => {
+            if (first) {
+                first = false;
+                return {
+                    text: LATIN,
+                    usage: { promptTokens: 1_000, completionTokens: 500 },
+                    latencyMs: 100,
+                };
+            }
+            return faithfulReply(request);
+        });
+
+        // Numbered sentences, so each piece's text is distinct.
+        const numbered = Array.from(
+            { length: 100 },
+            (_, index) => `${SENTENCE.slice(0, -1)} ${index + 1}।`,
+        ).join(" ");
+        const result = await run(numbered);
+
+        const calls = mocks.complete.mock.calls;
+        const firstPiece = sentPiece(calls[0]!);
+        expect(firstPiece.length).toBeGreaterThan(500);
+        const retriedParts = calls
+            .slice(1)
+            .map(sentPiece)
+            .filter((piece) => firstPiece.includes(piece));
+        expect(retriedParts.length).toBeGreaterThan(1);
+        expect(retriedParts.every((piece) => piece.length <= 500)).toBe(true);
+        expect(retriedParts.join(" ")).toBe(firstPiece);
+        expect(result.text).toBe(
+            Array.from({ length: 100 }, () => LATIN).join(" "),
+        );
+        // The incomplete first try is paid for too.
+        expect(result.incurredCostUsd).toBeCloseTo(CALL_COST * calls.length);
+        expect(mocks.insertValues).toHaveBeenCalledWith(
+            expect.objectContaining({
+                status: "completed",
+                providerMetadata: expect.objectContaining({
+                    retriedPieceCount: 1,
+                }),
+            }),
+        );
+    });
+
+    it("reports what earlier pieces cost when a later call fails outright", async () => {
+        let callCount = 0;
+        mocks.complete.mockImplementation(async (request) => {
+            callCount += 1;
+            if (callCount === 2) throw new Error("fetch failed");
+            return faithfulReply(request);
+        });
+
+        const error = await run().catch((caught: unknown) => caught);
+
+        expect(String(error)).toMatch(/fetch failed/);
+        const paidCalls = mocks.complete.mock.calls.length - 1;
+        expect(paidCalls).toBeGreaterThan(0);
+        expect(transliterationFailureCostUsd(error)).toBeCloseTo(
+            CALL_COST * paidCalls,
+        );
+    });
+
+    it("keeps an outright failure as it was when nothing was paid", async () => {
+        mocks.complete.mockRejectedValue(new Error("fetch failed"));
+
+        const error = await run(SENTENCE).catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(Error);
+        expect(String(error)).toMatch(/fetch failed/);
+        expect(transliterationFailureCostUsd(error)).toBeUndefined();
+    });
+
+    it("makes again a cached variant that has words missing", async () => {
+        mocks.cachedRows = [
+            {
+                transcript: LATIN,
+                providerMetadata: { costUsd: 0.002, costSource: "computed" },
+            },
+        ];
+        mocks.complete.mockImplementation(async (request) =>
+            faithfulReply(request),
+        );
+
+        const result = await run();
+
+        expect(result.cacheHit).toBe(false);
+        expect(mocks.complete).toHaveBeenCalled();
+        expect(mocks.onConflictDoUpdate).toHaveBeenCalled();
     });
 });
 

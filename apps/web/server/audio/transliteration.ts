@@ -15,9 +15,18 @@ import type { ISttTransliterationConfig } from "@flash-evals/api-contract";
 import { db } from "../db/client";
 import type { IAudioTranscriptVariantMetadata } from "../db/jsonTypes";
 import { audioTranscriptVariants } from "../db/schema";
+import { mapPool } from "../lib/concurrency";
 import { errorMessage } from "../lib/errors";
 import { resolvePricingFor } from "../llm/pricing";
 import { normalizedDataPolicy } from "../runs/dataPolicyReuse";
+import {
+    joinTranscriptPieces,
+    splitTranscriptIntoPieces,
+    transcriptWordCount,
+    TRANSLITERATION_PIECE_CHARS,
+    TRANSLITERATION_RETRY_PIECE_CHARS,
+    transliterationLooksComplete,
+} from "./transliterationPieces";
 
 export interface IGetOrCreateTransliterationInput {
     datasetItemId: string;
@@ -62,7 +71,8 @@ export function transliterationFailureCostUsd(
 }
 
 /**
- * Output budget for one transliteration: about one token per source
+ * Output budget for one transliteration call (one piece of a long
+ * transcript, or the whole of a short one): about one token per source
  * character (the Latin text is usually shorter in tokens), at least 4,000.
  * 16,000 is a conservative cap most current models can give; a reply that
  * reaches the limit is treated as cut off and fails instead of being cached.
@@ -120,7 +130,12 @@ export async function getOrCreateTransliteration(
     });
     // Variants saved before replies were checked for a cut-off carry no
     // costSource: they may be cut, so they are made again (and replaced).
-    if (cached?.providerMetadata?.costSource)
+    // So is one with words missing: a model can stop early and still report
+    // a normal finish, and variants saved before the word check may be short.
+    if (
+        cached?.providerMetadata?.costSource &&
+        transliterationLooksComplete(input.sourceTranscript, cached.transcript)
+    )
         return {
             text: cached.transcript,
             ...(cached.providerMetadata?.costUsd !== undefined
@@ -150,6 +165,10 @@ export async function getOrCreateTransliteration(
             ...(costUsd !== undefined ? { costUsd } : {}),
             costSource: costUsd !== undefined ? "computed" : "unavailable",
             ...(result.servedBy ? { servedBy: result.servedBy } : {}),
+            pieceCount: result.pieceCount,
+            ...(result.retriedPieceCount > 0
+                ? { retriedPieceCount: result.retriedPieceCount }
+                : {}),
         };
     } catch (error) {
         await writeFailedVariant({
@@ -317,14 +336,218 @@ async function writeFailedVariant(input: {
         });
 }
 
-async function transliterateTranscript(input: {
-    sourceTranscript: string;
+interface ITransliterationCallInput {
     config: ISttTransliterationConfig;
     apiKeys: ApiKeys;
     dataPolicy?: ICompletionDataPolicy;
-}): Promise<{ text: string; costUsd?: number; servedBy?: string }> {
+}
+
+interface IPieceOutcome {
+    text?: string;
+    error?: unknown;
+    /** Spent on this piece, retries included; undefined when not known. */
+    costUsd: number | undefined;
+    /** At least one call for this piece had no known price. */
+    costUnknown: boolean;
+    retried: boolean;
+}
+
+/** Pieces sent at the same time. */
+const PIECE_CONCURRENCY = 3;
+
+/**
+ * Transliterates the transcript in pieces of bounded size (see
+ * transliterationPieces). Each piece must come back whole by word count; an
+ * incomplete piece is tried once more in smaller parts, and if it is still
+ * incomplete the whole transliteration fails rather than being stored with
+ * text missing. Every call is paid for, so the cost of all of them (failed
+ * and retried ones too) is reported, also when it fails.
+ */
+async function transliterateTranscript(
+    input: ITransliterationCallInput & { sourceTranscript: string },
+): Promise<{
+    text: string;
+    costUsd?: number;
+    servedBy?: string;
+    pieceCount: number;
+    retriedPieceCount: number;
+}> {
+    assertRecordedBaseUrl(input.apiKeys, input.config);
+    const pieces = splitTranscriptIntoPieces(
+        input.sourceTranscript,
+        TRANSLITERATION_PIECE_CHARS,
+    );
+    let stopped = false;
+    let servedBy: string | undefined;
+    const outcomes = await mapPool(
+        pieces.map((piece, index) => ({ piece, index })),
+        PIECE_CONCURRENCY,
+        async ({ piece, index }): Promise<IPieceOutcome | undefined> => {
+            // After a failed piece no more are started (and paid for).
+            if (stopped) return undefined;
+            const outcome = await transliteratePieceWithRetry(
+                input,
+                piece.text,
+                { index, count: pieces.length },
+                (served) => {
+                    servedBy ??= served;
+                },
+            );
+            if (outcome.error !== undefined) stopped = true;
+            return outcome;
+        },
+    );
+    const settled = outcomes.filter(
+        (outcome): outcome is IPieceOutcome => outcome !== undefined,
+    );
+    const costUsd = settled.some((outcome) => outcome.costUnknown)
+        ? undefined
+        : settled.reduce((sum, outcome) => sum + (outcome.costUsd ?? 0), 0);
+    const failed = settled.find((outcome) => outcome.error !== undefined);
+    if (failed) throw withTotalCost(failed.error, costUsd);
+    const text = joinTranscriptPieces(
+        pieces.map((piece, index) => ({
+            text: settled[index]!.text!,
+            separator: piece.separator,
+        })),
+    );
+    return {
+        text,
+        ...(costUsd !== undefined ? { costUsd } : {}),
+        ...(servedBy ? { servedBy } : {}),
+        pieceCount: pieces.length,
+        retriedPieceCount: settled.filter((outcome) => outcome.retried).length,
+    };
+}
+
+/**
+ * One piece, and if it fails as paid-but-unusable (empty, cut off, words
+ * missing), once more split into smaller parts. Errors are returned, not
+ * thrown, so the pieces running beside it still report what they cost.
+ */
+async function transliteratePieceWithRetry(
+    input: ITransliterationCallInput,
+    pieceText: string,
+    position: { index: number; count: number },
+    onServedBy: (servedBy: string) => void,
+): Promise<IPieceOutcome> {
+    const first = await attemptPiece(input, pieceText, onServedBy);
+    if (first.text !== undefined || !isPaidFailure(first.error)) return first;
+    const parts = splitTranscriptIntoPieces(
+        pieceText,
+        TRANSLITERATION_RETRY_PIECE_CHARS,
+    );
+    // A piece that cannot be split smaller is not sent again as it was.
+    if (parts.length < 2) return withPosition(first, position);
+    const outcome: IPieceOutcome = {
+        ...first,
+        error: undefined,
+        retried: true,
+    };
+    const texts: string[] = [];
+    for (const part of parts) {
+        const attempt = await attemptPiece(input, part.text, onServedBy);
+        outcome.costUsd = (outcome.costUsd ?? 0) + (attempt.costUsd ?? 0);
+        outcome.costUnknown ||= attempt.costUnknown;
+        if (attempt.error !== undefined)
+            return withPosition(
+                { ...outcome, error: attempt.error },
+                position,
+                {
+                    retried: true,
+                },
+            );
+        texts.push(attempt.text!);
+    }
+    return {
+        ...outcome,
+        text: joinTranscriptPieces(
+            parts.map((part, index) => ({
+                text: texts[index]!,
+                separator: part.separator,
+            })),
+        ),
+    };
+}
+
+async function attemptPiece(
+    input: ITransliterationCallInput,
+    pieceText: string,
+    onServedBy: (servedBy: string) => void,
+): Promise<IPieceOutcome> {
+    try {
+        const result = await transliteratePiece({
+            ...input,
+            sourceTranscript: pieceText,
+        });
+        if (result.servedBy) onServedBy(result.servedBy);
+        return {
+            text: result.text,
+            costUsd: result.costUsd,
+            costUnknown: result.costUsd === undefined,
+            retried: false,
+        };
+    } catch (error) {
+        const costUsd = transliterationFailureCostUsd(error);
+        return {
+            error,
+            costUsd,
+            // A call that failed before it was answered cost nothing known.
+            costUnknown:
+                error instanceof TransliterationFailedError &&
+                costUsd === undefined,
+            retried: false,
+        };
+    }
+}
+
+function isPaidFailure(error: unknown): boolean {
+    return error instanceof TransliterationFailedError;
+}
+
+/** Names which piece failed, when the transcript was sent in pieces. */
+function withPosition(
+    outcome: IPieceOutcome,
+    position: { index: number; count: number },
+    options: { retried?: boolean } = {},
+): IPieceOutcome {
+    if (position.count < 2 || !(outcome.error instanceof Error)) return outcome;
+    const retried = options.retried
+        ? ", also when retried in smaller parts"
+        : "";
+    const error = outcome.error;
+    const message = `Part ${position.index + 1} of ${position.count}${retried}: ${error.message}`;
+    return {
+        ...outcome,
+        error:
+            error instanceof TransliterationFailedError
+                ? new TransliterationFailedError(message, error.incurredCostUsd)
+                : error,
+    };
+}
+
+/**
+ * The failure to throw, carrying what every piece cost. A failure that is not
+ * a paid one (network, configuration) keeps its own type when nothing was
+ * spent, so callers see it as before.
+ */
+function withTotalCost(error: unknown, costUsd: number | undefined): unknown {
+    if (error instanceof TransliterationFailedError)
+        return new TransliterationFailedError(error.message, costUsd);
+    if (!costUsd) return error;
+    const wrapped = new TransliterationFailedError(
+        errorMessage(error),
+        costUsd,
+    );
+    (wrapped as Error & { cause?: unknown }).cause = error;
+    return wrapped;
+}
+
+/** One transliteration call for one piece of the transcript. */
+async function transliteratePiece(
+    input: ITransliterationCallInput & { sourceTranscript: string },
+): Promise<{ text: string; costUsd?: number; servedBy?: string }> {
     const apiKeys = input.apiKeys;
-    assertRecordedBaseUrl(apiKeys, input.config);
     const provider = getEvalProvider(apiKeys, {
         // "auto" when unset, as the cached variant records it (never the
         // FLASH_EVALS_LLM_PROVIDER default).
@@ -365,6 +588,11 @@ async function transliterateTranscript(input: {
     if (!text)
         throw new TransliterationFailedError(
             "Transliteration returned empty text.",
+            costUsd,
+        );
+    if (!transliterationLooksComplete(input.sourceTranscript, text))
+        throw new TransliterationFailedError(
+            `Transliteration came back incomplete: ${transcriptWordCount(text).toLocaleString("en-US")} words for ${transcriptWordCount(input.sourceTranscript).toLocaleString("en-US")} source words, so text would be missing.`,
             costUsd,
         );
     const servedBy = result.providerMetadata?.servedBy;

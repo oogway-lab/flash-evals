@@ -311,6 +311,10 @@ export interface IAudioTranscriptVariantMetadata {
     costSource?: "computed" | "unavailable";
     /** The hosting company that served the call, when the gateway says. */
     servedBy?: string;
+    /** Calls the transcript was sent in (long transcripts go in pieces). */
+    pieceCount?: number;
+    /** Pieces that came back incomplete and were sent again, smaller. */
+    retriedPieceCount?: number;
 }
 
 export type PromptKind = "eval" | "judge";
