@@ -5,3 +5,4 @@ apps/web/generated/
 apps/web/public/marketing/
 .dev.local/
 apps/web/.next-playwright/
+apps/web/server/db/migrations/meta/
