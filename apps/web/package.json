@@ -23,7 +23,7 @@
         "seed": "../../scripts/node-with-supabase-ca.mjs --env-file-if-exists=../api/.env --env-file-if-exists=.env --import tsx scripts/seed.ts"
     },
     "dependencies": {
-        "@ai-sdk/gateway": "^4.0.136",
+        "@ai-sdk/gateway": "^4.0.142",
         "@base-ui/react": "1.9.0",
         "@clerk/nextjs": "^7.9.25",
         "@flash-evals/api-contract": "workspace:*",
@@ -37,11 +37,11 @@
         "clsx": "^2.1.1",
         "drizzle-orm": "^0.45.4",
         "geist": "^1.9.2",
-        "lucide-react": "^1.70.0",
-        "next": "16.4.1",
+        "lucide-react": "^1.72.0",
+        "next": "16.4.6",
         "papaparse": "^5.7.0",
         "pg": "^8.23.1",
-        "pg-boss": "^12.38.1",
+        "pg-boss": "^12.38.2",
         "react": "^19.3.1",
         "react-dom": "^19.3.1",
         "sonner": "^2.0.8",
@@ -59,7 +59,7 @@
         "@types/pg": "^8.23.1",
         "@types/react": "^19.3.0",
         "@types/react-dom": "^19.3.0",
-        "ai": "^7.0.163",
+        "ai": "^7.0.169",
         "autoprefixer": "^10.6.2",
         "babel-plugin-react-compiler": "^1.0.0",
         "drizzle-kit": "^0.31.11",
@@ -67,7 +67,7 @@
         "postcss": "^8.5.32",
         "tailwindcss": "^4.3.4",
         "typescript": "^5.8.3",
-        "vitest": "^5.0.3",
+        "vitest": "^5.1.0",
         "wrangler": "^4.158.0"
     }
 }

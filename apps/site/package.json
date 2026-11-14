@@ -16,11 +16,11 @@
     "dependencies": {
         "@fontsource-variable/geist": "5.3.0",
         "@fontsource-variable/martian-mono": "5.3.0",
-        "astro": "7.4.7"
+        "astro": "7.4.10"
     },
     "devDependencies": {
         "@astrojs/check": "^0.9.11",
         "typescript": "^5.8.3",
-        "vitest": "^5.0.3"
+        "vitest": "^5.1.0"
     }
 }
