@@ -117,6 +117,7 @@ jobs:
       # has no exclusions, so packages are listed: add new ones that gain tests.
       - name: Unit tests
         run: >-
+          bun run --filter @flash-evals/api-contract test &&
           bun run --filter @flash-evals/llm-core test &&
           bun run --filter @flash-evals/secrets test
 
