@@ -135,7 +135,7 @@ fi
 if [ "$FAILED" -eq 0 ]; then
     echo "Split deployment readiness check passed."
     echo "Expected split topology: API uses bun run api:start:railway with FLASH_EVALS_API_START_WORKER=false; worker uses bun run worker and has no HTTP health check. This check does not inspect Railway service settings."
-    echo "This check validates repository launch scripts; it does not treat railway.json as the deployed configuration."
+    echo "This check validates repository launch scripts. Railway service settings live in .railway/railway.ts; check them with railway config plan."
 else
     exit 1
 fi

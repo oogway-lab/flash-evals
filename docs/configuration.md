@@ -165,42 +165,41 @@ References: [Cloudflare's Hyperdrive Supabase guide](https://developers.cloudfla
 [OpenNext's database guide](https://opennext.js.org/cloudflare/howtos/db), and
 [Supabase's connection and SSL guide](https://supabase.com/docs/guides/database/connecting-to-postgres#ssl).
 
-The root `railway.json` selects Railpack for the API build and keeps the
-`@flash-evals/api` workspace build command. Keep the root `packageManager` pin
-aligned with `bun.lock`; Railpack reads that field to select Bun
+`.railway/railway.ts` (Railway Infrastructure as Code) selects Railpack for both
+services and keeps the `@flash-evals/api` workspace build command. Keep the root
+`packageManager` pin aligned with `bun.lock`; Railpack reads that field to select Bun
 ([Node package-manager detection](https://railpack.com/languages/node#package-managers)).
 `railpack.json` also pins Node, because the API and worker run on Node and
 Railpack may otherwise install only Bun for a Bun project.
 
-For a split Railway topology, configure the API service with
-`bun run api:start:railway` and `FLASH_EVALS_API_START_WORKER=false`; configure a
-separate worker service with
+The file declares the split Railway topology. The API starts with
+`cd apps/api && NODE_ENV=production exec node ../../scripts/node-with-supabase-ca.mjs dist/railway.js`,
+runs `bun run db:migrate && bun run db:bootstrap-pilot-team` before each deploy,
+checks `/health` and needs `FLASH_EVALS_API_START_WORKER=false`. The separate
+worker starts with
 `cd apps/web && exec node ../../scripts/node-with-supabase-ca.mjs --import tsx scripts/worker.ts`
-and no HTTP health check. For a
-legacy service that reads Config as Code, set the worker's **Railway Config File**
-to `/railway.worker.json` and keep its source root at the repository root. The
-default `/railway.json` starts the API and checks `/health`; repository config
-overrides dashboard start and healthcheck settings. The separate worker file
-keeps the same Railpack build and runs the queue consumer through the Node TLS
-wrapper directly, with `exec` replacing the launch shell. It avoids package-manager
-processes between Railway and the worker; the wrapper isolates the child's
-process group so a group signal is not delivered twice, forwards termination
-signals and waits for the worker to drain. Shared packages are built during the
-image build, so this launch does not rebuild them at startup. The config allows
-30 seconds for shutdown. If you increase `FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS`, also increase the
-service's termination grace period above that window plus five seconds. The
-worker file has no migration or bootstrap command; those remain on the API.
-Keep the worker private with no public domain. The
-worker's process supervisor and `worker.ready` event establish liveness. The
-repository readiness scripts validate supported package commands and the API
-flag, but the actual start and healthcheck settings are per-service Railway
-settings and must be checked there. Check the effective config on the deployment
-details page before relying on the selected worker file. Railway has deprecated `railway.json` and
-`railway.toml`: new services cannot opt in, and existing services can use these
-files until the 2026-12-01 cutoff. For a new service that does not read Config as
-Code, configure the same worker settings directly on the service; do not expect
-the JSON file to apply. See [Railway Config as Code](https://docs.railway.com/config-as-code)
-for current configuration options.
+and has no HTTP health check. Both build from the repository root. The worker
+runs the queue consumer through the Node TLS wrapper directly, with `exec`
+replacing the launch shell. It avoids package-manager processes between Railway
+and the worker; the wrapper isolates the child's process group so a group signal
+is not delivered twice, forwards termination signals and waits for the worker to
+drain. Shared packages are built during the image build, so this launch does not
+rebuild them at startup. Both services allow 30 seconds for shutdown. If you
+increase `FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS`, also increase the worker's
+`drainingSeconds` above that window plus five seconds. The worker has no
+migration or bootstrap command; those remain on the API. Keep the worker private
+with no public domain. The worker's process supervisor and `worker.ready` event
+establish liveness.
+
+Railway does not read `.railway/` during deploys. Change these settings by
+editing the file, reviewing `railway config plan --environment production`, and
+then running `railway config apply --environment production`. Variables are
+unmanaged, so plan and apply never touch service variables. A clean plan
+("already up to date") confirms the services match the file; any other output
+is drift or a pending change. The repository readiness scripts validate
+supported package commands and the API flag, not Railway service settings. See
+[Railway Infrastructure as Code](https://docs.railway.com/infrastructure-as-code)
+and the [deployment guide](deployment.md#9-railway-api-and-separate-private-worker).
 
 ## Model providers
 

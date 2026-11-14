@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,9 +13,35 @@ const preload = fileURLToPath(
     ),
 );
 const bundledCa = join(root, "apps/web/config/supabase-root-2021-ca.pem");
-const config = JSON.parse(
-    readFileSync(join(root, "railway.worker.json"), "utf8"),
-) as { deploy: { startCommand: string } };
+const config = await workerConfig();
+
+// The worker's launch command as Railway runs it, read from .railway/railway.ts.
+async function workerConfig(): Promise<{ deploy: { startCommand: string } }> {
+    const program = (
+        (await import(
+            new URL("../../../.railway/railway.ts", import.meta.url).href
+        )) as {
+            default: (
+                ctx: { environment: string },
+                project: (name: string, definition: object) => object,
+            ) => Promise<{
+                resources: {
+                    name: string;
+                    deploy?: { startCommand?: string };
+                }[];
+            }>;
+        }
+    ).default;
+    const { resources } = await program(
+        { environment: "production" },
+        (name, rest) => ({ name, ...rest }),
+    );
+    const startCommand = resources.find(
+        (resource) => resource.name === "worker",
+    )?.deploy?.startCommand;
+    if (!startCommand) throw new Error("worker start command is missing");
+    return { deploy: { startCommand } };
+}
 
 interface IWorkerEvent {
     event: string;
