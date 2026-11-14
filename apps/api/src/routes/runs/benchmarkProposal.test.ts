@@ -24,7 +24,10 @@ vi.mock("./promptContext.js", () => ({
     evalProvider: vi.fn(),
 }));
 
-const db = {} as IDb;
+const query = vi.fn(async (_sql: string, _params?: unknown[]) => ({
+    rows: [] as unknown[],
+}));
+const db = { query } as unknown as IDb;
 const config = {} as IApiConfig;
 
 const schema: IJsonSchemaObject = {
@@ -190,6 +193,54 @@ describe("proposeBenchmarkTaskMapPayload", () => {
             "Extract competitors, a sales label and a summary.",
         );
         expect(request.prompt).toContain('"is_sales"');
+    });
+
+    it("records what the call cost in the spend ledger", async () => {
+        query.mockClear();
+        vi.mocked(evalProvider).mockResolvedValue({
+            complete: vi.fn(async () => ({
+                text: "",
+                parsed: undefined,
+                schemaViolation: true,
+                cost: { usd: 0.0123, source: "provider_reported" as const },
+                usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+                latencyMs: 1,
+            })),
+        });
+
+        // An unusable reply was still paid for.
+        await expect(
+            proposeBenchmarkTaskMapPayload(db, config, {
+                teamId: "team-1",
+                projectId: "project-1",
+                promptVersionId: "pv-1",
+            }),
+        ).rejects.toThrow("The model did not return a task map");
+
+        const insert = query.mock.calls.find(([sql]) =>
+            sql.includes("insert into spend_ledger"),
+        );
+        expect(insert?.[1]).toEqual(["team-1", "pv-1", 0.0123]);
+    });
+
+    it("refuses before calling the model once the daily cap is reached", async () => {
+        query.mockClear();
+        query.mockResolvedValueOnce({ rows: [{ spentUsd: "2.5" }] });
+        const complete = vi.fn();
+        vi.mocked(evalProvider).mockResolvedValue({ complete });
+
+        await expect(
+            proposeBenchmarkTaskMapPayload(
+                db,
+                { teamDailySpendCapUsd: 2 } as IApiConfig,
+                {
+                    teamId: "team-1",
+                    projectId: "project-1",
+                    promptVersionId: "pv-1",
+                },
+            ),
+        ).rejects.toThrow(/daily cap/);
+        expect(complete).not.toHaveBeenCalled();
     });
 
     it("reports a missing or truncated reply", async () => {

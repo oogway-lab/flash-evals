@@ -8,10 +8,15 @@ import {
     type ITaskMap,
 } from "@flash-evals/api-contract";
 import { rulePatternEngineErrors } from "@flash-evals/api-contract/rule-patterns";
+import {
+    completionCostFields,
+    type CompletionResult,
+} from "@flash-evals/llm-core";
 import type { IApiConfig } from "../../config.js";
 import type { IDb } from "../../db.js";
 import { ApiBadRequestError } from "../../errors.js";
 import { registryModelFor } from "../../modelRegistry.js";
+import { assertTeamSpendUnderCap } from "../../runLimits.js";
 import { resolveReasoningEffort } from "./creation.js";
 import { evalProvider, loadRunnablePromptContext } from "./promptContext.js";
 
@@ -97,7 +102,10 @@ interface IDraftTask {
 /**
  * Ask a model to read the prompt and propose a Task Map. A draft that fails
  * validation falls back to the schema-based proposal, with the problems
- * listed, so the caller always gets something to review.
+ * listed; no usable draft at all is an error.
+ *
+ * The call is paid with the team's key, so it is refused once the team's
+ * daily cap is reached, and what it cost goes into the spend ledger.
  */
 export async function proposeBenchmarkTaskMapPayload(
     db: IDb,
@@ -105,6 +113,11 @@ export async function proposeBenchmarkTaskMapPayload(
     input: IProposeBenchmarkTaskMapRequest,
 ): Promise<IProposeBenchmarkTaskMapResponse> {
     const context = await loadRunnablePromptContext(db, input);
+    await assertTeamSpendUnderCap(
+        db,
+        input.teamId,
+        config.teamDailySpendCapUsd,
+    );
     const schema = context.outputSchema as IJsonSchemaObject;
     const modelId =
         input.generatorModelId ??
@@ -120,6 +133,8 @@ export async function proposeBenchmarkTaskMapPayload(
         maxTokens: reasoning ? 8000 : 4000,
         reasoningEffort: resolveReasoningEffort(modelId, "low"),
     });
+    // Recorded before the reply is checked: an unusable reply was paid too.
+    await recordProposalSpend(db, input, modelId, result);
     const tasks = (result.parsed as { tasks?: IDraftTask[] } | undefined)
         ?.tasks;
     if (result.schemaViolation || !Array.isArray(tasks))
@@ -127,6 +142,29 @@ export async function proposeBenchmarkTaskMapPayload(
             "The model did not return a task map. Try again or use the schema-based proposal.",
         );
     return fromDraft(tasks, schema);
+}
+
+/**
+ * Add the proposal call's cost to the spend ledger, which the team daily cap
+ * sums. It has no run to hang off, so it is recorded directly (other spend is
+ * written by triggers on run tables), keyed by the prompt version it read.
+ */
+async function recordProposalSpend(
+    db: IDb,
+    input: IProposeBenchmarkTaskMapRequest,
+    modelId: string,
+    result: Pick<CompletionResult, "usage" | "cost">,
+): Promise<void> {
+    const { costUsd } = completionCostFields(
+        result,
+        registryModelFor(modelId)?.pricing,
+    );
+    if (costUsd === undefined || costUsd <= 0) return;
+    await db.query(
+        `insert into spend_ledger (team_id, source_table, source_id, kind, amount_usd)
+        values ($1, 'benchmark_task_map_proposals', $2, 'call', $3)`,
+        [input.teamId, input.promptVersionId, costUsd],
+    );
 }
 
 export function fromDraft(
