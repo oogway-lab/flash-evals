@@ -28,7 +28,7 @@ A **workflow** connects several steps when a single prompt is not enough.
 ## Run locally
 
 Flash Evals runs on macOS or Linux, and on Windows through WSL2. You need Git,
-Node.js **24.21.0** (the `.nvmrc`/CI pin), Bun **1.3.14**, and a running Docker
+Node.js **24.21.0** (the `.nvmrc`/CI pin), Bun **1.4.4**, and a running Docker
 Engine with Compose v2. The application runs on your host; Docker runs PostgreSQL.
 No Clerk, Supabase, or model-provider account is needed for the synthetic examples.
 

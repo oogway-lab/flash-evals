@@ -21,12 +21,12 @@ initializing examples; cloning does not make an existing database disposable.
 
 ## 1. Install the tools
 
-| Tool             | Version / purpose                                       | Installation reference                                                                      |
-| ---------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Git              | Clone and contribute                                    | Your operating system's Git package.                                                        |
-| Node.js          | **24.21.0**, pinned in [`.nvmrc`](../.nvmrc) and CI     | [Node downloads](https://nodejs.org/en/download); an existing Node version manager is fine. |
-| Bun              | **1.3.14**, pinned in [`package.json`](../package.json) | [Bun installation](https://bun.sh/docs/installation).                                       |
-| Docker + Compose | Running Engine and Compose v2 with `--wait` support     | [Docker installation options](https://docs.docker.com/compose/install/).                    |
+| Tool             | Version / purpose                                      | Installation reference                                                                      |
+| ---------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Git              | Clone and contribute                                   | Your operating system's Git package.                                                        |
+| Node.js          | **24.21.0**, pinned in [`.nvmrc`](../.nvmrc) and CI    | [Node downloads](https://nodejs.org/en/download); an existing Node version manager is fine. |
+| Bun              | **1.4.4**, pinned in [`package.json`](../package.json) | [Bun installation](https://bun.sh/docs/installation).                                       |
+| Docker + Compose | Running Engine and Compose v2 with `--wait` support    | [Docker installation options](https://docs.docker.com/compose/install/).                    |
 
 Docker Desktop includes Engine and Compose on macOS/Windows. Linux can use
 Docker Engine plus the Compose plugin. On Windows, enable
@@ -52,7 +52,7 @@ Bun is the package manager and script runner; the app itself still runs on
 Node. If Bun is absent, the official installer supports a pinned version:
 
 ```bash
-curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
+curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.4"
 ```
 
 Follow its shell/PATH instructions and reopen your terminal if requested. An
@@ -200,7 +200,7 @@ For code changes, tests, provider calls, MCP, or updates, continue with the
 
 | Symptom                                | What to check                                                                                                                               |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node/Bun missing or wrong version      | Use the same shell/environment as your checkout; activate `.nvmrc` and Bun 1.3.14. Reopen the shell after installing tools.                 |
+| Node/Bun missing or wrong version      | Use the same shell/environment as your checkout; activate `.nvmrc` and Bun 1.4.4. Reopen the shell after installing tools.                  |
 | Dependency installation fails          | Keep the lockfile; use `--frozen-lockfile`, check network access and the pinned tools. Avoid running installation as root.                  |
 | Docker daemon or socket inaccessible   | Start Docker; on Linux configure Docker access for your user and reconnect. In WSL2 enable integration for that distribution.               |
 | Compose does not recognize `--wait`    | Install/update the Compose v2 plugin; the command is `docker compose`, not legacy `docker-compose`.                                         |

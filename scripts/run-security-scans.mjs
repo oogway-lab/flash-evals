@@ -41,7 +41,7 @@ const scans = [
         name: "bun audit (production)",
         command: "bun",
         args: ["scripts/audit-production.mjs", "--audit-level=high"],
-        installHint: "install bun 1.3.14 (https://bun.sh)",
+        installHint: "install bun 1.4.4 (https://bun.sh)",
     },
 ];
 
