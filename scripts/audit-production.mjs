@@ -8,6 +8,7 @@ import {
     parseBunLock,
     productionAdvisories,
     productionVersions,
+    readAuditReport,
 } from "./lib/production-audit.mjs";
 
 if (typeof Bun === "undefined") {
@@ -25,10 +26,9 @@ const audit = spawnSync("bun", ["audit", "--json", ...ignores], {
 });
 let report;
 try {
-    report = JSON.parse(audit.stdout || "{}");
-} catch {
-    console.error("Could not read `bun audit --json` output.");
-    console.error(audit.stderr);
+    report = readAuditReport(audit);
+} catch (error) {
+    console.error(error.message);
     process.exit(2);
 }
 

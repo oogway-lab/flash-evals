@@ -5,6 +5,7 @@ import {
     parseBunLock,
     productionAdvisories,
     productionVersions,
+    readAuditReport,
 } from "./lib/production-audit.mjs";
 
 const lockText = `{
@@ -82,5 +83,43 @@ test("reports only production advisories at or above the level", () => {
     assert.deepEqual(
         findings.map((f) => [f.name, f.versions, f.advisory.title]),
         [["qs", ["6.0.0"], "old qs"]],
+    );
+});
+
+test("reads the advisory map whether or not bun audit found advisories", () => {
+    const report = { qs: [{ severity: "high" }] };
+    assert.deepEqual(
+        readAuditReport({ status: 1, stdout: JSON.stringify(report) }),
+        report,
+    );
+    assert.deepEqual(readAuditReport({ status: 0, stdout: "{}\n" }), {});
+    assert.deepEqual(readAuditReport({ status: 0, stdout: "" }), {});
+});
+
+test("treats a failed or unreadable bun audit as an error, not a clean report", () => {
+    assert.throws(
+        () =>
+            readAuditReport({
+                status: 1,
+                stdout: "",
+                stderr: "ConnectionRefused: audit request failed",
+            }),
+        /exited with code 1 and no report\.\nConnectionRefused/,
+    );
+    assert.throws(
+        () => readAuditReport({ error: new Error("spawn bun ENOENT") }),
+        /Could not run `bun audit`: spawn bun ENOENT/,
+    );
+    assert.throws(
+        () => readAuditReport({ status: null, signal: "SIGTERM", stdout: "" }),
+        /stopped by SIGTERM/,
+    );
+    assert.throws(
+        () => readAuditReport({ status: 1, stdout: "not json" }),
+        /Could not read/,
+    );
+    assert.throws(
+        () => readAuditReport({ status: 0, stdout: "[]" }),
+        /did not return an advisory map/,
     );
 });

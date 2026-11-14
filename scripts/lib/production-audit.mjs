@@ -11,6 +11,36 @@ const RUNTIME_FIELDS = [
     "peerDependencies",
 ];
 
+/**
+ * The advisory map from a `spawnSync("bun", ["audit", "--json"])` result.
+ * `bun audit` exits 1 both when it finds advisories (JSON on stdout) and when
+ * it cannot run at all (registry or network error, nothing on stdout), so an
+ * empty or unreadable report is an error, never "no advisories".
+ */
+export function readAuditReport({ status, signal, stdout, stderr, error }) {
+    const detail = (stderr ?? "").trim();
+    if (error) throw new Error(`Could not run \`bun audit\`: ${error.message}`);
+    if (signal) throw new Error(`\`bun audit\` was stopped by ${signal}.`);
+    const text = (stdout ?? "").trim();
+    if (text === "") {
+        if (status === 0) return {};
+        throw new Error(
+            `\`bun audit\` exited with code ${status} and no report.${detail ? `\n${detail}` : ""}`,
+        );
+    }
+    let report;
+    try {
+        report = JSON.parse(text);
+    } catch {
+        throw new Error(
+            `Could not read \`bun audit --json\` output.${detail ? `\n${detail}` : ""}`,
+        );
+    }
+    if (report === null || typeof report !== "object" || Array.isArray(report))
+        throw new Error("`bun audit --json` did not return an advisory map.");
+    return report;
+}
+
 /** bun.lock is JSON with trailing commas. */
 export function parseBunLock(text) {
     return JSON.parse(text.replace(/,(\s*[}\]])/g, "$1"));
