@@ -89,6 +89,7 @@
         "knip": "^6.44.1",
         "lint-staged": "^17.6.0",
         "prettier": "^3.9.10",
+        "railway": "3.16.0",
         "syncpack": "^15.3.3",
         "typedoc": "^0.28.14",
         "typescript-eslint": "^8.72.1"
