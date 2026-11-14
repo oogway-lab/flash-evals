@@ -284,4 +284,40 @@ describe("team base URL re-validation at use time", () => {
         });
         expect(providerComplete).toHaveBeenCalledWith(request);
     });
+
+    it("checks a Bifrost URL saved without /v1 when the client adds it", async () => {
+        const resolved = await resolveApiKeys(
+            dbRows([row("bifrost", "db-bifrost", "https://bifrost.example")]),
+            config(),
+            TEAM_ID,
+        );
+        providerComplete.mockClear();
+        const lookup = vi.fn(privateHost);
+        const provider = teamBaseUrlProviderOptions(resolved, lookup)
+            .createOpenAICompatibleProvider!("db-bifrost", {
+            // What the factory sends: bifrostApiBaseUrl() of the saved URL.
+            baseURL: "https://bifrost.example/v1",
+            providerLabel: "Bifrost",
+            transport: "bifrost",
+        });
+
+        await expect(
+            provider.complete({ model: "m", messages: [] } as never),
+        ).rejects.toMatchObject({ status: 400 });
+        expect(lookup).toHaveBeenCalledWith("bifrost.example");
+        expect(providerComplete).not.toHaveBeenCalled();
+    });
+
+    it("does not look up a URL on a host the team never saved", async () => {
+        const resolved = await teamKeys();
+        const lookup = vi.fn(privateHost);
+
+        await expect(
+            assertTeamBaseUrl(resolved, "https://other.example/v1", lookup),
+        ).resolves.toBeUndefined();
+        await expect(
+            assertTeamBaseUrl(resolved, "not a url", lookup),
+        ).resolves.toBeUndefined();
+        expect(lookup).not.toHaveBeenCalled();
+    });
 });

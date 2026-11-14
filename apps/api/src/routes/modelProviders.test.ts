@@ -199,6 +199,43 @@ describe("providerStatusPayload", () => {
         });
     });
 
+    it("re-checks a saved Bifrost address before fetching its model list", async () => {
+        const encKey = Buffer.alloc(32, 7).toString("base64");
+        const stored = {
+            provider: "bifrost",
+            ...encryptSecret(
+                "test-bifrost",
+                { teamId: TEAM_ID, provider: "bifrost" },
+                encKey,
+            ),
+            baseUrl: "https://bifrost.example",
+        };
+        const db = fakeDb((sql) =>
+            sql.includes("select provider from provider_keys")
+                ? [{ provider: "bifrost" }]
+                : [stored],
+        );
+        const config = {
+            flashEvalsLlmProvider: "auto",
+            flashEvalsSecretsEncKey: encKey,
+        } as IApiConfig;
+        const list = vi.fn(async () => []);
+
+        const status = await providerStatusPayload(
+            db,
+            config,
+            TEAM_ID,
+            { list },
+            async () => ["10.0.0.5"],
+        );
+
+        expect(list).not.toHaveBeenCalled();
+        expect(status.bifrost).toEqual({
+            baseUrlHost: "bifrost.example",
+            modelListError: expect.stringMatching(/no longer allowed/),
+        });
+    });
+
     it("rejects a bad team ID", async () => {
         await expect(
             providerStatusPayload(fakeDb(), {} as IApiConfig, "team-1"),

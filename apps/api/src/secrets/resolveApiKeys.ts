@@ -92,14 +92,29 @@ export async function resolveApiKeys(
  * a DNS change after save cannot point provider calls at a private address.
  * Operator env URLs are trusted and skipped, and providers that are not used
  * are never looked up.
+ *
+ * Matching is by origin, not the exact string: clients send to a derived URL
+ * (Bifrost adds `/v1` to an address saved without it), and DNS is per host.
  */
 export async function assertTeamBaseUrl(
     resolved: IResolvedProviderKeys,
     baseUrl: string | undefined,
     resolveHost?: ProviderHostResolver,
 ): Promise<void> {
-    if (baseUrl && resolved.storedBaseUrls.has(baseUrl)) {
-        await assertStoredProviderBaseUrl(baseUrl, resolveHost);
+    if (!baseUrl) return;
+    const origin = urlOrigin(baseUrl);
+    const stored = [...resolved.storedBaseUrls].find(
+        (url) => url === baseUrl || (origin && urlOrigin(url) === origin),
+    );
+    if (stored) await assertStoredProviderBaseUrl(stored, resolveHost);
+}
+
+function urlOrigin(url: string): string | undefined {
+    try {
+        const { origin } = new URL(url);
+        return origin === "null" ? undefined : origin;
+    } catch {
+        return undefined;
     }
 }
 

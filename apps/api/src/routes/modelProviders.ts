@@ -17,7 +17,12 @@ import {
 import type { IApiConfig } from "../config.js";
 import type { IDb } from "../db.js";
 import { ApiBadRequestError } from "../errors.js";
-import { resolveApiKeys } from "../secrets/resolveApiKeys.js";
+import type { ProviderHostResolver } from "../providerBaseUrl.js";
+import {
+    resolveApiKeys,
+    teamBaseUrlListingGuard,
+    type IResolvedProviderKeys,
+} from "../secrets/resolveApiKeys.js";
 import {
     bifrostHost,
     bifrostModelList,
@@ -48,6 +53,7 @@ export async function providerStatusPayload(
     config: IApiConfig,
     teamId: string,
     bifrostList?: IBifrostModelListDeps,
+    resolveHost?: ProviderHostResolver,
 ): Promise<IProviderStatusResponse> {
     validateTeamId(teamId);
     const [resolved, stored] = await Promise.all([
@@ -59,7 +65,7 @@ export async function providerStatusPayload(
     ]);
     const inSettings = new Set(stored.rows.map((row) => row.provider));
     const provider = defaultProvider(config);
-    const bifrost = await bifrostStatus(resolved.apiKeys, bifrostList);
+    const bifrost = await bifrostStatus(resolved, bifrostList, resolveHost);
     return {
         ...(provider ? { defaultProvider: provider } : {}),
         ...(bifrost ? { bifrost } : {}),
@@ -74,12 +80,28 @@ export async function providerStatusPayload(
 
 /** Bifrost's address host and whether its model list can be fetched. */
 async function bifrostStatus(
-    apiKeys: ApiKeys,
+    resolved: IResolvedProviderKeys,
     deps: IBifrostModelListDeps | undefined,
+    resolveHost: ProviderHostResolver | undefined,
 ): Promise<IProviderStatusResponse["bifrost"]> {
+    const { apiKeys } = resolved;
+    if (!apiKeys.bifrost || !apiKeys.bifrostBaseUrl) return undefined;
+    const host = bifrostHost(apiKeys.bifrostBaseUrl);
+    // The list is fetched with the team's key: re-check a saved address
+    // first, as every other Bifrost request does.
+    try {
+        await teamBaseUrlListingGuard(resolved, resolveHost)("bifrost");
+    } catch (error) {
+        return {
+            ...(host ? { baseUrlHost: host } : {}),
+            modelListError:
+                error instanceof Error
+                    ? error.message
+                    : "The saved Bifrost address could not be checked.",
+        };
+    }
     const listed = await bifrostModelList(apiKeys, deps);
     if (!listed) return undefined;
-    const host = bifrostHost(apiKeys.bifrostBaseUrl);
     return {
         ...(host ? { baseUrlHost: host } : {}),
         ...("error" in listed
