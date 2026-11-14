@@ -127,6 +127,26 @@ export interface IWorkflowLlmInvocationInput {
     outputMode?: WorkflowStepOutputMode;
 }
 
+/**
+ * A step failure after the provider answered (and billed): the answer broke
+ * the step's schema or could not be read. Carries what that call cost, so the
+ * executor records it against the run's limit and the team's daily cap.
+ */
+export class BilledStepError extends Error {
+    constructor(
+        message: string,
+        readonly costUsd: number,
+    ) {
+        super(message);
+        this.name = "BilledStepError";
+    }
+}
+
+/** What a failed step's call cost, when the provider answered and billed it. */
+export function billedCostOf(error: unknown): number | undefined {
+    return error instanceof BilledStepError ? error.costUsd : undefined;
+}
+
 export interface IWorkflowLlmInvocationResult {
     artifact: IWorkflowNodeArtifact;
     latencyMs: number;
@@ -241,8 +261,15 @@ export async function executeWorkflowLlmInvocation(
             lastError instanceof Error &&
             (lastError.message.includes("violated the captured schema") ||
                 lastError.message.startsWith(LOOSE_OUTPUT_PROBLEM))
-        )
-            throw lastError;
+        ) {
+            // The provider answered, so the call was paid for.
+            const billedUsd = result
+                ? costFrom(result, input.pricing).usd
+                : undefined;
+            throw billedUsd !== undefined && billedUsd > 0
+                ? new BilledStepError(lastError.message, billedUsd)
+                : lastError;
+        }
         // The provider's own message (e.g. OpenRouter's "No allowed
         // providers are available …") is kept, redacted and capped, so the
         // step result says why.

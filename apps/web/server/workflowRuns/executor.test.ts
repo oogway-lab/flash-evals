@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as LlmInvocation from "./llmInvocation";
 
 const mocks = vi.hoisted(() => ({
     cells: [] as Array<Record<string, any>>,
@@ -280,7 +281,8 @@ vi.mock("../db/client", () => ({
 }));
 
 vi.mock("../jobs/runOrchestrator", () => ({ executeCell: mocks.executeCell }));
-vi.mock("./llmInvocation", () => ({
+vi.mock("./llmInvocation", async (importOriginal) => ({
+    billedCostOf: (await importOriginal<typeof LlmInvocation>()).billedCostOf,
     executeWorkflowLlmInvocation: vi.fn(async (input: any) => {
         const result = await mocks.executeCell(
             input.execution.route.modelId,
@@ -530,15 +532,15 @@ describe("executeWorkflowRun", () => {
 
     it("does not count a resumed step's already recorded spend twice", async () => {
         mocks.run = { configSnapshot: { maxCostUsd: 1 } };
-        // An earlier pass recorded 0.9 on step A (an STT step's paid
-        // chunks); its total now is 0.95, so this pass paid 0.05.
+        // An earlier pass recorded 0.9 on step A (a billed call whose answer
+        // failed its schema); this pass's call for A costs 0.05.
         mocks.cells[0]!.costUsd = 0.9;
         mocks.spend.cells = 0.9;
         mocks.executeCell
             .mockResolvedValueOnce({
                 outputText: "answer",
                 latencyMs: 1,
-                costUsd: 0.95,
+                costUsd: 0.05,
             })
             .mockResolvedValue({
                 outputText: "answer",
@@ -553,6 +555,48 @@ describe("executeWorkflowRun", () => {
         expect(mocks.updatePayloads.at(-1)).not.toMatchObject({
             stopReason: "spend_cap",
         });
+        // A's total keeps the earlier billed call: 0.9 + 0.05.
+        expect(mocks.updatePayloads).toContainEqual(
+            expect.objectContaining({
+                status: "succeeded",
+                costUsd: expect.closeTo(0.95, 9),
+            }),
+        );
+    });
+
+    it("records a billed call whose answer failed the step's schema", async () => {
+        const { BilledStepError } =
+            await vi.importActual<typeof LlmInvocation>("./llmInvocation");
+        mocks.cells[0]!.costUsd = 0.25;
+        mocks.executeCell.mockRejectedValueOnce(
+            new BilledStepError(
+                "Workflow LLM returned output that violated the captured schema.",
+                0.004,
+            ),
+        );
+
+        await executeWorkflowRun("run-1");
+
+        expect(mocks.updatePayloads).toContainEqual(
+            expect.objectContaining({
+                status: "failed",
+                costUsd: expect.closeTo(0.254, 9),
+            }),
+        );
+    });
+
+    it("records no cost when a step fails before the provider answers", async () => {
+        mocks.executeCell.mockRejectedValueOnce(
+            new Error("Workflow LLM invocation failed (authentication)."),
+        );
+
+        await executeWorkflowRun("run-1");
+
+        const failed = mocks.updatePayloads.find(
+            (payload: any) => payload.status === "failed" && "error" in payload,
+        );
+        expect(failed).toBeDefined();
+        expect(failed).not.toHaveProperty("costUsd");
     });
 
     it("counts a step's judge calls before the next spend read", async () => {

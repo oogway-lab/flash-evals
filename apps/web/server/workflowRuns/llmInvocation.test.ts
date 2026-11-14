@@ -15,6 +15,8 @@ vi.mock("../llm/providerConcurrency", () => ({
 }));
 
 import {
+    billedCostOf,
+    BilledStepError,
     completeWithProviderLimit,
     envWorkflowCredential,
     executeWorkflowLlmInvocation,
@@ -432,6 +434,44 @@ describe("workflow explicit LLM invocation", () => {
         ).rejects.toThrow("authentication");
         expect(failed.complete).toHaveBeenCalledTimes(1);
         expect(failed.publishReuse).not.toHaveBeenCalled();
+    });
+
+    it("carries a schema-failed call's cost so the executor can record it", async () => {
+        const harness = deps({
+            complete: vi.fn().mockResolvedValue({
+                ...completion,
+                schemaViolation: true,
+                parsed: undefined,
+                cost: { usd: 0.0042, source: "provider_reported" },
+            }),
+        });
+
+        const error = await executeWorkflowLlmInvocation(
+            {
+                ...invocation,
+                responseSchema: { name: "output", schema: { type: "object" } },
+            },
+            harness,
+        ).catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(BilledStepError);
+        expect((error as Error).message).toMatch(
+            /violated the captured schema/,
+        );
+        expect(billedCostOf(error)).toBe(0.0042);
+    });
+
+    it("carries no cost when the provider call itself failed", async () => {
+        const failed = deps({
+            complete: vi
+                .fn()
+                .mockRejectedValue(new Error("401 invalid API key")),
+        });
+        const error = await executeWorkflowLlmInvocation(
+            invocation,
+            failed,
+        ).catch((caught: unknown) => caught);
+        expect(billedCostOf(error)).toBeUndefined();
     });
 
     it("does not publish incomplete structured output", async () => {

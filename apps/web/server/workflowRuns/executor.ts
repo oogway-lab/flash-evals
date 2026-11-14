@@ -44,7 +44,7 @@ import {
     executeSttWorkflowNode,
     type ISttNodeExecutionResult,
 } from "./nodes/executeSttWorkflowNode";
-import { executeWorkflowLlmInvocation } from "./llmInvocation";
+import { billedCostOf, executeWorkflowLlmInvocation } from "./llmInvocation";
 import { failedStepMessage } from "./stepError";
 import {
     createWorkflowRunStopGuard,
@@ -98,10 +98,7 @@ async function executeWorkflowNode(input: {
     const upstreamCells = input.upstreamCells.filter(
         ({ edge }) => edge.orderOnly !== true,
     );
-    if (
-        context.kind === "stt" ||
-        (context.kind === "multi" && (node.nodeType ?? "prompt") !== "prompt")
-    )
+    if (runsAsSttNode(node, context))
         return executeSttWorkflowNode({
             cell,
             item,
@@ -146,6 +143,49 @@ async function executeWorkflowNode(input: {
             ? { outputMode: node.stepSettings.outputMode }
             : {}),
     });
+}
+
+/**
+ * Whether a step runs through the STT node path. Its recorded cost is a
+ * running total across passes; an LLM step's cost is per call.
+ */
+function runsAsSttNode(
+    node: IWorkflowSnapshot["nodes"][number],
+    context: ILayerTaskContext,
+): boolean {
+    return (
+        context.kind === "stt" ||
+        (context.kind === "multi" && (node.nodeType ?? "prompt") !== "prompt")
+    );
+}
+
+/**
+ * A succeeded step's recorded cost. An STT step reports its running total;
+ * an LLM step reports this call only, so what earlier failed-but-billed
+ * passes recorded is added to it.
+ */
+function succeededStepCostUsd(
+    callCostUsd: number | undefined,
+    recordedUsd: number,
+    runningTotal: boolean,
+): number | null {
+    if (runningTotal || recordedUsd === 0) return callCostUsd ?? null;
+    return recordedUsd + (callCostUsd ?? 0);
+}
+
+/**
+ * A call that was answered and billed but failed the step (e.g. its answer
+ * broke the schema) still counts toward the run's spend limit and the team's
+ * daily cap: it is added to what the step has recorded.
+ */
+function failedStepCost(
+    error: unknown,
+    recordedUsd: number,
+): { set: { costUsd?: number }; paidUsd: number } {
+    const paidUsd = billedCostOf(error) ?? 0;
+    return paidUsd > 0
+        ? { set: { costUsd: recordedUsd + paidUsd }, paidUsd }
+        : { set: {}, paidUsd: 0 };
 }
 
 function workflowRunStatus(
@@ -331,6 +371,11 @@ async function executeClaimedCell(
         } finally {
             releasePermit();
         }
+        const stepCostUsd = succeededStepCostUsd(
+            execution.costUsd,
+            recordedUsd,
+            runsAsSttNode(node, context),
+        );
         await db
             .update(workflowRunCells)
             .set({
@@ -338,7 +383,7 @@ async function executeClaimedCell(
                 inputText,
                 outputJson: execution.artifact,
                 latencyMs: execution.latencyMs,
-                costUsd: execution.costUsd ?? null,
+                costUsd: stepCostUsd,
                 error: null,
             })
             .where(eq(workflowRunCells.id, cell.id));
@@ -369,9 +414,7 @@ async function executeClaimedCell(
         // step's cost minus what an earlier pass already recorded on it (an
         // STT step's cost is a running total of its paid chunks), plus its
         // judge calls.
-        return (
-            Math.max(0, (execution.costUsd ?? 0) - recordedUsd) + judgePaidUsd
-        );
+        return Math.max(0, (stepCostUsd ?? 0) - recordedUsd) + judgePaidUsd;
     } catch (error) {
         // Shown in the step result: redacted and capped like provider text.
         const message = failedStepMessage(error);
@@ -380,11 +423,12 @@ async function executeClaimedCell(
             cellId: cell.id,
             ...safeWorkerError(error),
         });
+        const billed = failedStepCost(error, recordedUsd);
         await db
             .update(workflowRunCells)
-            .set({ status: "failed", inputText, error: message })
+            .set({ status: "failed", inputText, error: message, ...billed.set })
             .where(eq(workflowRunCells.id, cell.id));
-        return 0;
+        return billed.paidUsd;
     }
 }
 
