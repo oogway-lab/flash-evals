@@ -64,4 +64,31 @@ describe("STT canvas connection validation", () => {
             ),
         ).toMatch(/cycle/i);
     });
+
+    it("lets any step start or join a chain in a prompt pipeline, but no cycles", () => {
+        const steps = ["one", "two", "three"].map(
+            (id) =>
+                ({
+                    id,
+                    position: { x: 0, y: 0 },
+                    data: { nodeKey: id, label: id, nodeType: "prompt" },
+                }) as Node<ISttGraphNodeData>,
+        );
+        const edges = [{ source: "one", target: "two" }] as Edge[];
+        expect(
+            validateSttGraphConnection(steps, edges, "two", "three", "none"),
+        ).toBeUndefined();
+        expect(
+            validateSttGraphConnection(steps, edges, "three", "one", "none"),
+        ).toBeUndefined();
+        expect(
+            validateSttGraphConnection(
+                steps,
+                [...edges, { source: "two", target: "three" }] as Edge[],
+                "three",
+                "one",
+                "none",
+            ),
+        ).toMatch(/cycle/);
+    });
 });

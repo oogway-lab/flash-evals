@@ -15,18 +15,47 @@ const schema = {
     },
 };
 
-const validPrompt = "Analyze the sample and return only JSON matching the schema.";
+const validPrompt =
+    "Analyze the sample and return only JSON matching the schema.";
 
 describe("staticPromptChecks", () => {
     it("warns when JSON is not explicitly requested", () => {
         expect(staticPromptChecks("Describe the meal.")).toContainEqual(
-            expect.objectContaining({ code: "prompt_missing_json_instruction" }),
+            expect.objectContaining({
+                code: "prompt_missing_json_instruction",
+            }),
         );
     });
 
     it("hard-fails conflicting prose outside JSON instructions", () => {
         expect(
-            staticPromptChecks("Return JSON, then explain your reasoning below."),
+            staticPromptChecks(
+                "Return JSON, then explain your reasoning below.",
+            ),
+        ).toContainEqual(
+            expect.objectContaining({ code: "prompt_conflicting_json" }),
+        );
+    });
+
+    it("allows Markdown inside fields when the reply must be only JSON", () => {
+        expect(
+            staticPromptChecks(
+                "Write the notes field as a list. Use markdown formatting with headings.\nRespond with ONLY valid JSON.",
+            ),
+        ).toEqual([]);
+    });
+
+    it("still flags Markdown when JSON-only is not required", () => {
+        expect(
+            staticPromptChecks("Return JSON. Use markdown for the answer."),
+        ).toContainEqual(
+            expect.objectContaining({ code: "prompt_conflicting_json" }),
+        );
+    });
+
+    it("still flags explanations after JSON-only replies", () => {
+        expect(
+            staticPromptChecks("Return only JSON, then explain your choice."),
         ).toContainEqual(
             expect.objectContaining({ code: "prompt_conflicting_json" }),
         );
@@ -50,7 +79,9 @@ describe("parseStrictJsonOnly", () => {
     });
 
     it("rejects fenced JSON wrappers", () => {
-        expect(parseStrictJsonOnly('```json\n{"title":"oatmeal"}\n```')).toEqual({
+        expect(
+            parseStrictJsonOnly('```json\n{"title":"oatmeal"}\n```'),
+        ).toEqual({
             ok: false,
             error: expect.objectContaining({ code: "json_wrapper" }),
         });

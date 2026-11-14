@@ -76,6 +76,15 @@ describe("shared status badges", () => {
         expect(screen.getByText("Runnable")).toBeInTheDocument();
     });
 
+    it("says a runnable prompt saved without a model check wasn't checked", () => {
+        render(
+            <PromptStatusBadge status="runnable" modelCheck="not_checked" />,
+        );
+        expect(
+            screen.getByText("Runnable, not checked on a model"),
+        ).toBeInTheDocument();
+    });
+
     it("renders key and probe states as text", () => {
         render(
             <>

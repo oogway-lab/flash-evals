@@ -5,6 +5,7 @@ import { flashEvalsTenancyMode } from "@/server/auth/session";
 import { requireActiveProject } from "@/server/projects/activeProject";
 import { ProviderKeysForm } from "./keys-form";
 import { LlmRoutingForm } from "./llm-routing-form";
+import { ProviderStatus } from "./provider-status";
 import { ProjectNameForm } from "./project-name-form";
 import { TeamCard } from "./team-card";
 
@@ -12,10 +13,13 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
     const active = await requireActiveProject();
-    const [keys, probeState, routingState] = await Promise.all([
+    const [keys, probeState, routingState, providerStatus] = await Promise.all([
         serverApiClient().listProviderKeys(active.teamId),
         loadRouteProbes(active.teamId, active.projectId),
         loadLlmRouting(active.teamId, active.projectId),
+        serverApiClient()
+            .getProviderStatus(active.teamId)
+            .catch(() => undefined),
     ]);
     const { probes, probeNotice } = probeState;
     const routing = routingState;
@@ -35,6 +39,7 @@ export default async function SettingsPage() {
                         )?.name ?? ""
                     }
                 />
+                <ProviderStatus status={providerStatus} />
                 <ProviderKeysForm
                     keys={keys}
                     probes={probes}

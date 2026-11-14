@@ -12,13 +12,25 @@
             "import": "./dist/index.js",
             "require": "./dist/index.js",
             "default": "./dist/index.js"
+        },
+        "./rule-patterns": {
+            "types": "./src/rulePatterns.ts",
+            "import": "./dist/rulePatterns.js",
+            "require": "./dist/rulePatterns.js",
+            "default": "./dist/rulePatterns.js"
         }
     },
     "scripts": {
-        "build": "tsc -p tsconfig.json",
-        "typecheck": "tsc --noEmit"
+        "build": "tsc -p tsconfig.build.json",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage"
     },
     "devDependencies": {
-        "typescript": "^5.8.3"
+        "typescript": "^5.8.3",
+        "vitest": "^5.0.3"
+    },
+    "dependencies": {
+        "re2js": "2.9.0"
     }
 }

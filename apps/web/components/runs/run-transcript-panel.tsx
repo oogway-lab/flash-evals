@@ -11,7 +11,9 @@ import { TranscriptStatusBadge } from "@/components/ui/status-badge";
 import { JsonBlock } from "@/components/ui/json-block";
 import { fmtDate } from "@/lib/format";
 import {
+    VOLUME_LEVELLED_LABEL,
     sttVariantDisplaysForTranscript,
+    transcriptVolumeLevelled,
     type ISttVariantDisplay,
 } from "./stt-variant-display";
 import { Metric, MetricList } from "@/components/ui/metric";
@@ -56,6 +58,7 @@ export function RunTranscriptPanel({
                         </div>
                         <div className="flex flex-wrap items-center gap-3 text-copy-14 text-muted-foreground">
                             <TranscriptStatusBadge status={transcript.status} />
+                            <VolumeLevelledNote transcript={transcript} />
                             {transcript.detectedLanguage && (
                                 <span>{transcript.detectedLanguage}</span>
                             )}
@@ -206,4 +209,14 @@ function configSummary(config: Record<string, unknown>): string {
 
 function hasConfig(config: Record<string, unknown>): boolean {
     return Object.keys(config).length > 0;
+}
+
+function VolumeLevelledNote({
+    transcript,
+}: {
+    transcript: IRunAudioTranscriptSummary;
+}) {
+    return transcriptVolumeLevelled(transcript) ? (
+        <span>{VOLUME_LEVELLED_LABEL}</span>
+    ) : null;
 }

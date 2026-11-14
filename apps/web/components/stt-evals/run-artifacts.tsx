@@ -73,6 +73,10 @@ export function cellOutput(
             )
             .join(" ");
     }
+    if (cell.status === "skipped")
+        return (
+            cell.outputJson?.skipReason ?? "Skipped: no model call was made."
+        );
     return cell.outputJson?.text || cell.error || undefined;
 }
 

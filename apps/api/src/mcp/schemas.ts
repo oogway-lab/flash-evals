@@ -57,7 +57,176 @@ export const ProviderTransport = z.enum([
     "gateway",
     "openrouter",
     "bifrost",
+    "anthropic",
+    "google",
 ]);
+const BenchmarkSource = z.enum(["model", "labels"]);
+const BenchmarkTaskBase = {
+    key: z.string().min(1).describe('Lowercase id, e.g. "competitors".'),
+    name: z.string().min(1),
+    description: z.string().optional(),
+    source: BenchmarkSource.optional().describe(
+        "This task's yardstick; the run's benchmark.source when absent.",
+    ),
+};
+export const BenchmarkConfig = z
+    .object({
+        source: BenchmarkSource.optional().describe(
+            '"model" (default): referenceModel is the benchmark. "labels": the dataset\'s stored answers are the benchmark and every model is a candidate. A task\'s own source overrides it, e.g. one hand-checked field against the stored answers and the rest against referenceModel.',
+        ),
+        taskMap: z.object({
+            tasks: z
+                .array(
+                    z.discriminatedUnion("method", [
+                        z.object({
+                            ...BenchmarkTaskBase,
+                            method: z.literal("agreement"),
+                            fields: z
+                                .array(
+                                    z.intersection(
+                                        z.object({ path: z.string().min(1) }),
+                                        FieldMatcherSpec,
+                                    ),
+                                )
+                                .min(1),
+                            judgeDisagreements: z.boolean().optional(),
+                            textMatching: z
+                                .object({
+                                    aliases: z
+                                        .record(
+                                            z.string().min(1),
+                                            z.array(z.string().min(1)),
+                                        )
+                                        .optional(),
+                                    fuzzy: z.number().gt(0).max(1).optional(),
+                                })
+                                .optional()
+                                .describe(
+                                    "Text is always compared ignoring case, accents, spaces and punctuation. aliases maps a canonical name to other spellings; fuzzy (0-1, e.g. 0.85) also matches close spellings.",
+                                ),
+                        }),
+                        z.object({
+                            ...BenchmarkTaskBase,
+                            method: z.literal("head_to_head"),
+                            paths: z.array(z.string().min(1)).min(1),
+                            rubric: z.string().optional(),
+                        }),
+                        z.object({
+                            ...BenchmarkTaskBase,
+                            method: z.literal("rules"),
+                            rules: z
+                                .array(
+                                    z.object({
+                                        key: z.string().min(1),
+                                        name: z.string().min(1),
+                                        kind: z.enum([
+                                            "pattern_absent",
+                                            "in_list",
+                                            "contains_all",
+                                            "word_count",
+                                        ]),
+                                        paths: z
+                                            .array(z.string().min(1))
+                                            .min(1),
+                                        patterns: z
+                                            .array(z.string().min(1))
+                                            .optional()
+                                            .describe(
+                                                "pattern_absent: case-insensitive regular expressions (JavaScript syntax, no lookarounds or backreferences) that must not appear.",
+                                            ),
+                                        allowed: z
+                                            .array(z.string())
+                                            .optional()
+                                            .describe(
+                                                "in_list: every value in the fields must be one of these.",
+                                            ),
+                                        required: z
+                                            .array(z.string())
+                                            .optional()
+                                            .describe(
+                                                "contains_all: text the fields must contain (an empty field passes).",
+                                            ),
+                                        min: z
+                                            .number()
+                                            .int()
+                                            .min(0)
+                                            .optional()
+                                            .describe(
+                                                "word_count: fewest words each field may hold (words are runs of non-whitespace; a list of strings counts as one text; a missing or non-text field fails). Set min, max or both. Put length limits here, not in a head_to_head rubric or rubric criteria: LLM judges miscount words.",
+                                            ),
+                                        max: z
+                                            .number()
+                                            .int()
+                                            .min(0)
+                                            .optional()
+                                            .describe(
+                                                "word_count: most words each field may hold.",
+                                            ),
+                                    }),
+                                )
+                                .min(1),
+                        }),
+                        z.object({
+                            ...BenchmarkTaskBase,
+                            method: z.literal("rubric"),
+                            paths: z.array(z.string().min(1)).min(1),
+                            criteria: z
+                                .array(
+                                    z.object({
+                                        key: z.string().min(1),
+                                        name: z.string().min(1),
+                                        description: z.string().optional(),
+                                    }),
+                                )
+                                .min(1)
+                                .describe(
+                                    "The judge scores every model's answer, the reference's included, 1-5 on each criterion.",
+                                ),
+                            instructions: z
+                                .string()
+                                .optional()
+                                .describe(
+                                    "Extra context for the judge, e.g. official product names.",
+                                ),
+                        }),
+                    ]),
+                )
+                .min(1),
+        }),
+        judge: z
+            .object({
+                modelId: z.string().min(1),
+                transport: ProviderTransport.optional(),
+                reasoningEffort: ReasoningEffort.optional(),
+            })
+            .optional(),
+        policy: z
+            .object({
+                minAgreement: z.number().min(0).max(1).optional(),
+                minWinOrTieRate: z.number().min(0).max(1).optional(),
+                maxRelativeCost: z.number().positive().optional(),
+                tasks: z
+                    .record(
+                        z.string(),
+                        z.object({
+                            minAgreement: z.number().min(0).max(1).optional(),
+                            minWinOrTieRate: z
+                                .number()
+                                .min(0)
+                                .max(1)
+                                .optional(),
+                        }),
+                    )
+                    .optional(),
+            })
+            .optional()
+            .describe(
+                "Verdict limits. Rates are 0 to 1; maxRelativeCost is cost as a share of the benchmark's (0.4 = 40%). Defaults: 0.9 agreement, 0.9 won-or-tied, no cost limit.",
+            ),
+    })
+    .describe(
+        "Score every model against referenceModel, task by task. Agreement tasks compare output fields at JSON paths like $.competitors; head_to_head tasks ask the judge model, blind, which answer is better; rules tasks run fixed checks on each model's own answer (no yardstick, no model call).",
+    );
 export const JudgeDeclaredInput = z.enum([
     "task_input",
     "candidate_output",
@@ -167,7 +336,33 @@ export const WorkflowEdgeInput = z.object({
     fromNodeKey: z.string().min(1),
     toNodeKey: z.string().min(1),
     carryOriginalInput: z.boolean(),
+    orderOnly: z
+        .boolean()
+        .optional()
+        .describe(
+            "Order only: the target step runs after the source (so its run condition can check it) but reads the original input, not the source's answer.",
+        ),
 });
+
+export const RunDataPolicy = z
+    .object({
+        onlyHosts: z
+            .array(z.string().min(1).max(63))
+            .max(30)
+            .optional()
+            .describe(
+                'Hosting companies allowed to serve calls, in the gateway\'s own names (Vercel: "vertex", "bedrock"; OpenRouter: "google-vertex", "together").',
+            ),
+        zeroDataRetention: z
+            .boolean()
+            .optional()
+            .describe("Only hosts with a zero-data-retention agreement."),
+        disallowPromptTraining: z
+            .boolean()
+            .optional()
+            .describe("Only hosts that don't train on prompts."),
+    })
+    .strict();
 
 export const SttRunConfig = z.object({
     modelId: z.string().min(1),
@@ -176,6 +371,7 @@ export const SttRunConfig = z.object({
             "openai",
             "vercel-gateway",
             "soniox",
+            "elevenlabs",
             "openrouter",
             "bifrost",
             "gemini",
@@ -185,6 +381,12 @@ export const SttRunConfig = z.object({
     canonicalModelId: z.string().optional(),
     language: z.string().optional(),
     config: JsonObject.optional(),
+    levelVolume: z
+        .boolean()
+        .optional()
+        .describe(
+            "Level volume first: normalise loudness with FFmpeg (loudnorm I=-23, TP=-2, LRA=11; 16 kHz mono WAV) before the audio goes to the provider. Use for quiet recordings or when transcripts come back empty. Off by default.",
+        ),
     transcriptVariant: z.enum(["raw", "latin"]).optional(),
     transliteration: z
         .object({
@@ -217,6 +419,52 @@ export const SttRunConfig = z.object({
         .optional(),
 });
 
+const WorkflowStepCondition = z
+    .object({
+        stepKey: z.string().min(1),
+        path: z.string(),
+        operator: z.enum(["equals", "one_of"]),
+        values: z
+            .array(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+            .min(1),
+        ignoreCase: z
+            .boolean()
+            .optional()
+            .describe('Compare text ignoring case ("Sales" matches "sales").'),
+    })
+    .strict();
+
+const WorkflowStepSettings = z
+    .object({
+        temperature: z
+            .number()
+            .min(0)
+            .max(2)
+            .optional()
+            .describe("0 to 2; not sent to models that refuse temperature."),
+        maxOutputTokens: z
+            .number()
+            .int()
+            .min(1)
+            .max(200_000)
+            .optional()
+            .describe("Most output tokens per call, thinking included."),
+        outputMode: z
+            .enum(["json_schema", "json_object", "text"])
+            .optional()
+            .describe(
+                "Steps with an output schema: json_schema (default) has the provider enforce it; json_object asks for any JSON object; text asks for nothing and reads the JSON object from the reply. The schema checks the parsed answer in the last two.",
+            ),
+        inputTemplate: z
+            .string()
+            .max(20_000)
+            .optional()
+            .describe(
+                "Builds the step's user message instead of the default <input>/<from node> blocks. Placeholders: {{input}} (the whole item), {{input.<name>}} (the item's <name>…</name> section, or a JSON item's field), {{input.<name>.<field>}} (a field of the JSON inside that section), {{Step.$.path}} (an earlier step's answer, by label or key; only steps upstream of this one), {{Step.$ | pick:a,b}} (some fields as one JSON object).",
+            ),
+    })
+    .strict();
+
 const WorkflowNodeBase = {
     // Echoed back by `get_workflow` and meaningless on write. Accepted and
     // ignored so an agent can edit a graph it just read without stripping the
@@ -231,6 +479,23 @@ const WorkflowNodeBase = {
         .object({ x: z.number().finite(), y: z.number().finite() })
         .nullable()
         .optional(),
+    runCondition: z
+        .union([
+            WorkflowStepCondition,
+            z
+                .object({ all: z.array(WorkflowStepCondition).min(1).max(20) })
+                .strict(),
+        ])
+        .nullable()
+        .optional()
+        .describe(
+            'Run this step only when fields of earlier steps\' answers match: one condition, or { "all": [...] } for several that must all hold. Otherwise it and later steps are skipped for that item.',
+        ),
+    stepSettings: WorkflowStepSettings.nullable()
+        .optional()
+        .describe(
+            "Prompt and LLM text steps only: settings sent on every call of this step, on every provider. Unset values keep the route's (Simple mode: 4,096 output tokens, no temperature).",
+        ),
 };
 
 const WorkflowLlmNodeBase = {

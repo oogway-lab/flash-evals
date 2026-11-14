@@ -248,7 +248,21 @@ export function sttConfigForModel(
             ? { language: current.language }
             : {}),
         ...(Object.keys(config).length ? { config } : {}),
+        // Levelling applies to every provider route, so a model switch keeps it.
+        ...(current.levelVolume === true ? { levelVolume: true } : {}),
     };
+}
+
+/**
+ * Sets or clears ISttRunConfig.levelVolume. The key is left out when off so
+ * an unlevelled config keeps its transcript cache key.
+ */
+export function sttConfigWithLevelVolume(
+    current: ISttRunConfig,
+    levelVolume: boolean,
+): ISttRunConfig {
+    const { levelVolume: _previous, ...rest } = current;
+    return levelVolume ? { ...rest, levelVolume: true } : rest;
 }
 
 function fieldValue(value: unknown, field: ISttModelConfigField): unknown {

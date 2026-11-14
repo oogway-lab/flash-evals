@@ -19,7 +19,7 @@ const sourceExtensions = new Set([
 ]);
 const ignoredPaths = new Set([
     "apps/web/server/db/migrations",
-    "pnpm-lock.yaml",
+    "bun.lock",
     "scripts/check-technical-debt.mjs",
 ]);
 const ignoredPathSegments = new Set([

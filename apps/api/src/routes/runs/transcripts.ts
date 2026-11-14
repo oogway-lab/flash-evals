@@ -232,6 +232,7 @@ function sttIdentityFromConfig(sttConfig: ISttRunConfig) {
             canonicalJsonString(
                 isRecord(sttConfig.config) ? sttConfig.config : {},
             ),
+            { levelVolume: sttConfig.levelVolume === true },
         ),
     };
 }

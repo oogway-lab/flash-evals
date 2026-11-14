@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { CellDrawer } from "./cell-drawer";
 import type { DrawerPayload } from "./types";
+import { goldenScoreLabel } from "./golden-score";
 
 afterEach(cleanup);
 
@@ -120,9 +121,10 @@ describe("CellDrawer", () => {
     });
 });
 
-it("shows deterministic golden scores and the expected versus actual answer", () => {
+it("names the stored-answer field match plainly and shows expected versus actual", () => {
     render(
         <CellDrawer
+            goldenLabel={goldenScoreLabel({ fieldConfigs: [] })}
             open
             onClose={noop}
             saveCellAnnotationAction={noop}
@@ -150,7 +152,12 @@ it("shows deterministic golden scores and the expected versus actual answer", ()
         />,
     );
     expect(
-        screen.getByRole("heading", { name: "Golden answer comparison" }),
+        screen.getByRole("heading", { name: "Exact match, all stored fields" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("golden")).toBeInTheDocument();
+    expect(
+        screen.getByText(
+            /Every stored field counts and no match settings apply/,
+        ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("exact match")).toBeInTheDocument();
 });

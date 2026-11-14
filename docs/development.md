@@ -9,7 +9,7 @@ optional integrations, and updating a checkout while preserving its data.
 
 ```bash
 docker compose up -d --wait postgres
-pnpm run dev
+bun run dev
 ```
 
 Web is normally <http://127.0.0.1:3000>; the API is on port 3001. On a remote
@@ -19,17 +19,17 @@ the database and `.uploads` remain. Do not run setup or seed every morning.
 | What changed?                | What to do                                                                                                      |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Web UI or web server modules | Next.js fast refresh handles most edits.                                                                        |
-| API or worker code           | Stop/restart `pnpm run dev`. These processes do not currently watch source changes.                             |
+| API or worker code           | Stop/restart `bun run dev`. These processes do not currently watch source changes.                              |
 | Shared package source        | Restart the launcher; it rebuilds the shared `dist` outputs before starting consumers.                          |
 | `.env` or browser/API URLs   | Restart the complete launcher.                                                                                  |
-| Dependencies                 | Stop the app, run `pnpm install --frozen-lockfile`, restart.                                                    |
+| Dependencies                 | Stop the app, run `bun install --frozen-lockfile`, restart.                                                     |
 | Database schema              | Review the migration and back up data before applying it; see below.                                            |
 | Marketing site source        | Use the [standalone Astro preview](../apps/site/README.md#develop), or rebuild the integrated site and restart. |
 
 Use one app launcher per checkout. If you opted into the Linux background service,
-use `pnpm run dev:restart`, `pnpm run dev:status`, and `pnpm run dev:logs` instead.
+use `bun run dev:restart`, `bun run dev:status`, and `bun run dev:logs` instead.
 Wait for web/API readiness and the `worker.ready` log after a restart.
-Stop it with `pnpm run dev:stop` before launching manually. These service commands
+Stop it with `bun run dev:stop` before launching manually. These service commands
 are optional and require the [Linux service installation](remote-development.md#optional-linux-background-service).
 
 ## Ports and browser URLs
@@ -37,7 +37,7 @@ are optional and require the [Linux service installation](remote-development.md#
 To change only the web port:
 
 ```bash
-pnpm run dev --port 4000
+bun run dev --port 4000
 ```
 
 The launcher updates the web origin, API CORS, and Next.js allowed origin to
@@ -63,18 +63,18 @@ Compose's published port and **both** database URLs if 54322 is occupied.
 Run commands from the repository root. Code checks use mocks/synthetic fixtures;
 real database and paid-provider checks are separate.
 
-| Command                                                             | What it checks                                                                                                              |
-| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm run test:dev`                                                 | Fresh local/private configuration, preservation of existing env files, worker draining, backup failure recovery.            |
-| `pnpm run test`                                                     | Package, API, site, and web unit suites; optional real-database suites skip without their explicit test URLs.               |
-| `pnpm run typecheck`                                                | TypeScript and Astro checks, including generated web route types.                                                           |
-| `pnpm run lint`                                                     | Repository lint rules.                                                                                                      |
-| `pnpm run build`                                                    | API and web production compilation; builds the marketing assets too.                                                        |
-| `pnpm run test:e2e`                                                 | Chromium application smoke/navigation tests against a synthetic API.                                                        |
-| `pnpm exec playwright test --config playwright.marketing.config.ts` | Anonymous marketing and sign-in routing fixtures.                                                                           |
-| `pnpm run docs:check` / `pnpm run docs:env`                         | Documented commands and environment-variable coverage.                                                                      |
-| `pnpm run quality`                                                  | The broader quality gate: types, build, unit tests, lint, architecture and docs; excludes browser tests and security scans. |
-| `pnpm run security`                                                 | Available Gitleaks/Semgrep scanners and dependency audit; reports unavailable scanners.                                     |
+| Command                                                        | What it checks                                                                                                              |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `bun run test:dev`                                             | Fresh local/private configuration, preservation of existing env files, worker draining, backup failure recovery.            |
+| `bun run test`                                                 | Package, API, site, and web unit suites; optional real-database suites skip without their explicit test URLs.               |
+| `bun run typecheck`                                            | TypeScript and Astro checks, including generated web route types.                                                           |
+| `bun run lint`                                                 | Repository lint rules.                                                                                                      |
+| `bun run build`                                                | API and web production compilation; builds the marketing assets too.                                                        |
+| `bun run test:e2e`                                             | Chromium application smoke/navigation tests against a synthetic API.                                                        |
+| `bunx playwright test --config playwright.marketing.config.ts` | Anonymous marketing and sign-in routing fixtures.                                                                           |
+| `bun run docs:check` / `bun run docs:env`                      | Documented commands and environment-variable coverage.                                                                      |
+| `bun run quality`                                              | The broader quality gate: types, build, unit tests, lint, architecture and docs; excludes browser tests and security scans. |
+| `bun run security`                                             | Available Gitleaks/Semgrep scanners and dependency audit; reports unavailable scanners.                                     |
 
 Browser suites use separate Next caches outside the production build directory and ports **3100** (app), **3101**
 (synthetic API), and **3200** (marketing), so you can keep interactive development
@@ -96,11 +96,11 @@ test run.
 ### Browser tests
 
 ```bash
-pnpm exec playwright install chromium
+bunx playwright install chromium
 ```
 
 On Linux, missing browser system libraries can be installed with
-`pnpm exec playwright install --with-deps chromium`; the system-package portion
+`bunx playwright install --with-deps chromium`; the system-package portion
 may require administrator access. Install into the same user/environment that
 runs the tests. See [Playwright browser installation](https://playwright.dev/docs/browsers).
 
@@ -134,8 +134,8 @@ Save the generated token privately as `FLASH_EVALS_MCP_LOCAL_TOKEN` in
 `apps/api/.env`, then run:
 
 ```bash
-pnpm run smoke:mcp
-pnpm run smoke:mcp -- --stdio
+bun run smoke:mcp
+bun run smoke:mcp -- --stdio
 ```
 
 These checks discover tools/resources, verify authentication and read existing
@@ -171,15 +171,15 @@ Recorded-spend caps cannot account for every in-flight or interrupted charge.
 Keep your environment files, encryption key, uploads, Docker volume and migration
 history. **Do not rerun seed or delete volumes as an upgrade step.**
 
-1. Stop the app (Ctrl+C or `pnpm run dev:stop`). Review the release/change notes.
+1. Stop the app (Ctrl+C or `bun run dev:stop`). Review the release/change notes.
 2. Back up valuable data and media before pulling/applying schema changes. Use
    the [Linux paired backup](remote-development.md#backups) when configured, or the
    manual snapshot below for the standard Compose setup.
-3. Pull the intended changes and run `pnpm install --frozen-lockfile`.
+3. Pull the intended changes and run `bun install --frozen-lockfile`.
 4. Review new SQL under `apps/web/server/db/migrations` and the database's
    `drizzle.__drizzle_migrations` journal. Apply pending migrations once with
-   `pnpm run db:migrate`; never replay historical migrations by deleting history.
-5. Start PostgreSQL if needed, then `pnpm run dev` (or `pnpm run dev:restart`).
+   `bun run db:migrate`; never replay historical migrations by deleting history.
+5. Start PostgreSQL if needed, then `bun run dev` (or `bun run dev:restart`).
    Check UI, API, worker, and any optional MCP integration you use.
 
 ### Upgrade from an older Mosaic checkout

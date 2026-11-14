@@ -1,7 +1,4 @@
-import type {
-    IPipelineFieldConfig,
-    JsonSchemaObject,
-} from "../db/jsonTypes";
+import type { IPipelineFieldConfig, JsonSchemaObject } from "../db/jsonTypes";
 import { extractSchemaPaths } from "../prompts/schemaValidation";
 
 export interface IPromptDatasetCompatibilityIssue {

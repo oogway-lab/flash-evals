@@ -23,17 +23,27 @@ import type {
 } from "@flash-evals/api-contract";
 import {
     isWorkflowModelBackedNodeType,
+    isWorkflowEnvCredential,
+    providerKeyForWorkflowTransport,
     WORKFLOW_LLM_EXECUTION_CONTRACT_VERSION,
+    workflowEnvKeySource,
 } from "@flash-evals/api-contract";
 import {
+    bifrostModelIdMatches,
+    bifrostModelInfo,
+    bifrostModelListKeyFor,
+    directMakerModelIds,
+    isDirectMakerTransport,
     listAvailableModelMetadata,
     MODEL_REGISTRY,
     registryEntryFor,
+    registryEntryForBifrostModel,
+    registryModelFor,
     transportCapabilityForModel,
-    type ApiKeys,
+    transportModelIdFor,
+    type DirectMakerTransport,
 } from "@flash-evals/llm-core";
-import { decryptSecret } from "@flash-evals/secrets";
-import { ConfigError, type IApiConfig } from "../config.js";
+import type { IApiConfig } from "../config.js";
 import { type IDb, withTransaction } from "../db.js";
 import {
     ApiBadRequestError,
@@ -41,10 +51,14 @@ import {
     ApiFieldValidationError,
     ApiNotFoundError,
 } from "../errors.js";
+import type { ProviderHostResolver } from "../providerBaseUrl.js";
 import {
-    assertStoredProviderBaseUrl,
-    type ProviderHostResolver,
-} from "../providerBaseUrl.js";
+    envCredential,
+    hasUsableEnvKey,
+    storedCredential,
+    type EnvKeyConfig,
+    type IStoredProviderKeyRow,
+} from "./llmRoutingCredentials.js";
 import { parseWorkflowLlmSelection } from "./llmRoutingSchemas.js";
 
 interface ICapabilityRow {
@@ -96,16 +110,6 @@ interface IDefaultRow {
     updated_at: Date | string;
 }
 
-interface IStoredProviderKeyRow {
-    id: string;
-    provider: WorkflowLlmTransport;
-    rotationVersion: string;
-    ciphertext: string;
-    iv: string;
-    authTag: string;
-    baseUrl: string | null;
-}
-
 export interface IWorkflowLlmCapabilityDiscoveryDeps {
     listModels?: typeof listAvailableModelMetadata;
     now?: () => Date;
@@ -131,6 +135,10 @@ interface ILiveProviderDiscovery {
     capturedAt: Date;
     expiresAt: Date;
     capabilities: IDiscoveredCapability[];
+    /** Every model id the provider listed, in its order. */
+    liveModelIds: string[];
+    /** Names this Bifrost's cached model list (`bifrostModelListKeyFor`). */
+    bifrostModelList?: string;
 }
 
 export function assertWorkflowLlmWritesEnabled(config: IApiConfig): void {
@@ -199,6 +207,7 @@ export async function listWorkflowLlmCapabilitiesPayload(
     db: IDb,
     teamId: string,
     projectId: string,
+    config?: Partial<EnvKeyConfig>,
 ): Promise<IWorkflowLlmCapability[]> {
     await assertProject(db, teamId, projectId);
     const result = await db.query<ICapabilityRow>(
@@ -211,7 +220,10 @@ export async function listWorkflowLlmCapabilitiesPayload(
             c.captured_at, c.expires_at,
             exists (
                 select 1 from provider_keys pk
-                where pk.team_id = c.team_id and pk.provider = c.transport
+                where pk.team_id = c.team_id
+                  -- Direct Gemini API routes use the saved Gemini key.
+                  and pk.provider = case c.transport
+                      when 'google' then 'gemini' else c.transport end
             ) as credential_available
         from llm_capability_versions c
         where c.team_id = $1 and c.project_id = $2
@@ -220,7 +232,15 @@ export async function listWorkflowLlmCapabilitiesPayload(
             c.captured_at desc, c.id desc`,
         [teamId, projectId],
     );
-    return result.rows.map(capabilityFromRow);
+    // Vercel AI Gateway's and Bifrost's keys can also come from the server's
+    // .env (see envCredential).
+    return result.rows.map((row) =>
+        capabilityFromRow(
+            hasUsableEnvKey(row.transport, config)
+                ? { ...row, credential_available: true }
+                : row,
+        ),
+    );
 }
 
 export async function listWorkflowLlmRouteCandidatesPayload(
@@ -239,13 +259,22 @@ export async function listWorkflowLlmRouteCandidatesPayload(
         context,
         deps,
     );
+    if (transport === "bifrost")
+        return {
+            transport,
+            coverage: "provider_model_listing",
+            candidates: bifrostCandidates(
+                discovery.liveModelIds,
+                discovery.bifrostModelList,
+            ),
+        };
     return {
         transport,
         coverage: "provider_model_listing",
         candidates: discovery.capabilities.flatMap((capability) => {
             const modelId = capability.snapshot.transport.modelId;
             if (!modelId) return [];
-            const entry = registryEntryFor(modelId);
+            const entry = registryModelFor(modelId);
             return [
                 {
                     transport,
@@ -276,6 +305,49 @@ export async function listWorkflowLlmRouteCandidatesPayload(
             ];
         }),
     };
+}
+
+/**
+ * Bifrost lists one model under several ids, one per upstream (e.g.
+ * `openrouter/google/gemini-2.5-flash` and `gemini/gemini-2.5-flash`), and
+ * the upstream decides where a call goes and which data rules it can
+ * follow. So every listed id is its own candidate: `transportModelId` is the
+ * id sent to Bifrost, and `modelId` is the registry model behind it when
+ * known (for its label and list prices), else the listed id.
+ */
+function bifrostCandidates(
+    liveModelIds: readonly string[],
+    bifrostModelList: string | undefined,
+): IWorkflowLlmRouteCandidatesResponse["candidates"] {
+    return [...new Set(liveModelIds)].map((listedId) => {
+        const entry = registryEntryForBifrostModel(listedId);
+        const { baseCapability } = capabilityForListedModel(
+            "bifrost",
+            listedId,
+            liveModelIds,
+            bifrostModelList,
+        );
+        return {
+            transport: "bifrost" as const,
+            modelId: entry?.id ?? listedId,
+            transportModelId: listedId,
+            label: entry?.label ?? labelForListedModel(listedId),
+            modelProvider: entry?.provider ?? providerForListedModel(listedId),
+            modelProviderLabel:
+                entry?.providerLabel ?? providerLabelForListedModel(listedId),
+            source: "provider_model_listing" as const,
+            availability: "provider_listed_candidate" as const,
+            requiresMutationDiscovery: true as const,
+            support: {
+                upstreamRoutingModes: [...baseCapability.upstreamRoutingModes],
+                supportedGenerationControls: [
+                    ...baseCapability.supportedGenerationControls,
+                ],
+                supportsStructuredOutput:
+                    baseCapability.supportsStructuredOutput,
+            },
+        };
+    });
 }
 
 export async function refreshWorkflowLlmCapabilitiesPayload(
@@ -316,6 +388,7 @@ export async function refreshWorkflowLlmCapabilitiesPayload(
         db,
         input.teamId,
         input.projectId,
+        config,
     );
 }
 
@@ -404,6 +477,13 @@ export async function createWorkflowLlmRouteVersionPayload(
     );
     if (!capability) throw invalidRoute("config.modelId");
     validateWorkflowLlmRouteConfig(input.config, capability.snapshot);
+    if (isWorkflowEnvCredential({ providerKeyId: discovery.providerKeyId })) {
+        // A saved route records the Settings key it was checked with.
+        const label = workflowEnvKeySource(transport)?.label ?? transport;
+        throw new ApiBadRequestError(
+            `A saved route needs the ${label} key saved in Settings; the key from apps/api/.env has no saved record to pin. Choose the model on the step instead (Simple mode), or save the key in Settings.`,
+        );
+    }
 
     return withTransaction(db, async (tx) => {
         await assertProjectAndActor(
@@ -420,7 +500,11 @@ export async function createWorkflowLlmRouteVersionPayload(
             from provider_keys
             where id = $1 and team_id = $2 and provider = $3
             for update`,
-            [discovery.providerKeyId, context.teamId, discovery.transport],
+            [
+                discovery.providerKeyId,
+                context.teamId,
+                providerKeyForWorkflowTransport(discovery.transport),
+            ],
         );
         const credential = currentCredential.rows[0];
         if (
@@ -739,41 +823,38 @@ async function discoverLiveProviderCapabilities(
         where team_id = $1 and provider = $2
           and ($3::uuid is null or id = $3)
         limit 1`,
-        [context.teamId, transport, providerKeyId ?? null],
+        [
+            context.teamId,
+            providerKeyForWorkflowTransport(transport),
+            providerKeyId ?? null,
+        ],
     );
-    const keyRow = keyResult.rows[0];
-    if (!keyRow) throw routingNotFound();
-    if (transport === "bifrost" && !keyRow.baseUrl) {
-        throw new ApiBadRequestError(
-            "Bifrost needs a base URL. Save the public HTTPS URL of your Bifrost OpenAI-compatible endpoint in Settings, then try again.",
-        );
-    }
-    if (!config.flashEvalsSecretsEncKey) {
-        throw new ConfigError(
-            "Missing required API env: FLASH_EVALS_SECRETS_ENC_KEY",
-        );
-    }
-    const key = decryptSecret(
-        keyRow,
-        { teamId: context.teamId, provider: transport },
-        config.flashEvalsSecretsEncKey,
-    );
-    const baseUrl = keyRow.baseUrl
-        ? await assertStoredProviderBaseUrl(keyRow.baseUrl, deps.resolveHost)
-        : null;
-    const apiKeys = apiKeysForStoredCredential(transport, key, baseUrl);
+    const credential = keyResult.rows[0]
+        ? await storedCredential(
+              keyResult.rows[0],
+              transport,
+              config,
+              context.teamId,
+              deps.resolveHost,
+          )
+        : envCredential(transport, config, providerKeyId);
+    if (!credential) throw routingNotFound();
+    const { apiKeys } = credential;
     let liveModels: Awaited<ReturnType<typeof listAvailableModelMetadata>>;
     try {
-        liveModels = await (deps.listModels ?? listAvailableModelMetadata)(
-            apiKeys,
-            { provider: transport },
-        );
+        liveModels = isDirectMakerTransport(transport)
+            ? directMakerListing(transport)
+            : await (deps.listModels ?? listAvailableModelMetadata)(apiKeys, {
+                  provider: transport,
+              });
     } catch {
         throw new ApiConflictError(
             "The provider model list is temporarily unavailable. Try again.",
         );
     }
     const liveModelIds = liveModels.map((model) => model.id);
+    const bifrostModelList =
+        transport === "bifrost" ? bifrostModelListKeyFor(apiKeys) : undefined;
     const capturedAt = (deps.now ?? (() => new Date()))();
     const expiresAt = new Date(capturedAt.getTime() + 60 * 60 * 1_000);
     const capabilities: IDiscoveredCapability[] = [];
@@ -784,6 +865,7 @@ async function discoverLiveProviderCapabilities(
             transport,
             liveModel.id,
             liveModelIds,
+            bifrostModelList,
         );
         const { modelId, baseCapability, transportModelId } = discovered;
         if (discoveredModelIds.has(modelId)) continue;
@@ -833,19 +915,36 @@ async function discoverLiveProviderCapabilities(
         });
     }
     return {
-        providerKeyId: keyRow.id,
-        providerKeyRotationVersion: keyRow.rotationVersion,
+        providerKeyId: credential.providerKeyId,
+        providerKeyRotationVersion: credential.rotationVersion,
         transport,
         capturedAt,
         expiresAt,
         capabilities,
+        liveModelIds,
+        ...(bifrostModelList ? { bifrostModelList } : {}),
     };
+}
+
+/**
+ * The models a direct maker route can use, from the model registry: the
+ * makers' direct ids are listed by hand, so no request goes to Anthropic or
+ * the Gemini API. The saved key is checked when a step runs.
+ */
+function directMakerListing(transport: DirectMakerTransport): Array<{
+    id: string;
+}> {
+    return directMakerModelIds(transport).flatMap((modelId) => {
+        const id = transportModelIdFor(modelId, transport);
+        return id ? [{ id }] : [];
+    });
 }
 
 function capabilityForListedModel(
     transport: WorkflowLlmTransport,
     listedModelId: string,
     liveModelIds: readonly string[],
+    bifrostModelList?: string,
 ): {
     modelId: string;
     baseCapability: IWorkflowLlmTransportCapability;
@@ -854,19 +953,26 @@ function capabilityForListedModel(
     const registered = registeredEntryForListedModel(transport, listedModelId);
     const modelId = registered?.id ?? listedModelId;
     const staticCapability = transportCapabilityForModel(modelId, transport);
+    const base = staticCapability
+        ? {
+              ...staticCapability,
+              transport,
+              upstreamRoutingModes: [...staticCapability.upstreamRoutingModes],
+              supportedGenerationControls: [
+                  ...staticCapability.supportedGenerationControls,
+              ],
+          }
+        : defaultCapabilityForListedModel(transport);
     return {
         modelId,
-        baseCapability: staticCapability
-            ? {
-                  ...staticCapability,
-                  upstreamRoutingModes: [
-                      ...staticCapability.upstreamRoutingModes,
-                  ],
-                  supportedGenerationControls: [
-                      ...staticCapability.supportedGenerationControls,
-                  ],
-              }
-            : defaultCapabilityForListedModel(transport),
+        baseCapability:
+            transport === "bifrost"
+                ? withBifrostListedSupport(
+                      base,
+                      listedModelId,
+                      bifrostModelList,
+                  )
+                : base,
         transportModelId: staticCapability
             ? liveTransportModelId(
                   transport,
@@ -890,6 +996,37 @@ function registeredEntryForListedModel(
             transportCapabilityForModel(entry.id, transport)?.transportModelId,
         ),
     );
+}
+
+/**
+ * What Bifrost's list says about a listed id (OpenRouter's supported
+ * parameters for openrouter/ ids) wins over the registry: `reasoning` adds
+ * or removes the thinking control, `structured_outputs`/`response_format`
+ * decide structured output.
+ */
+function withBifrostListedSupport(
+    capability: IWorkflowLlmTransportCapability,
+    listedModelId: string,
+    bifrostModelList: string | undefined,
+): IWorkflowLlmTransportCapability {
+    const info = listedModelId.startsWith("openrouter/")
+        ? bifrostModelInfo(bifrostModelList, listedModelId)
+        : undefined;
+    if (!info) return capability;
+    const controls = capability.supportedGenerationControls.filter(
+        (control) => control !== "reasoningEffort",
+    );
+    const thinks =
+        info.reasoning ??
+        capability.supportedGenerationControls.includes("reasoningEffort");
+    return {
+        ...capability,
+        supportedGenerationControls: thinks
+            ? [...controls, "reasoningEffort"]
+            : controls,
+        supportsStructuredOutput:
+            info.structuredOutput ?? capability.supportsStructuredOutput,
+    };
 }
 
 function defaultCapabilityForListedModel(
@@ -961,52 +1098,6 @@ function compareBifrostTransportModelIds(
     const leftExact = Number(left === expectedModelId);
     const rightExact = Number(right === expectedModelId);
     return rightExact - leftExact || left.localeCompare(right);
-}
-
-/**
- * Bifrost's `/models` list can namespace a provider model with the upstream
- * route (`openrouter/`, `bedrock/`, `gemini/`, etc.). Flash Evals keeps canonical
- * model IDs in the registry, so match a listed model only when its normalized
- * terminal identifier is the known registered model. This is deliberately a
- * suffix match: it supports new Bifrost upstreams without treating unrelated
- * model IDs as supported.
- */
-function bifrostModelIdMatches(
-    listedModelId: string,
-    expectedModelId: string | undefined,
-): boolean {
-    if (!expectedModelId) return false;
-    const listed = normalizeBifrostModelId(listedModelId);
-    const expected = normalizeBifrostModelId(expectedModelId);
-    return listed === expected || listed.endsWith(`/${expected}`);
-}
-
-function normalizeBifrostModelId(modelId: string): string {
-    const withoutVariant = modelId.replace(/:[^/]+$/, "");
-    return withoutVariant
-        .toLowerCase()
-        .replaceAll(".", "/")
-        .replace(/^gemini\//, "google/")
-        .replace(/\/{2,}/g, "/");
-}
-
-function apiKeysForStoredCredential(
-    transport: WorkflowLlmTransport,
-    key: string,
-    baseUrl: string | null,
-): ApiKeys {
-    if (transport === "openai") return { openai: key };
-    if (transport === "gateway") return { gateway: key };
-    if (transport === "openrouter") {
-        return {
-            openrouter: key,
-            ...(baseUrl ? { openrouterBaseUrl: baseUrl } : {}),
-        };
-    }
-    return {
-        bifrost: key,
-        ...(baseUrl ? { bifrostBaseUrl: baseUrl } : {}),
-    };
 }
 
 async function assertProject(

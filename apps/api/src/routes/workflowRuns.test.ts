@@ -1,15 +1,10 @@
-import type {
-    ICreateWorkflowRunRequest,
-    IWorkflowLlmCapabilitySnapshot,
-    IWorkflowLlmRouteConfig,
-} from "@flash-evals/api-contract";
 import {
-    WORKFLOW_JUDGE_SCHEMA_DIGEST,
-    WORKFLOW_JUDGE_SCHEMA_NAME,
+    WORKFLOW_ENV_CREDENTIAL,
+    type IWorkflowLlmCapabilitySnapshot,
 } from "@flash-evals/api-contract";
 import { describe, expect, it, vi } from "vitest";
 import type { IApiConfig } from "../config.js";
-import type { IDb, ITransactionalDb } from "../db.js";
+import type { IDb } from "../db.js";
 import {
     ApiBadRequestError,
     ApiFieldValidationError,
@@ -19,364 +14,19 @@ import {
     createWorkflowRunPayload,
     saveWorkflowRunCellAnnotationPayload,
     saveWorkflowRunNotePayload,
+    simpleTransportModel,
     workflowRunDetailPayload,
 } from "./workflowRuns.js";
 import { publishWorkflowRunEnqueue } from "../workflowRunEnqueue.js";
-
-const RUN_TEAM_ID = "11111111-1111-4111-8111-111111111111";
-const RUN_PROJECT_ID = "22222222-2222-4222-8222-222222222222";
-const RUN_WORKFLOW_ID = "33333333-3333-4333-8333-333333333333";
-const RUN_DATASET_ID = "44444444-4444-4444-8444-444444444444";
-const RUN_ROUTE_VERSION_ID = "55555555-5555-4555-8555-555555555555";
-const RUN_CAPABILITY_ID = "66666666-6666-4666-8666-666666666666";
-const RUN_ROTATION_ID = "77777777-7777-4777-8777-777777777777";
-
-const runRouteConfig: IWorkflowLlmRouteConfig = {
-    modelId: "gpt-4o",
-    transportConfig: {
-        transport: "openrouter",
-        upstreamPolicy: { mode: "exact", only: ["openai"] },
-        requireParameters: true,
-        responseCache: "disable",
-    },
-    generation: { maxOutputTokens: 512, temperature: 0 },
-    structuredOutput: { mode: "text" },
-    retry: { owner: "gateway", timeoutMs: 30_000 },
-    cache: { flashEvalsReuse: "allow", providerCaching: "allow" },
-};
-
-const runCapability: IWorkflowLlmCapabilitySnapshot = {
-    capabilityVersionId: RUN_CAPABILITY_ID,
-    capabilityDigest: "sha256:capability",
-    capturedAt: "2026-07-24T00:00:00.000Z",
-    stale: false,
-    transport: {
-        transport: "openrouter",
-        transportModelId: "openai/gpt-4o",
-        upstreamRoutingModes: ["auto", "preference", "exact"],
-        supportedGenerationControls: [
-            "maxOutputTokens",
-            "temperature",
-            "topP",
-            "seed",
-        ],
-        supportsStructuredOutput: true,
-        requiresCurrentDiscovery: true,
-    },
-    supportedUpstreamProviders: ["openai"],
-};
-
-const createRunInput: ICreateWorkflowRunRequest = {
-    teamId: RUN_TEAM_ID,
-    projectId: RUN_PROJECT_ID,
-    workflowId: RUN_WORKFLOW_ID,
-    datasetId: RUN_DATASET_ID,
-    runTarget: "dataset",
-    createdBy: "88888888-8888-4888-8888-888888888888",
-};
-
-interface ICreateRunDbOptions {
-    promptSchema?: { digest: string; schema: Record<string, unknown> };
-    selection?: "simple" | "pinned_route" | "project_default" | "missing";
-    defaultMissing?: boolean;
-    routeMissing?: boolean;
-    disabled?: boolean;
-    currentRotationVersion?: string | null;
-    failOutbox?: boolean;
-    scoringModelId?: string;
-    nonModelScoring?: boolean;
-    pinnedModelId?: string;
-    itemCount?: number;
-    spentUsd?: number;
-}
-
-function createRunDb(options: ICreateRunDbOptions = {}) {
-    const committedWrites: Array<{ sql: string; values: unknown[] }> = [];
-    const attemptedWrites: Array<{ sql: string; values: unknown[] }> = [];
-    let capturedSnapshot: unknown;
-    let keyedRun:
-        | {
-              workflowRunId: string;
-              idempotencyKey: string;
-              idempotencyFingerprint: string;
-          }
-        | undefined;
-    let outboxStatus: "pending_enqueue" | "queued" | undefined;
-    let committed = false;
-    let rolledBack = false;
-    const selection = options.selection ?? "pinned_route";
-    // This fixture intentionally models the full transaction/query state machine.
-    // eslint-disable-next-line complexity -- test double covers commit and rollback branches.
-    const query = vi.fn(async (text: string, values: unknown[] = []) => {
-        const sql = text.replace(/\s+/g, " ").trim();
-        if (/^(insert|update|delete) /i.test(sql)) {
-            if (
-                options.failOutbox &&
-                sql.includes("insert into workflow_run_enqueue_outbox")
-            )
-                throw new Error("outbox unavailable");
-            attemptedWrites.push({ sql, values });
-            if (sql.includes("insert into workflow_runs")) {
-                capturedSnapshot = structuredClone(values[6]);
-                if (typeof values[9] === "string")
-                    keyedRun = {
-                        workflowRunId: String(values[0]),
-                        idempotencyKey: values[9],
-                        idempotencyFingerprint: String(values[10]),
-                    };
-            }
-            if (sql.includes("insert into workflow_run_enqueue_outbox"))
-                outboxStatus = "pending_enqueue";
-            if (
-                sql.includes("update workflow_run_enqueue_outbox") &&
-                sql.includes("set status = 'queued'")
-            )
-                outboxStatus = "queued";
-            return { rows: [] } as never;
-        }
-        if (
-            sql.includes("from workflow_run_enqueue_outbox") &&
-            sql.includes("where workflow_run_id = $1")
-        )
-            return {
-                rows: outboxStatus
-                    ? [
-                          {
-                              workflowRunId: String(values[0]),
-                              status: outboxStatus,
-                          },
-                      ]
-                    : [],
-            } as never;
-        if (
-            sql.includes('idempotency_fingerprint as "idempotencyFingerprint"')
-        ) {
-            const existing = keyedRun;
-            return {
-                rows:
-                    existing && existing.idempotencyKey === values[3]
-                        ? [
-                              {
-                                  workflowRunId: existing.workflowRunId,
-                                  idempotencyFingerprint:
-                                      existing.idempotencyFingerprint,
-                                  enqueueStatus: "pending_enqueue",
-                              },
-                          ]
-                        : [],
-            } as never;
-        }
-        if (
-            sql.includes("from prompt_workflows") &&
-            sql.includes("archived_at")
-        )
-            return {
-                rows: [
-                    {
-                        id: RUN_WORKFLOW_ID,
-                        teamId: RUN_TEAM_ID,
-                        projectId: RUN_PROJECT_ID,
-                        name: "Pinned workflow",
-                        description: "",
-                        kind: "prompt",
-                        sttConfig: null,
-                        createdAt: new Date("2026-07-24T00:00:00.000Z"),
-                    },
-                ],
-            } as never;
-        if (
-            sql.includes("from workflow_nodes") &&
-            sql.includes("order by node_key")
-        )
-            return {
-                rows: [
-                    {
-                        id: "node-1",
-                        workflowId: RUN_WORKFLOW_ID,
-                        nodeKey: "prompt-1",
-                        label: "Prompt 1",
-                        nodeType: options.nonModelScoring ? "input" : "prompt",
-                        nodeConfig: options.nonModelScoring
-                            ? {
-                                  type: "input",
-                                  modality: "text",
-                                  datasetId: RUN_DATASET_ID,
-                              }
-                            : null,
-                        promptVersionId: options.nonModelScoring
-                            ? null
-                            : "99999999-9999-4999-8999-999999999999",
-                        modelId: options.nonModelScoring
-                            ? null
-                            : (options.pinnedModelId ?? "gpt-4o"),
-                        reasoningConfig: null,
-                        llmSelectionMode:
-                            options.nonModelScoring || selection === "missing"
-                                ? null
-                                : selection,
-                        llmRouteVersionId:
-                            selection === "pinned_route"
-                                ? RUN_ROUTE_VERSION_ID
-                                : null,
-                        llmTransport: selection === "simple" ? "gateway" : null,
-                        evalConfig: options.scoringModelId
-                            ? {
-                                  type: "judge",
-                                  judgeConfigId:
-                                      "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
-                              }
-                            : { type: "none" },
-                        position: null,
-                    },
-                ],
-            } as never;
-        if (sql.includes("from workflow_edges")) return { rows: [] } as never;
-        if (sql.includes("from provider_keys"))
-            return {
-                rows: [
-                    {
-                        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-                        provider: "gateway",
-                        rotationVersion: RUN_ROTATION_ID,
-                    },
-                ],
-            } as never;
-        if (sql.includes("from prompt_versions pv"))
-            return {
-                rows: [
-                    {
-                        id: "99999999-9999-4999-8999-999999999999",
-                        content: "Summarize this.",
-                        schemaHash:
-                            options.promptSchema?.digest ??
-                            (options.scoringModelId
-                                ? WORKFLOW_JUDGE_SCHEMA_DIGEST
-                                : null),
-                        jsonSchema:
-                            options.promptSchema?.schema ??
-                            (options.scoringModelId
-                                ? { type: "object" }
-                                : null),
-                    },
-                ],
-            } as never;
-        if (sql.includes("from datasets"))
-            return {
-                rows: [{ archivedAt: null, modality: "text" }],
-            } as never;
-        if (sql.includes("from project_llm_defaults"))
-            return {
-                rows: options.defaultMissing
-                    ? []
-                    : [{ routeVersionId: RUN_ROUTE_VERSION_ID }],
-            } as never;
-        if (sql.includes("from llm_route_versions v"))
-            return {
-                rows: options.routeMissing
-                    ? []
-                    : [
-                          {
-                              routeVersionId: RUN_ROUTE_VERSION_ID,
-                              routeId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-                              routeVersion: 3,
-                              config: options.scoringModelId
-                                  ? {
-                                        ...runRouteConfig,
-                                        structuredOutput: {
-                                            mode: "json_schema",
-                                            schemaName:
-                                                WORKFLOW_JUDGE_SCHEMA_NAME,
-                                            schemaDigest:
-                                                WORKFLOW_JUDGE_SCHEMA_DIGEST,
-                                            strict: true,
-                                        },
-                                    }
-                                  : {
-                                        ...runRouteConfig,
-                                        modelId:
-                                            options.pinnedModelId ?? "gpt-4o",
-                                    },
-                              providerKeyId:
-                                  "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-                              capturedRotationVersion: RUN_ROTATION_ID,
-                              currentRotationVersion:
-                                  options.currentRotationVersion === undefined
-                                      ? RUN_ROTATION_ID
-                                      : options.currentRotationVersion,
-                              credentialHint: "…1234",
-                              capabilityVersionId: RUN_CAPABILITY_ID,
-                              capabilityDigest: "sha256:capability",
-                              capabilitySnapshot: {
-                                  ...runCapability,
-                                  transport: {
-                                      ...runCapability.transport,
-                                      modelId:
-                                          options.pinnedModelId ?? "gpt-4o",
-                                      transportModelId:
-                                          options.pinnedModelId ??
-                                          "openai/gpt-4o",
-                                  },
-                              },
-                              disabledAt: options.disabled
-                                  ? new Date("2026-07-24T01:00:00.000Z")
-                                  : null,
-                          },
-                      ],
-            } as never;
-        if (sql.includes("from judge_configs"))
-            return {
-                rows: [
-                    {
-                        modelId: options.scoringModelId,
-                        rubricPrompt: "Judge it",
-                        declaredInputs: ["task_input", "candidate_output"],
-                        reasoningEffort: undefined,
-                    },
-                ],
-            } as never;
-        if (sql.includes("from dataset_items"))
-            return {
-                rows: Array.from(
-                    { length: options.itemCount ?? 1 },
-                    (_, i) => ({ id: `item-${i + 1}` }),
-                ),
-            } as never;
-        if (sql.includes('as "spentUsd"'))
-            return { rows: [{ spentUsd: options.spentUsd ?? 0 }] } as never;
-        return { rows: [] } as never;
-    });
-    const db: ITransactionalDb = {
-        query,
-        async transaction(run) {
-            const writeStart = attemptedWrites.length;
-            try {
-                const result = await run({ query } as unknown as IDb);
-                committedWrites.push(...attemptedWrites.slice(writeStart));
-                committed = true;
-                return result;
-            } catch (error) {
-                attemptedWrites.splice(writeStart);
-                capturedSnapshot = undefined;
-                rolledBack = true;
-                throw error;
-            }
-        },
-    };
-    return {
-        db,
-        query,
-        committedWrites,
-        get capturedSnapshot() {
-            return capturedSnapshot;
-        },
-        get committed() {
-            return committed;
-        },
-        get rolledBack() {
-            return rolledBack;
-        },
-    };
-}
+import {
+    createRunDb,
+    createRunInput,
+    RUN_CAPABILITY_ID,
+    RUN_ROTATION_ID,
+    RUN_ROUTE_VERSION_ID,
+    runRouteConfig,
+    type ICreateRunDbOptions,
+} from "./workflowRuns.testFixture.js";
 
 describe("workflow run LLM route resolution", () => {
     it("creates no routed run while the rollout write gate is off", async () => {
@@ -552,6 +202,55 @@ describe("workflow run LLM route resolution", () => {
         );
     });
 
+    it("stores the spend limit and data rules in the run's config snapshot", async () => {
+        const fixture = createRunDb();
+
+        await createWorkflowRunPayload(fixture.db, {
+            ...createRunInput,
+            maxCostUsd: 3,
+            dataPolicy: {
+                onlyHosts: ["openai", "azure"],
+                disallowPromptTraining: true,
+            },
+        });
+
+        const insert = fixture.committedWrites.find(({ sql }) =>
+            sql.includes("insert into workflow_runs"),
+        );
+        expect(insert?.sql).toContain("config_snapshot");
+        expect(insert?.values[11]).toEqual({
+            maxCostUsd: 3,
+            dataPolicy: {
+                onlyHosts: ["openai", "azure"],
+                disallowPromptTraining: true,
+            },
+        });
+    });
+
+    it("refuses data rules a pinned OpenRouter host would break", async () => {
+        const fixture = createRunDb();
+
+        await expect(
+            createWorkflowRunPayload(fixture.db, {
+                ...createRunInput,
+                dataPolicy: { onlyHosts: ["google-vertex"] },
+            }),
+        ).rejects.toThrow(/pinned to OpenRouter host "openai"/);
+        expect(fixture.committedWrites).toEqual([]);
+    });
+
+    it("refuses a spend limit that is not a positive amount", async () => {
+        const fixture = createRunDb();
+
+        await expect(
+            createWorkflowRunPayload(fixture.db, {
+                ...createRunInput,
+                maxCostUsd: 0,
+            }),
+        ).rejects.toThrow("The spend limit must be more than $0");
+        expect(fixture.committedWrites).toEqual([]);
+    });
+
     it("resolves a symbolic project default once and preserves that immutable result", async () => {
         const fixture = createRunDb({ selection: "project_default" });
 
@@ -633,6 +332,21 @@ describe("workflow run LLM route resolution", () => {
         ).toBe(300_000);
     });
 
+    it("gives every Simple-mode step five minutes, not only Gemini 3", async () => {
+        const fixture = createRunDb({ selection: "simple" });
+        await createWorkflowRunPayload(fixture.db, createRunInput);
+        const snapshot = fixture.capturedSnapshot as {
+            nodes: Array<{
+                resolvedLlmExecution: {
+                    route: { retry: { timeoutMs: number } };
+                };
+            }>;
+        };
+        expect(
+            snapshot.nodes[0]?.resolvedLlmExecution.route.retry.timeoutMs,
+        ).toBe(300_000);
+    });
+
     it("runs Simple mode directly with the current provider key", async () => {
         const fixture = createRunDb({ selection: "simple" });
 
@@ -663,6 +377,201 @@ describe("workflow run LLM route resolution", () => {
                 String(sql).includes("from llm_route_versions v"),
             ),
         ).toBe(false);
+    });
+
+    it.each([
+        [
+            "anthropic",
+            "anthropic/claude-sonnet-4.6",
+            "claude-sonnet-4-6",
+            "anthropic",
+        ],
+        ["google", "google/gemma-4-31b-it", "gemma-4-31b-it", "gemini"],
+    ] as const)(
+        "runs Simple mode on %s directly with the maker's model id and Settings key",
+        async (transport, modelId, transportModelId, keyName) => {
+            const fixture = createRunDb({
+                selection: "simple",
+                simpleTransport: transport,
+                pinnedModelId: modelId,
+            });
+
+            await createWorkflowRunPayload(fixture.db, createRunInput);
+
+            const keyQuery = fixture.query.mock.calls.find(([sql]) =>
+                String(sql).includes("from provider_keys"),
+            );
+            expect(keyQuery?.[1]).toEqual([expect.any(String), [keyName]]);
+            const snapshot = fixture.capturedSnapshot as {
+                nodes: Array<{ resolvedLlmExecution?: unknown }>;
+            };
+            expect(snapshot.nodes[0]?.resolvedLlmExecution).toMatchObject({
+                requestedSelection: { mode: "simple", transport },
+                route: { modelId, transportConfig: { transport } },
+                credential: {
+                    providerKeyId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                },
+                capability: {
+                    transport: {
+                        transport,
+                        modelId,
+                        transportModelId,
+                        upstreamRoutingModes: ["none"],
+                    },
+                },
+            });
+        },
+    );
+
+    it("runs a Simple mode Bifrost step with the env key when none is saved, recording no key id", async () => {
+        const fixture = createRunDb({
+            selection: "simple",
+            simpleTransport: "bifrost",
+            noProviderKeys: true,
+        });
+        const envConfig = {
+            bifrostApiKey: "env-bifrost-key",
+            bifrostBaseUrl: "https://bifrost.example/v1",
+        } as never;
+
+        await createWorkflowRunPayload(fixture.db, createRunInput, envConfig);
+
+        const snapshot = fixture.capturedSnapshot as {
+            nodes: Array<{ resolvedLlmExecution?: unknown }>;
+        };
+        expect(snapshot.nodes[0]?.resolvedLlmExecution).toMatchObject({
+            requestedSelection: { mode: "simple", transport: "bifrost" },
+            credential: WORKFLOW_ENV_CREDENTIAL,
+        });
+        expect(JSON.stringify(fixture.capturedSnapshot)).not.toContain(
+            "env-bifrost-key",
+        );
+    });
+
+    it("prefers the Bifrost key saved in Settings over the env key", async () => {
+        const fixture = createRunDb({
+            selection: "simple",
+            simpleTransport: "bifrost",
+        });
+
+        await createWorkflowRunPayload(fixture.db, createRunInput, {
+            bifrostApiKey: "env-bifrost-key",
+            bifrostBaseUrl: "https://bifrost.example/v1",
+        } as never);
+
+        const snapshot = fixture.capturedSnapshot as {
+            nodes: Array<{ resolvedLlmExecution?: unknown }>;
+        };
+        expect(snapshot.nodes[0]?.resolvedLlmExecution).toMatchObject({
+            credential: {
+                providerKeyId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                rotationVersion: RUN_ROTATION_ID,
+            },
+        });
+    });
+
+    it("runs a Simple mode Vercel AI Gateway step with the env key when none is saved", async () => {
+        const fixture = createRunDb({
+            selection: "simple",
+            simpleTransport: "gateway",
+            noProviderKeys: true,
+        });
+
+        await createWorkflowRunPayload(fixture.db, createRunInput, {
+            aiGatewayApiKey: "env-gateway-key",
+        } as never);
+
+        const snapshot = fixture.capturedSnapshot as {
+            nodes: Array<{ resolvedLlmExecution?: unknown }>;
+        };
+        expect(snapshot.nodes[0]?.resolvedLlmExecution).toMatchObject({
+            requestedSelection: { mode: "simple", transport: "gateway" },
+            credential: WORKFLOW_ENV_CREDENTIAL,
+        });
+        expect(JSON.stringify(fixture.capturedSnapshot)).not.toContain(
+            "env-gateway-key",
+        );
+    });
+
+    it("prefers the Vercel AI Gateway key saved in Settings over the env key", async () => {
+        const fixture = createRunDb({
+            selection: "simple",
+            simpleTransport: "gateway",
+        });
+
+        await createWorkflowRunPayload(fixture.db, createRunInput, {
+            aiGatewayApiKey: "env-gateway-key",
+        } as never);
+
+        const snapshot = fixture.capturedSnapshot as {
+            nodes: Array<{ resolvedLlmExecution?: unknown }>;
+        };
+        expect(snapshot.nodes[0]?.resolvedLlmExecution).toMatchObject({
+            credential: {
+                providerKeyId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                rotationVersion: RUN_ROTATION_ID,
+            },
+        });
+    });
+
+    it("refuses a Simple mode Vercel AI Gateway step with no key in Settings or the env", async () => {
+        const fixture = createRunDb({
+            selection: "simple",
+            simpleTransport: "gateway",
+            noProviderKeys: true,
+        });
+
+        await expect(
+            createWorkflowRunPayload(fixture.db, createRunInput, {
+                bifrostApiKey: "env-bifrost-key",
+                bifrostBaseUrl: "https://bifrost.example/v1",
+            } as never),
+        ).rejects.toThrow(
+            "No gateway provider key is configured for Simple mode.",
+        );
+        expect(fixture.committedWrites).toEqual([]);
+    });
+
+    it("does not use an OpenRouter key from the env for a Simple mode step", async () => {
+        const fixture = createRunDb({
+            selection: "simple",
+            simpleTransport: "openrouter",
+            noProviderKeys: true,
+        });
+
+        await expect(
+            createWorkflowRunPayload(fixture.db, createRunInput, {
+                openrouterApiKey: "env-openrouter-key",
+            } as never),
+        ).rejects.toThrow(/No openrouter provider key is configured/);
+    });
+
+    it("refuses a Simple mode Bifrost step with no key in Settings or the env", async () => {
+        const fixture = createRunDb({
+            selection: "simple",
+            simpleTransport: "bifrost",
+            noProviderKeys: true,
+        });
+
+        await expect(
+            createWorkflowRunPayload(fixture.db, createRunInput),
+        ).rejects.toThrow(/No bifrost provider key is configured/);
+        expect(fixture.committedWrites).toEqual([]);
+    });
+
+    it("refuses a Simple mode model the maker doesn't serve directly", async () => {
+        const fixture = createRunDb({
+            selection: "simple",
+            simpleTransport: "anthropic",
+            pinnedModelId: "gpt-4o",
+        });
+
+        await expect(
+            createWorkflowRunPayload(fixture.db, createRunInput),
+        ).rejects.toThrow(
+            /uses gpt-4o, which Anthropic doesn't serve directly/,
+        );
+        expect(fixture.committedWrites).toEqual([]);
     });
 
     it.each([
@@ -996,6 +905,54 @@ describe("workflow run review detail", () => {
             availability: "legacy_unavailable",
         });
     });
+
+    it("counts the answers to judge again on a completed run", async () => {
+        const db = dbForWorkflowRunDetail({ rejudge: 3 });
+        const payload = await workflowRunDetailPayload(
+            db,
+            "team-1",
+            "project-1",
+            "workflow-1",
+            "run-1",
+        );
+
+        expect(payload.answersToRejudge).toBe(3);
+        expect(
+            vi
+                .mocked(db.query)
+                .mock.calls.find(([sql]) => sql.includes("as rejudge"))?.[1],
+        ).toEqual(["run-1"]);
+    });
+
+    it("leaves the count out when there is nothing to judge again", async () => {
+        const none = await workflowRunDetailPayload(
+            dbForWorkflowRunDetail({ rejudge: 0 }),
+            "team-1",
+            "project-1",
+            "workflow-1",
+            "run-1",
+        );
+        expect(none).not.toHaveProperty("answersToRejudge");
+
+        // A partial run already offers a retry; a run without a final answer
+        // has no answers to judge.
+        for (const db of [
+            dbForWorkflowRunDetail({ status: "partial", rejudge: 2 }),
+            dbForWorkflowRunDetail(),
+        ]) {
+            const payload = await workflowRunDetailPayload(
+                db,
+                "team-1",
+                "project-1",
+                "workflow-1",
+                "run-1",
+            );
+            expect(payload).not.toHaveProperty("answersToRejudge");
+            expect(queries(db).some((sql) => sql.includes("as rejudge"))).toBe(
+                false,
+            );
+        }
+    });
 });
 
 function dbWithRows(rows: unknown[][]): IDb {
@@ -1009,9 +966,17 @@ function queries(db: IDb): string[] {
     return vi.mocked(db.query).mock.calls.map(([sql]) => sql);
 }
 
-function dbForWorkflowRunDetail(): IDb {
+function dbForWorkflowRunDetail(
+    options: {
+        status?: string;
+        /** Gives the snapshot a final answer and these failed judgings. */
+        rejudge?: number;
+    } = {},
+): IDb {
     return {
         query: vi.fn(async (sql: string) => {
+            if (sql.includes("as rejudge from workflow_run_answers"))
+                return { rows: [{ rejudge: options.rejudge ?? 0 }] } as never;
             if (sql.includes("from workflow_runs where id=$1"))
                 return {
                     rows: [
@@ -1021,8 +986,11 @@ function dbForWorkflowRunDetail(): IDb {
                             projectId: "project-1",
                             workflowId: "workflow-1",
                             datasetId: "dataset-1",
-                            status: "completed",
+                            status: options.status ?? "completed",
                             workflowSnapshot: {
+                                ...(options.rejudge !== undefined
+                                    ? { finalAnswer: { fields: [] } }
+                                    : {}),
                                 nodes: [
                                     {
                                         id: "node-1",
@@ -1061,7 +1029,8 @@ function dbForWorkflowRunDetail(): IDb {
                                                     retryableErrorClasses: [],
                                                 },
                                                 cache: {
-                                                    flashEvalsReuse: "force_fresh",
+                                                    flashEvalsReuse:
+                                                        "force_fresh",
                                                     providerCaching: "allow",
                                                 },
                                             },
@@ -1112,7 +1081,7 @@ function dbForWorkflowRunDetail(): IDb {
                 } as never;
             if (
                 sql.includes("from workflow_runs r") &&
-                sql.includes("group by r.status")
+                sql.includes("count(c.id)::int total")
             )
                 return {
                     rows: [
@@ -1172,3 +1141,31 @@ function dbForWorkflowRunDetail(): IDb {
         }),
     };
 }
+
+describe("simpleTransportModel", () => {
+    it("sends a Bifrost id as listed and prices it as the registry model behind it", () => {
+        expect(
+            simpleTransportModel("bifrost", "openrouter/openai/gpt-4o"),
+        ).toEqual({
+            modelId: "gpt-4o",
+            transportModelId: "openrouter/openai/gpt-4o",
+        });
+        expect(
+            simpleTransportModel("bifrost", "openrouter/nobody/new-model"),
+        ).toEqual({
+            modelId: "openrouter/nobody/new-model",
+            transportModelId: "openrouter/nobody/new-model",
+        });
+    });
+
+    it("keeps a registry id and sends the registry's Bifrost id", () => {
+        expect(simpleTransportModel("bifrost", "gpt-4o")).toEqual({
+            modelId: "gpt-4o",
+            transportModelId: "openai/gpt-4o",
+        });
+        expect(simpleTransportModel("openrouter", "gpt-4o")).toEqual({
+            modelId: "gpt-4o",
+            transportModelId: "gpt-4o",
+        });
+    });
+});

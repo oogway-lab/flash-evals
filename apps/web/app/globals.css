@@ -92,6 +92,9 @@
     --color-eval-danger-muted: var(--color-geist-red-100);
     --color-eval-ref: var(--color-geist-purple-900);
     --color-eval-ref-muted: var(--color-geist-purple-100);
+    /* Chart marks for "other" series: lighter than muted text so the
+       highlighted dots stand out. */
+    --color-chart-other: var(--color-geist-gray-600);
 
     /* Legacy aliases used in components */
     --color-success: var(--color-eval-success);

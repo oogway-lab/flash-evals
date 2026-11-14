@@ -4,7 +4,7 @@ This ledger distinguishes catalog/profile checks from operations that reached th
 
 ## Evidence on implementation SHA `c5b57d4a8dfd6f225c49f770df9271cbbe636c24`
 
-- The independent policy suite lists and checks all 88 tools for the read/eval/admin profiles, using explicitly maintained expected tool sets (33 read, 78 eval, 88 admin). It uses the real MCP SDK and `StdioServerTransport` with a synthetic principal/runtime and a database adapter that throws on accidental query; it checks catalog, annotations, input schema, and policy denials, not business/PostgreSQL behavior.
+- The independent policy suite lists and checks all 89 tools for the read/eval/admin profiles, using explicitly maintained expected tool sets (33 read, 79 eval, 89 admin). It uses the real MCP SDK and `StdioServerTransport` with a synthetic principal/runtime and a database adapter that throws on accidental query; it checks catalog, annotations, input schema, and policy denials, not business/PostgreSQL behavior.
 - The HTTP suite calls all 88 tools through real JSON-RPC `tools/call` dispatch, real MCP registration, real bearer-token authentication, and actual registered handlers/shared business logic. Postgres and local filesystem storage are real; persisted state is asserted where applicable. `get_current_user` uses the authenticated principal directly. No domain handler is mocked.
 - The HTTP resource checks read all eight registered resource templates against synthetic PostgreSQL rows. `prompts/get` is a real protocol request to the registered setup prompt, whose text is static. The bearer token and all tenant rows/files are synthetic.
 - The expanded HTTP/PostgreSQL acceptance suite passed all 10 scenarios and exercised all 88 registered tools on exact implementation SHA `c5b57d4a8dfd6f225c49f770df9271cbbe636c24`, using Node 24.21.0 and an isolated PostgreSQL 16 database bound to loopback port 55433.
@@ -17,11 +17,11 @@ This ledger distinguishes catalog/profile checks from operations that reached th
 Use a dedicated disposable PostgreSQL 16 database on loopback named `flash_evals_mcp_acceptance`; do not point this suite at a persistent development or production database. Apply migrations and run:
 
 ```sh
-DATABASE_URL="$DISPOSABLE_DATABASE_URL" pnpm --filter @flash-evals/web db:migrate
-pnpm --filter @flash-evals/api build
-FLASH_EVALS_MCP_ACCEPTANCE_DATABASE_URL="$DISPOSABLE_DATABASE_URL" pnpm --filter @flash-evals/api exec vitest run src/mcp/realBackend.acceptance.test.ts
-FLASH_EVALS_TEST_DATABASE_URL="$DISPOSABLE_DATABASE_URL" pnpm --filter @flash-evals/api exec vitest run src/routes/mcpReaders.integration.test.ts src/mcp/idempotency.integration.test.ts
-pnpm --filter @flash-evals/api exec vitest run src/mcp/policyCoverage.acceptance.test.ts
+DATABASE_URL="$DISPOSABLE_DATABASE_URL" bun run --filter @flash-evals/web db:migrate
+bun run --filter @flash-evals/api build
+FLASH_EVALS_MCP_ACCEPTANCE_DATABASE_URL="$DISPOSABLE_DATABASE_URL" bun run --cwd apps/api vitest run src/mcp/realBackend.acceptance.test.ts
+FLASH_EVALS_TEST_DATABASE_URL="$DISPOSABLE_DATABASE_URL" bun run --cwd apps/api vitest run src/routes/mcpReaders.integration.test.ts src/mcp/idempotency.integration.test.ts
+bun run --cwd apps/api vitest run src/mcp/policyCoverage.acceptance.test.ts
 ```
 
 The test refuses non-loopback hosts and any database name other than `flash_evals_mcp_acceptance`. It runs no paid provider calls. Temporary uploaded files are removed in `afterAll`. If workflow LLM route versions were created, PostgreSQL immutability triggers prevent deleting that history and its referenced fixture graph; discard the dedicated database/container after the run, as required by `CONTRIBUTING.md`.

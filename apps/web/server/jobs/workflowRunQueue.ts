@@ -1,12 +1,20 @@
 import { PgBoss } from "pg-boss";
-import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
+import { redactSecrets } from "@flash-evals/secrets";
 import { db } from "../db/client";
-import { workflowRunCells, workflowRuns } from "../db/schema";
+import { errorMessage } from "../lib/errors";
+import { runSlots } from "../lib/concurrency";
+import { runs, workflowRunCells, workflowRuns } from "../db/schema";
 import { executeWorkflowRun } from "../workflowRuns/executor";
 import { parseStaleClaimMs } from "./claimLease";
-import { logWorkerEvent, safeWorkerError } from "./workerObservability";
+import {
+    logQueueWarning,
+    logWorkerEvent,
+    safeWorkerError,
+} from "./workerObservability";
 import {
     PG_BOSS_SCHEMA,
+    WORKFLOW_RUN_JOB_OPTIONS,
     WORKFLOW_RUN_QUEUE,
     WORKFLOW_RUN_QUEUE_OPTIONS,
 } from "./queueNames";
@@ -40,12 +48,18 @@ async function getBoss() {
                 ...safeWorkerError(error),
             });
         });
+        boss.on("warning", (warning) =>
+            logQueueWarning(WORKFLOW_RUN_QUEUE, warning),
+        );
         await boss.start();
         // pg-boss enforces singletonKey only on non-standard queues;
         // "stately" keeps one created and one active job per run. Matches the
         // API publisher; every send to this queue carries a singletonKey.
         // The policy is fixed at creation: pg-boss 11+ rejects policy updates.
         await boss.createQueue(WORKFLOW_RUN_QUEUE, WORKFLOW_RUN_QUEUE_OPTIONS);
+        // Expiry and retries can be updated; an existing queue keeps pg-boss's
+        // 15-minute default otherwise.
+        await boss.updateQueue(WORKFLOW_RUN_QUEUE, WORKFLOW_RUN_JOB_OPTIONS);
     }
     return boss;
 }
@@ -57,8 +71,7 @@ export async function enqueueWorkflowRun(workflowRunId: string) {
         WORKFLOW_RUN_QUEUE,
         { workflowRunId },
         {
-            retryLimit: 3,
-            retryBackoff: true,
+            ...WORKFLOW_RUN_JOB_OPTIONS,
             // With the stately queue policy, at most one queued and one
             // running job per run, so recovery and retries cannot stack.
             singletonKey: workflowRunId,
@@ -86,6 +99,7 @@ export async function recoverOrphanedWorkflowRuns() {
                 ),
             ),
         );
+    await queueWaitingComparisonPipelines();
     if (stuck.length === 0) return;
     const ids = stuck.map((run) => run.id);
     await db
@@ -112,6 +126,49 @@ export async function recoverOrphanedWorkflowRuns() {
     });
 }
 
+/**
+ * Queues the pipeline runs whose steps have all finished and whose final
+ * answers wait for the eval run they are compared with (in a setup
+ * comparison or not), once that eval run has finished (one eval run when
+ * given, else every one). Their next pass scores the answers and ends the run. The eval
+ * run's worker calls this when it finishes; the recovery sweep calls it too,
+ * so a missed call never leaves a pipeline run waiting. Sends carry the run's
+ * singleton key, so a run already queued is not queued twice.
+ */
+export async function queueWaitingComparisonPipelines(
+    evalRunId?: string,
+): Promise<number> {
+    const waiting = await db
+        .selectDistinct({ id: workflowRuns.id })
+        .from(workflowRuns)
+        // Joined on the eval run the pipeline run is compared with, so a
+        // run compared outside a setup comparison is queued too.
+        .innerJoin(
+            runs,
+            sql`${runs.id}::text = ${workflowRuns.configSnapshot} #>> '{comparison,runId}'`,
+        )
+        .where(
+            and(
+                eq(workflowRuns.status, "running"),
+                notInArray(runs.status, ["pending", "running"]),
+                evalRunId ? eq(runs.id, evalRunId) : undefined,
+                sql`not exists (
+                    select 1 from ${workflowRunCells}
+                    where ${workflowRunCells.workflowRunId} = ${workflowRuns.id}
+                      and ${workflowRunCells.status} in ('pending', 'running')
+                )`,
+            ),
+        );
+    for (const run of waiting) await enqueueWorkflowRun(run.id);
+    if (waiting.length > 0)
+        logWorkerEvent("info", "comparison.pipelines_queued_for_scoring", {
+            queue: WORKFLOW_RUN_QUEUE,
+            ...(evalRunId ? { runId: evalRunId } : {}),
+            recoveredCount: waiting.length,
+        });
+    return waiting.length;
+}
+
 export function startWorkflowRunWorker(): Promise<void> {
     if (workerStarted) return startPromise ?? Promise.resolve();
     stopping = false;
@@ -122,9 +179,13 @@ export function startWorkflowRunWorker(): Promise<void> {
         if (stopping) return;
         const b = await getBoss();
         if (stopping) return;
-        await b.work<IWorkflowRunJob, void, { includeMetadata: true }>(
+        await b.work<
+            IWorkflowRunJob,
+            void,
+            { includeMetadata: true; localConcurrency: number }
+        >(
             WORKFLOW_RUN_QUEUE,
-            { includeMetadata: true },
+            { includeMetadata: true, localConcurrency: runSlots() },
             async (jobs) => {
                 for (const job of jobs) {
                     const startedAt = Date.now();
@@ -151,6 +212,25 @@ export function startWorkflowRunWorker(): Promise<void> {
                             durationMs: Date.now() - startedAt,
                             ...safeWorkerError(error),
                         });
+                        // Setup failed: the run is failed with the error and
+                        // the app offers Retry, so the job is not retried.
+                        const failedBeforeStart =
+                            await failWorkflowRunThatNeverStarted(
+                                job.data.workflowRunId,
+                                error,
+                            ).catch((markError: unknown) => {
+                                logWorkerEvent(
+                                    "error",
+                                    "run.failure_persist_failed",
+                                    {
+                                        queue: WORKFLOW_RUN_QUEUE,
+                                        workflowRunId: job.data.workflowRunId,
+                                        ...safeWorkerError(markError),
+                                    },
+                                );
+                                return false;
+                            });
+                        if (failedBeforeStart) continue;
                         if (job.retryCount >= job.retryLimit) {
                             await db
                                 .update(workflowRunCells)
@@ -173,7 +253,10 @@ export function startWorkflowRunWorker(): Promise<void> {
                                 );
                             await db
                                 .update(workflowRuns)
-                                .set({ status: "failed" })
+                                .set({
+                                    status: "failed",
+                                    error: runErrorText(error),
+                                })
                                 .where(
                                     eq(workflowRuns.id, job.data.workflowRunId),
                                 );
@@ -214,6 +297,36 @@ export function startWorkflowRunWorker(): Promise<void> {
         throw error;
     });
     return startPromise;
+}
+
+const MAX_RUN_ERROR_CHARS = 1_000;
+
+function runErrorText(error: unknown): string {
+    return redactSecrets(errorMessage(error)).slice(0, MAX_RUN_ERROR_CHARS);
+}
+
+/**
+ * A pipeline run whose pass failed during setup (still pending: the worker
+ * sets it running once setup is done) is marked failed with the redacted
+ * error, so the app shows why and offers Retry instead of leaving it
+ * pending. Returns whether it did; a run that had started is left to the
+ * job's retries.
+ */
+export async function failWorkflowRunThatNeverStarted(
+    workflowRunId: string,
+    error: unknown,
+): Promise<boolean> {
+    const rows = await db
+        .update(workflowRuns)
+        .set({ status: "failed", error: runErrorText(error) })
+        .where(
+            and(
+                eq(workflowRuns.id, workflowRunId),
+                eq(workflowRuns.status, "pending"),
+            ),
+        )
+        .returning({ id: workflowRuns.id });
+    return rows.length > 0;
 }
 
 function startClaimHeartbeat(

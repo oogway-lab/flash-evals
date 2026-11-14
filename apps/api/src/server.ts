@@ -9,6 +9,8 @@ import { pathToFileURL } from "node:url";
 import type {
     ICreateRunFromSelectionRequest,
     ICreateRunRequest,
+    ICancelSetupComparisonRequest,
+    ICreateSetupComparisonRequest,
     ICreateWorkflowRunRequest,
     IRetryWorkflowRunRequest,
     IUpdateWorkflowRequest,
@@ -43,7 +45,10 @@ import {
     startWorkflowRunEnqueueReplay,
 } from "./workflowRunEnqueue.js";
 import { resolvePrincipalPayload } from "./routes/auth.js";
-import { retryWorkflowRunPayload } from "./routes/workflowRunRetry.js";
+import {
+    cancelWorkflowRunPayload,
+    retryWorkflowRunPayload,
+} from "./routes/workflowRunRetry.js";
 import { dashboardPayload } from "./routes/dashboard.js";
 import {
     createDatasetItemPayload,
@@ -78,6 +83,15 @@ import {
     listProviderKeysPayload,
     setProviderKeyPayload,
 } from "./routes/keys.js";
+import {
+    modelPriceListPayload,
+    providerStatusPayload,
+} from "./routes/modelProviders.js";
+import { enqueueModelCatalogRefresh } from "./runQueue.js";
+import {
+    decideDisagreementPayload,
+    runDisagreementsPayload,
+} from "./routes/runs/disagreements.js";
 import {
     assertWorkflowLlmWritesEnabled,
     clearWorkflowLlmProjectDefaultPayload,
@@ -133,12 +147,15 @@ import {
 } from "./routes/sttProbes.js";
 import {
     createRunPayload,
+    countItemFilterMatchesPayload,
     createRunFromSelectionPayload,
     deleteRunPayload,
     generateJudgeForRunPayload,
+    proposeBenchmarkTaskMapPayload,
     runDetailPayload,
     listRunsPayload,
     retryRunPayload,
+    cancelRunPayload,
     runProgressPayload,
     runSetupPayload,
     saveCellAnnotationPayload,
@@ -157,6 +174,14 @@ import {
     workflowRunDetailPayload,
     workflowRunProgressPayload,
 } from "./routes/workflowRuns.js";
+import { listPipelineComparisonRunsPayload } from "./routes/workflowRunComparison.js";
+import {
+    cancelSetupComparisonPayload,
+    createSetupComparisonPayload,
+    listSetupComparisonPipelinesPayload,
+    publishSetupComparisonEnqueues,
+    setupComparisonPayload,
+} from "./routes/setupComparisons.js";
 
 export interface IApiRuntime {
     config: IApiConfig;
@@ -269,6 +294,29 @@ export async function handleRequest(
             );
         }
 
+        if (
+            request.method === "GET" &&
+            url.pathname === "/api/provider-status"
+        ) {
+            assertInternalToken(request, config);
+            const teamId = url.searchParams.get("teamId")?.trim();
+            if (!teamId) return missingQueryParameter("teamId", headers);
+            return Response.json(
+                await providerStatusPayload(db, config, teamId),
+                { headers },
+            );
+        }
+
+        if (request.method === "GET" && url.pathname === "/api/model-prices") {
+            assertInternalToken(request, config);
+            const teamId = url.searchParams.get("teamId")?.trim();
+            if (!teamId) return missingQueryParameter("teamId", headers);
+            return Response.json(
+                await modelPriceListPayload(db, config, teamId),
+                { headers },
+            );
+        }
+
         if (request.method === "GET" && url.pathname === "/api/provider-keys") {
             assertInternalToken(request, config);
             const teamId = url.searchParams.get("teamId")?.trim();
@@ -288,7 +336,12 @@ export async function handleRequest(
             if (!teamId) return missingQueryParameter("teamId", headers);
             if (!projectId) return missingQueryParameter("projectId", headers);
             return Response.json(
-                await listWorkflowLlmCapabilitiesPayload(db, teamId, projectId),
+                await listWorkflowLlmCapabilitiesPayload(
+                    db,
+                    teamId,
+                    projectId,
+                    config,
+                ),
                 { headers },
             );
         }
@@ -470,6 +523,15 @@ export async function handleRequest(
                 await request.json(),
             );
             return new Response(null, { status: 204, headers });
+        }
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/model-prices/refresh"
+        ) {
+            assertInternalToken(request, config);
+            await enqueueModelCatalogRefresh(config);
+            return new Response(null, { status: 202, headers });
         }
 
         if (
@@ -1142,6 +1204,101 @@ export async function handleRequest(
                 { headers },
             );
         }
+        if (
+            url.pathname === "/api/workflow-comparison-runs" &&
+            request.method === "GET"
+        ) {
+            assertInternalToken(request, config);
+            const teamId = url.searchParams.get("teamId")?.trim();
+            const projectId = url.searchParams.get("projectId")?.trim();
+            if (!teamId) return missingQueryParameter("teamId", headers);
+            if (!projectId) return missingQueryParameter("projectId", headers);
+            return Response.json(
+                await listPipelineComparisonRunsPayload(
+                    db,
+                    teamId,
+                    projectId,
+                    url.searchParams.get("datasetId")?.trim() || undefined,
+                ),
+                { headers },
+            );
+        }
+        if (
+            url.pathname === "/api/setup-comparison-pipelines" &&
+            request.method === "GET"
+        ) {
+            assertInternalToken(request, config);
+            const teamId = url.searchParams.get("teamId")?.trim();
+            const projectId = url.searchParams.get("projectId")?.trim();
+            if (!teamId) return missingQueryParameter("teamId", headers);
+            if (!projectId) return missingQueryParameter("projectId", headers);
+            return Response.json(
+                await listSetupComparisonPipelinesPayload(
+                    db,
+                    teamId,
+                    projectId,
+                ),
+                { headers },
+            );
+        }
+        if (
+            url.pathname === "/api/setup-comparisons" &&
+            request.method === "POST"
+        ) {
+            assertInternalToken(request, config);
+            const body =
+                (await request.json()) as ICreateSetupComparisonRequest;
+            const created = await createSetupComparisonPayload(
+                db,
+                body,
+                await configWithTeamSttProbes(
+                    db,
+                    config,
+                    body.teamId,
+                    body.projectId,
+                ),
+            );
+            return Response.json(
+                await publishSetupComparisonEnqueues(db, config, created),
+                { headers },
+            );
+        }
+        const setupComparisonCancelMatch =
+            /^\/api\/setup-comparisons\/([^/]+)\/cancel$/.exec(url.pathname);
+        if (setupComparisonCancelMatch && request.method === "POST") {
+            assertInternalToken(request, config);
+            const body =
+                (await request.json()) as ICancelSetupComparisonRequest;
+            if (
+                body.setupComparisonId !==
+                decodeURIComponent(setupComparisonCancelMatch[1]!)
+            )
+                throw new ApiBadRequestError(
+                    "Comparison ID in the request body must match the route.",
+                );
+            return Response.json(await cancelSetupComparisonPayload(db, body), {
+                headers,
+            });
+        }
+        const setupComparisonMatch = /^\/api\/setup-comparisons\/([^/]+)$/.exec(
+            url.pathname,
+        );
+        if (setupComparisonMatch && request.method === "GET") {
+            assertInternalToken(request, config);
+            const teamId = url.searchParams.get("teamId")?.trim();
+            const projectId = url.searchParams.get("projectId")?.trim();
+            if (!teamId) return missingQueryParameter("teamId", headers);
+            if (!projectId) return missingQueryParameter("projectId", headers);
+            return Response.json(
+                await setupComparisonPayload(
+                    db,
+                    teamId,
+                    projectId,
+                    decodeURIComponent(setupComparisonMatch[1]!),
+                ),
+                { headers },
+            );
+        }
         if (url.pathname === "/api/workflows" && request.method === "POST") {
             assertInternalToken(request, config);
             return Response.json(
@@ -1194,19 +1351,37 @@ export async function handleRequest(
                 throw new ApiBadRequestError(
                     "Workflow and run IDs in the request body must match the route.",
                 );
-            const { retriedCellCount } = await retryWorkflowRunPayload(
-                db,
-                body,
-            );
+            const { retriedCellCount, requeued } =
+                await retryWorkflowRunPayload(db, body);
             const published = await publishWorkflowRunEnqueue(
                 db,
                 config,
                 body.workflowRunId,
             );
             return Response.json(
-                { ...published, retriedCellCount },
+                { ...published, retriedCellCount, requeued },
                 { headers },
             );
+        }
+        const workflowRunCancelMatch =
+            /^\/api\/workflows\/([^/]+)\/runs\/([^/]+)\/cancel$/.exec(
+                url.pathname,
+            );
+        if (workflowRunCancelMatch && request.method === "POST") {
+            assertInternalToken(request, config);
+            const body = (await request.json()) as IRetryWorkflowRunRequest;
+            if (
+                body.workflowId !==
+                    decodeURIComponent(workflowRunCancelMatch[1]!) ||
+                body.workflowRunId !==
+                    decodeURIComponent(workflowRunCancelMatch[2]!)
+            )
+                throw new ApiBadRequestError(
+                    "Workflow and run IDs in the request body must match the route.",
+                );
+            return Response.json(await cancelWorkflowRunPayload(db, body), {
+                headers,
+            });
         }
         const workflowRunDetailMatch =
             /^\/api\/workflows\/([^/]+)\/runs\/([^/]+)$/.exec(url.pathname);
@@ -1332,6 +1507,17 @@ export async function handleRequest(
             );
         }
 
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/runs/item-filter-count"
+        ) {
+            assertInternalToken(request, config);
+            return Response.json(
+                await countItemFilterMatchesPayload(db, await request.json()),
+                { headers },
+            );
+        }
+
         if (request.method === "GET" && url.pathname === "/api/runs") {
             assertInternalToken(request, config);
             const teamId = url.searchParams.get("teamId")?.trim();
@@ -1400,10 +1586,62 @@ export async function handleRequest(
             );
         }
 
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/runs/propose-benchmark-task-map"
+        ) {
+            assertInternalToken(request, config);
+            return Response.json(
+                await proposeBenchmarkTaskMapPayload(
+                    db,
+                    config,
+                    await request.json(),
+                ),
+                { headers },
+            );
+        }
+
         if (request.method === "POST" && url.pathname === "/api/runs/note") {
             assertInternalToken(request, config);
             await saveRunNotePayload(db, await request.json());
             return new Response(null, { status: 204, headers });
+        }
+
+        if (
+            request.method === "POST" &&
+            url.pathname === "/api/runs/disagreements/decide"
+        ) {
+            assertInternalToken(request, config);
+            return Response.json(
+                await decideDisagreementPayload(db, await request.json()),
+                { headers },
+            );
+        }
+
+        const disagreementsMatch = /^\/api\/runs\/([^/]+)\/disagreements$/.exec(
+            url.pathname,
+        );
+        if (request.method === "GET" && disagreementsMatch) {
+            assertInternalToken(request, config);
+            const teamId = url.searchParams.get("teamId")?.trim();
+            const projectId = url.searchParams.get("projectId")?.trim();
+            const runModelId = url.searchParams.get("runModelId")?.trim();
+            const taskKey = url.searchParams.get("taskKey")?.trim();
+            if (!teamId) return missingQueryParameter("teamId", headers);
+            if (!projectId) return missingQueryParameter("projectId", headers);
+            if (!runModelId)
+                return missingQueryParameter("runModelId", headers);
+            if (!taskKey) return missingQueryParameter("taskKey", headers);
+            return Response.json(
+                await runDisagreementsPayload(db, {
+                    teamId,
+                    projectId,
+                    runId: decodeURIComponent(disagreementsMatch[1]!),
+                    runModelId,
+                    taskKey,
+                }),
+                { headers },
+            );
         }
 
         if (
@@ -1423,13 +1661,22 @@ export async function handleRequest(
             return new Response(null, { status: 204, headers });
         }
 
+        if (request.method === "POST" && url.pathname === "/api/runs/cancel") {
+            assertInternalToken(request, config);
+            return Response.json(
+                await cancelRunPayload(db, await request.json()),
+                { headers },
+            );
+        }
+
         if (request.method === "POST" && url.pathname === "/api/runs/retry") {
             assertInternalToken(request, config);
             const input = await request.json();
-            await retryRunPayload(db, input);
+            const { requeued } = await retryRunPayload(db, input, {
+                teamDailySpendCapUsd: config.teamDailySpendCapUsd,
+            });
             const result = await publishRunEnqueue(db, config, input.runId);
-            // Existing clients accept any successful status and ignore this body.
-            return Response.json(result, { headers });
+            return Response.json({ ...result, requeued }, { headers });
         }
 
         const runProgressMatch = /^\/api\/runs\/([^/]+)\/progress$/.exec(

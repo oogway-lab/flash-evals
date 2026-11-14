@@ -29,8 +29,8 @@ StartLimitIntervalSec=0
 Type=exec
 ${common}
 ExecStartPre=${quote(node)} ${quote(path.join(root, "scripts/dev-ready.mjs"))}
-# This is the same launcher as pnpm run dev. Make it the main process so it
-# stays alive throughout worker draining instead of a pnpm wrapper exiting early.
+# This is the same launcher as bun run dev. Make it the main process so it
+# stays alive throughout worker draining instead of a bun wrapper exiting early.
 ExecStart=${quote(node)} ${quote(path.join(root, "scripts/dev.mjs"))}
 Restart=on-failure
 RestartSec=10

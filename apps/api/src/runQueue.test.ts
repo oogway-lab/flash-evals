@@ -40,15 +40,61 @@ describe("ordinary queue publication", () => {
         const { enqueueWorkflowRun } = await import("./runQueue.js");
         await enqueueWorkflowRun(config, "wf-run");
         await enqueueWorkflowRun(config, "wf-run");
-        const options = { name: "workflow-run", policy: "stately" };
+        const jobOptions = {
+            expireInSeconds: 86_400,
+            retryLimit: 3,
+            retryBackoff: true,
+        };
+        const options = {
+            name: "workflow-run",
+            policy: "stately",
+            ...jobOptions,
+        };
         expect(mocks.createQueue).toHaveBeenCalledWith("workflow-run", options);
-        // pg-boss 11+ throws when updateQueue() is given a policy.
-        expect(mocks.updateQueue).not.toHaveBeenCalled();
+        // pg-boss 11+ throws when updateQueue() is given a policy, so only
+        // the expiry and retries are updated on an existing queue.
+        expect(mocks.updateQueue).toHaveBeenCalledWith(
+            "workflow-run",
+            jobOptions,
+        );
+        for (const call of mocks.updateQueue.mock.calls)
+            expect(call[1]).not.toHaveProperty("policy");
         expect(mocks.send).toHaveBeenCalledWith(
             "workflow-run",
             { workflowRunId: "wf-run" },
-            { singletonKey: "wf-run" },
+            { ...jobOptions, singletonKey: "wf-run" },
         );
+    });
+
+    it("gives eval-run jobs a 24-hour expiry and no pg-boss retries", async () => {
+        const { enqueueRun } = await import("./runQueue.js");
+        await enqueueRun(config, "run");
+        await enqueueRun(config, "run-2", {
+            db: { query: vi.fn() } as unknown as IDb,
+            jobId: "job",
+        });
+        const runJobOptions = { expireInSeconds: 86_400, retryLimit: 0 };
+        expect(mocks.createQueue).toHaveBeenCalledWith(
+            "eval-run",
+            runJobOptions,
+        );
+        expect(mocks.updateQueue).toHaveBeenCalledWith(
+            "eval-run",
+            runJobOptions,
+        );
+        expect(mocks.send).toHaveBeenNthCalledWith(
+            1,
+            "eval-run",
+            { runId: "run" },
+            runJobOptions,
+        );
+        expect(mocks.send).toHaveBeenNthCalledWith(
+            2,
+            "eval-run",
+            { runId: "run-2" },
+            expect.objectContaining({ ...runJobOptions, id: "job" }),
+        );
+        expect(mocks.on).toHaveBeenCalledWith("warning", expect.any(Function));
     });
 
     it("passes the durable job identity and caller transaction to pg-boss", async () => {

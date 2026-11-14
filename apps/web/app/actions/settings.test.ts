@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     disableWorkflowLlmRoute: vi.fn(),
     setWorkflowLlmProjectDefault: vi.fn(),
     clearWorkflowLlmProjectDefault: vi.fn(),
+    refreshModelPrices: vi.fn(),
     revalidatePath: vi.fn(),
 }));
 
@@ -36,6 +37,7 @@ vi.mock("@/server/api/client", () => ({
         disableWorkflowLlmRoute: mocks.disableWorkflowLlmRoute,
         setWorkflowLlmProjectDefault: mocks.setWorkflowLlmProjectDefault,
         clearWorkflowLlmProjectDefault: mocks.clearWorkflowLlmProjectDefault,
+        refreshModelPrices: mocks.refreshModelPrices,
     }),
 }));
 
@@ -49,9 +51,17 @@ import {
     createWorkflowLlmRouteForNode,
     setWorkflowLlmDefaultAction,
     setProviderKeyAction,
+    refreshModelPricesAction,
 } from "./settings";
 
 beforeEach(() => vi.clearAllMocks());
+
+describe("price list action", () => {
+    it("asks the API to fetch the price lists again", async () => {
+        await expect(refreshModelPricesAction()).resolves.toEqual({ ok: true });
+        expect(mocks.refreshModelPrices).toHaveBeenCalledTimes(1);
+    });
+});
 
 describe("provider key settings actions", () => {
     it("sets a provider key for the current team", async () => {

@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { mapPool, forEachPool } from "./concurrency";
+import {
+    mapPool,
+    forEachPool,
+    createSemaphore,
+    positiveIntegerSetting,
+    innerConcurrency,
+    runSlots,
+} from "./concurrency";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -25,13 +32,17 @@ describe("mapPool", () => {
     it("never runs more than `limit` workers concurrently", async () => {
         let active = 0;
         let maxActive = 0;
-        await mapPool(Array.from({ length: 10 }, (_, i) => i), 3, async (n) => {
-            active++;
-            maxActive = Math.max(maxActive, active);
-            await tick();
-            active--;
-            return n;
-        });
+        await mapPool(
+            Array.from({ length: 10 }, (_, i) => i),
+            3,
+            async (n) => {
+                active++;
+                maxActive = Math.max(maxActive, active);
+                await tick();
+                active--;
+                return n;
+            },
+        );
         expect(maxActive).toBeLessThanOrEqual(3);
         expect(maxActive).toBeGreaterThan(1);
     });
@@ -88,5 +99,65 @@ describe("forEachPool", () => {
                 if (n === 1) throw new Error("kaboom");
             }),
         ).rejects.toThrow("kaboom");
+    });
+});
+
+describe("positiveIntegerSetting", () => {
+    it("falls back on unset, empty, partial or fractional values", () => {
+        for (const value of [undefined, "", " ", "0", "-2", "10abc", "2.5"])
+            expect(positiveIntegerSetting(value, 5), String(value)).toBe(5);
+        expect(positiveIntegerSetting(" 8 ", 5)).toBe(8);
+    });
+});
+
+describe("createSemaphore", () => {
+    it("lets waiting callers in, in order, before new ones when the limit is raised", async () => {
+        let limit = 1;
+        const semaphore = createSemaphore(() => limit);
+        const order: string[] = [];
+        const first = await semaphore.acquire();
+        const waiting = ["a", "b"].map((name) =>
+            semaphore.acquire().then((release) => {
+                order.push(name);
+                return release;
+            }),
+        );
+        await Promise.resolve();
+        limit = 2;
+        const late = semaphore.acquire().then((release) => {
+            order.push("late");
+            return release;
+        });
+        await tick();
+        // The raised limit admits the first waiter, not the newcomer.
+        expect(order).toEqual(["a"]);
+        first();
+        (await waiting[0]!)();
+        await tick();
+        expect(order).toEqual(["a", "b", "late"]);
+        (await waiting[1]!)();
+        (await late)();
+    });
+});
+
+describe("innerConcurrency", () => {
+    it("keeps the caller's default without a setting", () => {
+        expect(innerConcurrency(4, undefined)).toBe(4);
+        expect(innerConcurrency(3, "")).toBe(3);
+    });
+    it("uses a whole positive setting and ignores bad ones", () => {
+        expect(innerConcurrency(4, "100")).toBe(100);
+        expect(innerConcurrency(4, "0")).toBe(4);
+        expect(innerConcurrency(4, "abc")).toBe(4);
+    });
+});
+
+describe("runSlots", () => {
+    it("defaults to one run at a time", () => {
+        expect(runSlots(undefined)).toBe(1);
+        expect(runSlots("-2")).toBe(1);
+    });
+    it("uses a whole positive setting", () => {
+        expect(runSlots("100")).toBe(100);
     });
 });

@@ -37,6 +37,7 @@ import { registerDatasetTools } from "./tools/datasets.js";
 import { registerPromptTools } from "./tools/prompts.js";
 import { registerRunTools } from "./tools/runs.js";
 import { registerSettingsTools } from "./tools/settings.js";
+import { registerSetupComparisonTools } from "./tools/setupComparisons.js";
 import { registerWorkflowTools } from "./tools/workflows.js";
 import { enforceRateLimit, mcpToolRateLimitCategory } from "../rateLimit.js";
 import {
@@ -56,6 +57,7 @@ export function registerFlashEvalsMcpCapabilities(
     registerRunTools(guarded, context);
     registerSettingsTools(guarded, context);
     registerWorkflowTools(guarded, context);
+    registerSetupComparisonTools(guarded, context);
     registerResources(guarded, context);
     registerPrompts(guarded);
 }
@@ -257,9 +259,12 @@ function registerResources(server: McpServer, context: IMcpContext): void {
 
     server.registerResource(
         "flash-evals-dataset",
-        new ResourceTemplate("flash-evals://projects/{projectId}/datasets/{id}", {
-            list: undefined,
-        }),
+        new ResourceTemplate(
+            "flash-evals://projects/{projectId}/datasets/{id}",
+            {
+                list: undefined,
+            },
+        ),
         {
             title: "Flash Evals dataset",
             description:
@@ -283,9 +288,12 @@ function registerResources(server: McpServer, context: IMcpContext): void {
 
     server.registerResource(
         "flash-evals-prompt",
-        new ResourceTemplate("flash-evals://projects/{projectId}/prompts/{id}", {
-            list: undefined,
-        }),
+        new ResourceTemplate(
+            "flash-evals://projects/{projectId}/prompts/{id}",
+            {
+                list: undefined,
+            },
+        ),
         {
             title: "Flash Evals prompt",
             description:

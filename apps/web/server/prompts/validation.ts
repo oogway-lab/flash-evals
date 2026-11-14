@@ -44,7 +44,9 @@ export async function validatePromptForRunnableVersion(input: {
     const sampleResults: IPromptValidationEvidence["sampleResults"] = [];
 
     if (
-        staticChecks.some((check) => check.code === "prompt_conflicting_json") ||
+        staticChecks.some(
+            (check) => check.code === "prompt_conflicting_json",
+        ) ||
         !schemaValidation.localValid ||
         !schemaValidation.openaiCompatible
     ) {
@@ -110,7 +112,9 @@ export async function validatePromptForRunnableVersion(input: {
     };
 }
 
-export function staticPromptChecks(prompt: string): ISchemaCompatibilityIssue[] {
+export function staticPromptChecks(
+    prompt: string,
+): ISchemaCompatibilityIssue[] {
     const checks: ISchemaCompatibilityIssue[] = [];
     const normalized = prompt.toLowerCase();
     const positiveOutputInstructions = normalized.replace(
@@ -122,16 +126,18 @@ export function staticPromptChecks(prompt: string): ISchemaCompatibilityIssue[] 
         checks.push({
             path: "$",
             code: "prompt_missing_json_instruction",
-            message: "Prompt should explicitly instruct the model to return JSON.",
+            message:
+                "Prompt should explicitly instruct the model to return JSON.",
         });
     }
 
     if (
         /\bthen explain\b/.test(positiveOutputInstructions) ||
         /\bexplain (below|after)\b/.test(positiveOutputInstructions) ||
-        /\b(use|include|return|respond in|format as) markdown\b/.test(
-            positiveOutputInstructions,
-        )
+        (!asksForJsonOnly(normalized) &&
+            /\b(use|include|return|respond in|format as) markdown\b/.test(
+                positiveOutputInstructions,
+            ))
     ) {
         checks.push({
             path: "$",
@@ -142,6 +148,16 @@ export function staticPromptChecks(prompt: string): ISchemaCompatibilityIssue[] 
     }
 
     return checks;
+}
+
+/**
+ * "Respond with only JSON" means the whole reply is JSON, so Markdown asked
+ * for in the same prompt is the content of a field, not a wrapper.
+ */
+function asksForJsonOnly(normalizedPrompt: string): boolean {
+    return /\bonly (valid |raw |a |one )?json\b|\bjson only\b/.test(
+        normalizedPrompt,
+    );
 }
 
 export function parseStrictJsonOnly(

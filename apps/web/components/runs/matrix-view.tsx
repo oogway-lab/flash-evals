@@ -26,6 +26,7 @@ import {
     CellStatusBadge,
     isCellInFlight,
     ReviewVerdictBadge,
+    StatusBadge,
 } from "@/components/ui/status-badge";
 import { ScorePill } from "@/components/ui/score-pill";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/layout/empty-state";
 import { cn } from "@/lib/cn";
 import { CellDrawer } from "@/components/runs/cell-drawer";
+import { goldenScoreLabel } from "@/components/runs/golden-score";
 import { ImagePreview } from "@/components/runs/image-preview";
 import {
     type ModelCol,
@@ -71,6 +73,7 @@ export function MatrixView({
     scoresByCell,
     saveCellAnnotationAction,
     configSnapshot = {},
+    stopped = false,
 }: {
     models: ModelCol[];
     items: ItemRow[];
@@ -78,12 +81,15 @@ export function MatrixView({
     scoresByCell: Record<string, IMatrixCellScore[]>;
     saveCellAnnotationAction: SaveCellAnnotationAction;
     configSnapshot?: IRunConfigSnapshot;
+    /** The run was cancelled: its pending cells will not run. */
+    stopped?: boolean;
 }) {
     const [drawerKey, setDrawerKey] = useState<{
         itemId: string;
         runModelId: string;
     } | null>(null);
     const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("all");
+    const goldenLabel = goldenScoreLabel(configSnapshot);
 
     const cellByKey = useMemo(() => {
         const map = new Map<string, CellData>();
@@ -274,10 +280,15 @@ export function MatrixView({
                                         {cell ? (
                                             <MatrixCell
                                                 cell={cell}
+                                                notRun={
+                                                    stopped &&
+                                                    cell.status === "pending"
+                                                }
                                                 scores={
                                                     scoresByCell[cell.id] ?? []
                                                 }
                                                 fmtCostValue={fmtCostValue}
+                                                goldenPill={goldenLabel.pill}
                                                 saveCellAnnotationAction={
                                                     saveCellAnnotationAction
                                                 }
@@ -326,6 +337,7 @@ export function MatrixView({
             )}
 
             <CellDrawer
+                goldenLabel={goldenLabel}
                 open={drawer !== null}
                 onClose={() => setDrawerKey(null)}
                 data={drawer}
@@ -382,26 +394,39 @@ function MatrixCell({
     cell,
     scores,
     fmtCostValue,
+    goldenPill,
     saveCellAnnotationAction,
     onOpen,
+    notRun = false,
 }: {
     cell: CellData;
+    notRun?: boolean;
     scores: IMatrixCellScore[];
     fmtCostValue: ReturnType<typeof formatCostColumn>;
+    /** Pill label for the stored-answer field match. */
+    goldenPill: string;
     saveCellAnnotationAction: SaveCellAnnotationAction;
     onOpen: () => void;
 }) {
     const golden = scores.find((s) => s.scorerType === "field_diff");
     const judge = scores.find((s) => s.scorerType === "judge");
     const total = sumTokens(cell.promptTokens, cell.completionTokens);
-    const inFlight = isCellInFlight(cell.status);
+    const inFlight = !notRun && isCellInFlight(cell.status);
     const verdict = cell.annotation?.verdict ?? "unreviewed";
 
     return (
         <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
-                <CellStatusBadge status={cell.status} />
-                {inFlight ? (
+                {notRun ? (
+                    <StatusBadge
+                        kind="Cell"
+                        label="Not run"
+                        variant="outline"
+                    />
+                ) : (
+                    <CellStatusBadge status={cell.status} />
+                )}
+                {notRun ? undefined : inFlight ? (
                     // latency · tokens · cost, once the cell finishes
                     <Skeleton className="h-5 w-32" />
                 ) : (
@@ -434,7 +459,7 @@ function MatrixCell({
             ) : (
                 <div className="flex flex-wrap gap-1">
                     {golden && (
-                        <ScorePill score={golden.score} label="golden" />
+                        <ScorePill score={golden.score} label={goldenPill} />
                     )}
                     {(judge || !golden) && (
                         <ScorePill score={judge?.score} label="judge" />
@@ -470,15 +495,16 @@ function MatrixModelDisplay({
 }) {
     const variant = sttVariantDisplay(snapshot, modelId);
     if (!variant) return <span className="text-mono-13">{modelId}</span>;
+    const details = [...variant.settingLabels, ...variant.diffBadges];
     return (
         <div className="flex flex-col gap-1">
             <span>{variant.label}</span>
             <span className="text-mono-13 text-muted-foreground">
                 {variant.baseModelId}
             </span>
-            {variant.diffBadges.length > 0 && (
+            {details.length > 0 && (
                 <span className="text-label-12 text-muted-foreground">
-                    {variant.diffBadges.join(" · ")}
+                    {details.join(" · ")}
                 </span>
             )}
         </div>

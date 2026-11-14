@@ -13,6 +13,8 @@ import {
     listWorkflowsPayload,
     replaceWorkflowGraph,
     updateWorkflowPayload,
+    validateOrderOnlyEdges,
+    validateStepConditions,
     validateWorkflowDag,
     workflowNodeModelId,
     workflowDetailPayload,
@@ -928,6 +930,71 @@ describe("workflow project scoping", () => {
         expect(updateCall?.[1]?.slice(2, 4)).toEqual([false, null]);
     });
 
+    it("keeps the saved final answer unless an update sends one", async () => {
+        const rows = () => [
+            [{ kind: "prompt" }],
+            [{ id: workflowInput.nodes[0]!.promptVersionId }],
+            [{ id: "workflow-1" }],
+            [],
+            [],
+            [],
+            [
+                {
+                    id: "workflow-1",
+                    teamId: "team-1",
+                    projectId: "project-1",
+                    name: "Chain",
+                    description: "",
+                    sttConfig: null,
+                    createdAt: "2026-07-11T00:00:00.000Z",
+                },
+            ],
+            [],
+            [],
+        ];
+        const updateParams = (db: IDb) =>
+            vi
+                .mocked(db.query)
+                .mock.calls.find(([sql]) =>
+                    sql.includes("update prompt_workflows"),
+                )?.[1];
+        const omitted = dbWithRows(rows());
+        await updateWorkflowPayload(omitted, {
+            ...workflowInput,
+            workflowId: "workflow-1",
+        });
+        expect(updateParams(omitted)?.slice(8, 10)).toEqual([false, null]);
+
+        const finalAnswer = {
+            fields: [
+                {
+                    path: "$.summary",
+                    stepKey: workflowInput.nodes[0]!.nodeKey,
+                    stepPath: "$",
+                },
+            ],
+        };
+        const sent = dbWithRows(rows());
+        await updateWorkflowPayload(sent, {
+            ...workflowInput,
+            workflowId: "workflow-1",
+            finalAnswer,
+        });
+        expect(updateParams(sent)?.slice(8, 10)).toEqual([true, finalAnswer]);
+
+        await expect(
+            updateWorkflowPayload(dbWithRows(rows()), {
+                ...workflowInput,
+                workflowId: "workflow-1",
+                finalAnswer: {
+                    fields: [
+                        { path: "$.x", stepKey: "missing", stepPath: "$" },
+                    ],
+                },
+            }),
+        ).rejects.toThrow('Final answer field "$.x" needs a step.');
+    });
+
     it("preserves a stored multi kind when an update omits kind", async () => {
         const node = inputNode();
         const db = dbWithRows([
@@ -1589,6 +1656,22 @@ describe("workflow STT configuration", () => {
         ).toThrow("supported STT model");
     });
 
+    it("accepts level volume first only as true or false", () => {
+        for (const levelVolume of [true, false, undefined])
+            expect(() =>
+                validateSttConfigDefinition({
+                    modelId: "openai:gpt-4o-transcribe",
+                    levelVolume,
+                }),
+            ).not.toThrow();
+        expect(() =>
+            validateSttConfigDefinition({
+                modelId: "openai:gpt-4o-transcribe",
+                levelVolume: "yes" as unknown as boolean,
+            }),
+        ).toThrow("Level volume first must be true or false.");
+    });
+
     it("persists nested STT model ids in the constrained model_id column", () => {
         expect(
             workflowNodeModelId({
@@ -1862,5 +1945,192 @@ describe("nested workflow run ownership", () => {
             sttScoresByItem: {},
             sttAggregates: [],
         });
+    });
+});
+
+describe("pipeline step conditions", () => {
+    const step = (
+        nodeKey: string,
+        extra: Partial<IWorkflowNodeInput> = {},
+    ): IWorkflowNodeInput =>
+        ({
+            nodeKey,
+            label: nodeKey,
+            nodeType: "prompt",
+            promptVersionId: "11111111-1111-4111-8111-111111111111",
+            modelId: "model",
+            evalConfig: { type: "none" },
+            ...extra,
+        }) as IWorkflowNodeInput;
+    const condition = {
+        stepKey: "classify",
+        path: "$.is_sales",
+        operator: "equals" as const,
+        values: [true],
+    };
+    const edges = [
+        {
+            fromNodeKey: "classify",
+            toNodeKey: "points",
+            carryOriginalInput: false,
+        },
+        {
+            fromNodeKey: "points",
+            toNodeKey: "notes",
+            carryOriginalInput: false,
+        },
+    ];
+
+    it("accepts a condition on any earlier step", () => {
+        expect(() =>
+            validateStepConditions(
+                [
+                    step("classify"),
+                    step("points", { runCondition: condition }),
+                    step("notes", { runCondition: condition }),
+                ],
+                edges,
+            ),
+        ).not.toThrow();
+    });
+
+    it("accepts several conditions that must all hold, each on an earlier step", () => {
+        const several = {
+            all: [
+                condition,
+                { ...condition, path: "$.type", values: ["sales"] },
+            ],
+        };
+        expect(() =>
+            validateStepConditions(
+                [
+                    step("classify"),
+                    step("points", { runCondition: several }),
+                    step("notes"),
+                ],
+                edges,
+            ),
+        ).not.toThrow();
+        expect(() =>
+            validateStepConditions(
+                [
+                    step("classify"),
+                    step("points", {
+                        runCondition: {
+                            all: [
+                                condition,
+                                { ...condition, stepKey: "notes" },
+                            ],
+                        },
+                    }),
+                    step("notes"),
+                ],
+                edges,
+            ),
+        ).toThrow('Step "points" can only check a step that runs before it.');
+        expect(() =>
+            validateStepConditions(
+                [
+                    step("classify"),
+                    step("points", { runCondition: { all: [] } }),
+                ],
+                edges,
+            ),
+        ).toThrow('Step "points" needs at least one condition.');
+    });
+
+    it("rejects a condition on a later or unrelated step and on an input block", () => {
+        expect(() =>
+            validateStepConditions(
+                [
+                    step("classify", {
+                        runCondition: { ...condition, stepKey: "notes" },
+                    }),
+                    step("points"),
+                    step("notes"),
+                ],
+                edges,
+            ),
+        ).toThrow('Step "classify" can only check a step that runs before it.');
+        expect(() =>
+            validateStepConditions(
+                [
+                    {
+                        nodeKey: "input",
+                        label: "Input",
+                        nodeType: "input",
+                        nodeConfig: { type: "input", modality: "text" },
+                        evalConfig: { type: "none" },
+                        runCondition: condition,
+                    },
+                ],
+                [],
+            ),
+        ).toThrow(/starts a branch/);
+    });
+
+    it("lets only a prompt or LLM text step wait without reading the answer", () => {
+        const orderOnly = [{ ...edges[0]!, orderOnly: true }];
+        expect(() =>
+            validateOrderOnlyEdges(
+                [step("classify"), step("points")],
+                orderOnly,
+            ),
+        ).not.toThrow();
+        expect(() =>
+            validateOrderOnlyEdges(
+                [
+                    step("classify"),
+                    {
+                        nodeKey: "points",
+                        label: "Points",
+                        nodeType: "metric_compare",
+                    },
+                ],
+                orderOnly,
+            ),
+        ).toThrow(/"Points" can't/);
+    });
+
+    it("stores order-only edges", async () => {
+        const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({
+            rows: [],
+        }));
+        await replaceWorkflowGraph({ query } as unknown as IDb, "workflow-1", {
+            teamId: "team-1",
+            projectId: "project-1",
+            name: "Chain",
+            createdBy: "user-1",
+            nodes: [step("classify"), step("points")],
+            edges: [{ ...edges[0]!, orderOnly: true }],
+        });
+        const insert = query.mock.calls.find(([sql]) =>
+            sql.includes("insert into workflow_edges"),
+        ) as [string, unknown[]];
+        expect(insert[0]).toContain("order_only");
+        expect(insert[1][5]).toBe(true);
+    });
+
+    it("stores the condition with the step", async () => {
+        const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({
+            rows: [],
+        }));
+        await replaceWorkflowGraph({ query } as unknown as IDb, "workflow-1", {
+            teamId: "team-1",
+            projectId: "project-1",
+            name: "Chain",
+            createdBy: "user-1",
+            nodes: [
+                step("classify"),
+                step("points", { runCondition: condition }),
+            ],
+            edges: [edges[0]!],
+        });
+        const inserts = query.mock.calls.filter(([sql]) =>
+            sql.includes("insert into workflow_nodes"),
+        ) as Array<[string, unknown[]]>;
+        expect(inserts[0]![0]).toContain("run_condition");
+        expect(inserts[0]![1][14]).toBeNull();
+        expect(inserts[1]![1][14]).toEqual(condition);
     });
 });

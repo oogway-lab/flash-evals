@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import * as schema from "./schema";
+import { positiveIntegerSetting } from "../lib/concurrency";
 
 let pool: Pool | undefined;
 const cloudflarePools = new WeakMap<object, Pool>();
@@ -67,8 +68,9 @@ function getPool(): Pool {
             connectionString: url,
             // Production Supabase session pooling is limited to 15 clients.
             // The worker also owns two pg-boss pools, so keep this shared app
-            // pool below the remaining connection budget.
-            max: 4,
+            // pool below the remaining connection budget. Local dev raises it
+            // with FLASH_EVALS_DB_POOL_MAX (scripts/dev.mjs).
+            max: positiveIntegerSetting(process.env.FLASH_EVALS_DB_POOL_MAX, 4),
             idleTimeoutMillis: 30_000,
             // Fast-fail instead of hanging when the pool is exhausted.
             connectionTimeoutMillis: 5_000,

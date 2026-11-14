@@ -8,6 +8,7 @@ function row(overrides: Partial<ILeaderboardRow>): ILeaderboardRow {
         modelId: "model",
         isReference: false,
         n: 1,
+        failedCells: 0,
         avgFieldScore: undefined,
         avgJudgeScore: undefined,
         avgTranscriptScore: undefined,

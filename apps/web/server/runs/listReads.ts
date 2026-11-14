@@ -8,11 +8,7 @@ import {
 } from "@/server/runs/service";
 
 export type RunStatus =
-    | "pending"
-    | "running"
-    | "completed"
-    | "partial"
-    | "failed";
+    "pending" | "running" | "completed" | "partial" | "failed" | "cancelled";
 
 export interface RunListRow {
     id: string;
@@ -24,7 +20,9 @@ export interface RunListRow {
     progress: RunProgress;
 }
 
-export async function enrichRunRows<R extends { id: string; datasetId: string }>(
+export async function enrichRunRows<
+    R extends { id: string; datasetId: string },
+>(
     rows: R[],
 ): Promise<
     (R & { datasetName: string; models: string[]; progress: RunProgress })[]

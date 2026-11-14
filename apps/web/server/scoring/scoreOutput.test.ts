@@ -125,6 +125,63 @@ describe("scoreOutput", () => {
         expect(result.judge?.score).toBe(0.5);
     });
 
+    it("adds up each field judge's cost, priced by its own model", async () => {
+        const pricingFor = vi.fn(async (modelId: string) => ({
+            promptPricePerToken: modelId === "gpt-4o" ? 1 : 2,
+            completionPricePerToken: 0,
+        }));
+        const judge: JudgeFn = async (input) => ({
+            ok: true,
+            score: 1,
+            rationale: "",
+            criteria: [],
+            winner: "not_applicable",
+            costUsd: input.pricing?.promptPricePerToken,
+        });
+        const result = await scoreOutput(
+            {
+                ...base,
+                output: { tipA: "x", tipB: "y" },
+                fieldConfigs: [
+                    {
+                        field: "tipA",
+                        kind: "generative",
+                        rubric: "?",
+                        modelId: "gpt-4o",
+                    },
+                    {
+                        field: "tipB",
+                        kind: "generative",
+                        rubric: "?",
+                        modelId: "gpt-4o-mini",
+                    },
+                ],
+                fieldJudgePricingFor: pricingFor,
+            },
+            judge,
+        );
+
+        expect(pricingFor).toHaveBeenCalledWith("gpt-4o-mini");
+        expect(result.judge?.costUsd).toBe(3);
+    });
+
+    it("keeps the judge prompt's cost on a failed verdict", async () => {
+        const result = await scoreOutput(
+            {
+                ...base,
+                output: null,
+                fieldConfigs: [],
+                judgePrompt: {
+                    modelId: "gpt-4o",
+                    rubricPrompt: "?",
+                    declaredInputs: ["candidate_output"],
+                },
+            },
+            async () => ({ ok: false, error: "bad JSON", costUsd: 0.01 }),
+        );
+        expect(result.judge).toMatchObject({ score: null, costUsd: 0.01 });
+    });
+
     it("scores a wrong-typed factual value 0 without affecting other factual fields", async () => {
         const result = await scoreOutput(
             {

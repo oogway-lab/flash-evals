@@ -218,7 +218,7 @@ describe("workflow LLM routing service", () => {
     });
 
     it("lists safe capability state without credential material", async () => {
-        const { db } = dbWithRows([
+        const { db, query } = dbWithRows([
             [{ ok: 1 }],
             [
                 {
@@ -245,6 +245,10 @@ describe("workflow LLM routing service", () => {
             credentialAvailable: true,
         });
         expect(JSON.stringify(result)).not.toContain("ciphertext");
+        // Gemini API capabilities are backed by the saved Gemini key.
+        expect(String(query.mock.calls[1]?.[0])).toContain(
+            "when 'google' then 'gemini' else c.transport end",
+        );
         expect(JSON.stringify(result)).not.toContain("rotation");
     });
 

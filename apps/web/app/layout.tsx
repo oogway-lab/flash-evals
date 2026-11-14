@@ -17,6 +17,8 @@ export const metadata = {
     title: { default: "Flash Evals", template: "%s | Flash Evals" },
     description:
         "Compare LLM models on image/text datasets with cost, latency, and scoring.",
+    // The favicon is app/icon.svg, a copy of the marketing site's
+    // apps/site/public/favicon.svg: Next links and serves it.
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

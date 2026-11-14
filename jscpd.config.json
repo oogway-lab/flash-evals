@@ -18,7 +18,7 @@
         ".github/**",
         "docs/**",
         "apps/web/server/db/migrations/**",
-        "pnpm-lock.yaml",
+        "bun.lock",
         "**/.next-playwright/**"
     ]
 }

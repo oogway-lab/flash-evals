@@ -10,23 +10,33 @@ import type {
     IWorkflowNodeArtifact,
     WorkflowLlmTransport,
     WorkflowNodeType,
+    WorkflowStepOutputMode,
 } from "@flash-evals/api-contract";
 import {
     canonicalJsonString,
+    isWorkflowEnvCredential,
+    providerKeyForWorkflowTransport,
+    describeWorkflowEnvKey,
     WORKFLOW_LLM_FINGERPRINT_VERSION,
+    workflowEnvKeySource,
 } from "@flash-evals/api-contract";
 import {
     computeCostFromUsageWithPricing,
-    getEvalProvider,
+    extractJsonObject,
+    hasDataPolicy,
     type ApiKeys,
     type CompletionRequest,
     type CompletionResult,
     type EvalImage,
+    type ICompletionDataPolicy,
 } from "@flash-evals/llm-core";
 import { decryptSecret } from "@flash-evals/secrets";
+import { stepErrorText } from "./stepError";
 import { isRecord } from "@/lib/objects";
+import { normalizedDataPolicy } from "../runs/dataPolicyReuse";
 import { and, eq, max, sql } from "drizzle-orm";
 import { db } from "../db/client";
+import { SAVED_BIFROST_URL_MISSING } from "../secrets/resolveApiKeys";
 import {
     providerKeys,
     workflowCellAttempts,
@@ -34,7 +44,10 @@ import {
     workflowRunCells,
 } from "../db/schema";
 import type { ModelPricing } from "../llm/pricing";
+import { getLimitedEvalProvider } from "../llm/providerConcurrency";
 import { retryAfterMs } from "../lib/retryAfter";
+import { validateDataAgainstSchema } from "../prompts/schemaValidation";
+import type { JsonSchemaObject } from "../db/jsonTypes";
 
 const ADAPTER_BEHAVIOR_VERSION = 3;
 
@@ -101,6 +114,37 @@ export interface IWorkflowLlmInvocationInput {
         strict?: boolean;
     };
     pricing?: ModelPricing;
+    /**
+     * The run's data rules: who may serve the call and what they may keep.
+     * A call under rules reuses only results stored under the same rules
+     * (they are part of its fingerprint).
+     */
+    dataPolicy?: ICompletionDataPolicy;
+    /**
+     * How a step with a schema asks for JSON (see IWorkflowStepSettings).
+     * Unset is "json_schema": the provider enforces the schema.
+     */
+    outputMode?: WorkflowStepOutputMode;
+}
+
+/**
+ * A step failure after the provider answered (and billed): the answer broke
+ * the step's schema or could not be read. Carries what that call cost, so the
+ * executor records it against the run's limit and the team's daily cap.
+ */
+export class BilledStepError extends Error {
+    constructor(
+        message: string,
+        readonly costUsd: number,
+    ) {
+        super(message);
+        this.name = "BilledStepError";
+    }
+}
+
+/** What a failed step's call cost, when the provider answered and billed it. */
+export function billedCostOf(error: unknown): number | undefined {
+    return error instanceof BilledStepError ? error.costUsd : undefined;
 }
 
 export interface IWorkflowLlmInvocationResult {
@@ -138,20 +182,24 @@ export async function executeWorkflowLlmInvocation(
     const maxAttempts =
         route.retry.owner === "flash-evals" ? route.retry.maxAttempts : 1;
     const attempts: IWorkflowLlmAttempt[] = [];
-    let result: CompletionResult | undefined;
+    let result: (CompletionResult & { parseProblem?: string }) | undefined;
     let lastError: unknown;
     for (let sequence = 1; sequence <= maxAttempts; sequence += 1) {
         const startedAt = performance.now();
         try {
-            result = sanitizeCompletionResult(
-                await deps.complete({
-                    transport,
-                    transportModelId:
-                        input.execution.capability.transport.transportModelId,
-                    apiKeys,
-                    request: completionRequest(input),
-                }),
-                credential.apiKey,
+            result = parsedLooseOutput(
+                sanitizeCompletionResult(
+                    await deps.complete({
+                        transport,
+                        transportModelId:
+                            input.execution.capability.transport
+                                .transportModelId,
+                        apiKeys,
+                        request: completionRequest(input),
+                    }),
+                    credential.apiKey,
+                ),
+                input,
             );
             lastError = undefined;
             const actual = actualRoute(result, input.execution);
@@ -174,7 +222,8 @@ export async function executeWorkflowLlmInvocation(
             );
             if (result.schemaViolation) {
                 lastError = new Error(
-                    "Workflow LLM returned output that violated the captured schema.",
+                    result.parseProblem ??
+                        "Workflow LLM returned output that violated the captured schema.",
                 );
                 break;
             }
@@ -210,11 +259,23 @@ export async function executeWorkflowLlmInvocation(
     if (!result || lastError || result.schemaViolation) {
         if (
             lastError instanceof Error &&
-            lastError.message.includes("violated the captured schema")
-        )
-            throw lastError;
+            (lastError.message.includes("violated the captured schema") ||
+                lastError.message.startsWith(LOOSE_OUTPUT_PROBLEM))
+        ) {
+            // The provider answered, so the call was paid for.
+            const billedUsd = result
+                ? costFrom(result, input.pricing).usd
+                : undefined;
+            throw billedUsd !== undefined && billedUsd > 0
+                ? new BilledStepError(lastError.message, billedUsd)
+                : lastError;
+        }
+        // The provider's own message (e.g. OpenRouter's "No allowed
+        // providers are available …") is kept, redacted and capped, so the
+        // step result says why.
+        const detail = stepErrorText(lastError, credential.apiKey);
         throw new Error(
-            `Workflow LLM invocation failed (${classifyProviderError(lastError)}).`,
+            `Workflow LLM invocation failed (${classifyProviderError(lastError)})${detail ? `: ${detail}` : "."}`,
         );
     }
 
@@ -238,6 +299,8 @@ export async function executeWorkflowLlmInvocation(
             ? { json: result.parsed as Record<string, unknown> }
             : {}),
         usage: artifactUsage(usage, currentCost),
+        ...(result.thinking ? { thinking: result.thinking } : {}),
+        ...(result.warnings?.length ? { warnings: result.warnings } : {}),
         ...(safeProviderEvidence
             ? { providerMetadata: safeProviderEvidence }
             : {}),
@@ -250,15 +313,21 @@ export async function executeWorkflowLlmInvocation(
         executionProvenance: provenance,
     };
     if (input.execution.route.cache.flashEvalsReuse === "allow")
-        await deps.publishReuse({
-            projectId: input.projectId,
-            cellId: input.cellId,
-            fingerprint: identity.fingerprint,
-            canonicalInputDigest: identity.canonicalInputDigest,
-            artifactDigest,
-            artifact,
-            provenance,
-        });
+        for (const fingerprint of [
+            identity.fingerprint,
+            // A result made under rules also serves calls without rules, as
+            // before rules were part of the fingerprint.
+            ...(identity.openFingerprint ? [identity.openFingerprint] : []),
+        ])
+            await deps.publishReuse({
+                projectId: input.projectId,
+                cellId: input.cellId,
+                fingerprint,
+                canonicalInputDigest: identity.canonicalInputDigest,
+                artifactDigest,
+                artifact,
+                provenance,
+            });
     return {
         artifact,
         latencyMs: result.latencyMs,
@@ -269,6 +338,7 @@ export async function executeWorkflowLlmInvocation(
 export function workflowLlmFingerprint(input: IWorkflowLlmInvocationInput): {
     fingerprint: string;
     canonicalInputDigest: string;
+    openFingerprint?: string;
 } {
     return fingerprintFor(input);
 }
@@ -282,9 +352,7 @@ function completionRequest(
         prompt: input.prompt,
         ...(input.system ? { system: input.system } : {}),
         ...(input.images ? { images: input.images } : {}),
-        ...(input.responseSchema
-            ? { responseSchema: input.responseSchema }
-            : {}),
+        ...requestedFormat(input),
         maxTokens: route.generation.maxOutputTokens,
         ...(route.generation.temperature !== undefined
             ? { temperature: route.generation.temperature }
@@ -297,6 +365,9 @@ function completionRequest(
             : {}),
         ...(route.generation.reasoningEffort
             ? { reasoningEffort: route.generation.reasoningEffort }
+            : {}),
+        ...(hasDataPolicy(input.dataPolicy)
+            ? { dataPolicy: input.dataPolicy }
             : {}),
         timeoutMs: route.retry.timeoutMs,
         maxRetries: 0,
@@ -311,6 +382,56 @@ function completionRequest(
                 : {}),
         },
     };
+}
+
+/** The response format asked of the provider for the step's output mode. */
+function requestedFormat(
+    input: IWorkflowLlmInvocationInput,
+): Pick<CompletionRequest, "responseSchema" | "jsonMode"> {
+    if (!input.responseSchema) return {};
+    if (input.outputMode === "json_object") return { jsonMode: true };
+    if (input.outputMode === "text") return {};
+    return { responseSchema: input.responseSchema };
+}
+
+const LOOSE_OUTPUT_PROBLEM = "The step's answer";
+
+/**
+ * In JSON mode and text mode the provider doesn't enforce the schema: read
+ * the JSON object out of the reply, then check it against the schema, and
+ * say plainly what failed.
+ */
+function parsedLooseOutput(
+    result: CompletionResult,
+    input: IWorkflowLlmInvocationInput,
+): CompletionResult & { parseProblem?: string } {
+    if (
+        !input.responseSchema ||
+        (input.outputMode !== "json_object" && input.outputMode !== "text")
+    )
+        return result;
+    const extracted = extractJsonObject(result.text);
+    if ("error" in extracted)
+        return {
+            ...result,
+            parsed: undefined,
+            schemaViolation: true,
+            parseProblem: `${LOOSE_OUTPUT_PROBLEM} could not be read as JSON (${input.outputMode === "text" ? "text" : "JSON"} mode): ${extracted.error}`,
+        };
+    const check = validateDataAgainstSchema(
+        input.responseSchema.schema as JsonSchemaObject,
+        extracted.value,
+    );
+    if (!check.ok) {
+        const first = check.errors[0];
+        return {
+            ...result,
+            parsed: extracted.value,
+            schemaViolation: true,
+            parseProblem: `${LOOSE_OUTPUT_PROBLEM} doesn't match its output schema: ${first ? `${first.path} ${first.message}` : "unknown problem"}.`,
+        };
+    }
+    return { ...result, parsed: extracted.value, schemaViolation: false };
 }
 
 function completionRoute(
@@ -337,24 +458,38 @@ function fingerprintFor(input: IWorkflowLlmInvocationInput) {
         system: input.system,
         prompt: input.prompt,
         responseSchema: input.responseSchema,
+        ...(input.outputMode && input.outputMode !== "json_schema"
+            ? { outputMode: input.outputMode }
+            : {}),
         images: (input.images ?? []).map((image) => ({
             mimeType: image.mimeType,
             digest: digest(image.base64Data),
         })),
     };
     const canonicalInputDigest = digest(canonicalJsonString(canonicalInput));
+    const identity = {
+        domain: "flash-evals.workflow.llm.exact-reuse",
+        fingerprintVersion: WORKFLOW_LLM_FINGERPRINT_VERSION,
+        adapterBehaviorVersion: ADAPTER_BEHAVIOR_VERSION,
+        nodeType: input.nodeType,
+        execution: input.execution,
+        canonicalInputDigest,
+    };
+    const openFingerprint = digest(canonicalJsonString(identity));
+    // Under data rules, the rules (hosts as a set) join the fingerprint, so
+    // a call reuses only a result stored under the very same rules. That
+    // result had the same route and the gateway enforced the same rules on
+    // it, so it was produced under rules at least as strict as this call's;
+    // a result made under other rules or none may come from a host this call
+    // forbids. Without rules the fingerprint is unchanged.
+    const rules = normalizedDataPolicy(input.dataPolicy);
+    if (!rules) return { canonicalInputDigest, fingerprint: openFingerprint };
     return {
         canonicalInputDigest,
         fingerprint: digest(
-            canonicalJsonString({
-                domain: "flash-evals.workflow.llm.exact-reuse",
-                fingerprintVersion: WORKFLOW_LLM_FINGERPRINT_VERSION,
-                adapterBehaviorVersion: ADAPTER_BEHAVIOR_VERSION,
-                nodeType: input.nodeType,
-                execution: input.execution,
-                canonicalInputDigest,
-            }),
+            canonicalJsonString({ ...identity, dataPolicy: rules }),
         ),
+        openFingerprint,
     };
 }
 
@@ -553,6 +688,46 @@ function requestedUpstreamProvider(
     return undefined;
 }
 
+/**
+ * The key of a step created with the server's .env key (no key saved in
+ * Settings then): the environment's current key, as eval runs use. Which
+ * variables a transport reads is WORKFLOW_ENV_KEYS (AI_GATEWAY_API_KEY for
+ * Vercel AI Gateway; BIFROST_API_KEY and BIFROST_BASE_URL for Bifrost).
+ */
+export function envWorkflowCredential(
+    transport: WorkflowLlmTransport,
+    env: Record<string, string | undefined> = process.env,
+): IResolvedWorkflowCredential {
+    const source = workflowEnvKeySource(transport);
+    if (!source)
+        throw new Error(
+            `This step records a key from the server's .env, which ${transport} steps can't use. Save a ${transport} key in Settings and start a new run.`,
+        );
+    const apiKey = env[source.apiKeyEnv]?.trim();
+    const baseUrl = source.baseUrlEnv
+        ? env[source.baseUrlEnv]?.trim()
+        : undefined;
+    if (!apiKey || (source.baseUrlEnv && !baseUrl))
+        throw new Error(
+            `This step was set up with ${describeWorkflowEnvKey(source)}, which is no longer set. Set it again, or save a ${source.label} key in Settings and start a new run.`,
+        );
+    return baseUrl ? { apiKey, baseUrl } : { apiKey };
+}
+
+/**
+ * A saved key's address: only the one saved with it (none means the
+ * provider's public default). The server's .env address pairs only with the
+ * .env key, so a saved Bifrost key without an address can't be used.
+ */
+export function savedKeyBaseUrl(
+    transport: WorkflowLlmTransport,
+    savedBaseUrl: string | null | undefined,
+): { baseUrl?: string } {
+    if (savedBaseUrl) return { baseUrl: savedBaseUrl };
+    if (transport === "bifrost") throw new Error(SAVED_BIFROST_URL_MISSING);
+    return {};
+}
+
 function keysForTransport(
     transport: WorkflowLlmTransport,
     credential: IResolvedWorkflowCredential,
@@ -576,6 +751,11 @@ function keysForTransport(
                     ? { bifrostBaseUrl: credential.baseUrl }
                     : {}),
             };
+        // The maker's own API, with the team's Settings key only.
+        case "anthropic":
+            return { anthropic: credential.apiKey };
+        case "google":
+            return { google: credential.apiKey };
     }
 }
 
@@ -692,6 +872,26 @@ function digest(value: string): string {
     return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
+/**
+ * Sends a step or judge call once it has a slot on its provider: the same
+ * per-provider limit eval runs and judges use (FLASH_EVALS_PROVIDER_CONCURRENCY),
+ * shared by every run in the worker.
+ */
+export async function completeWithProviderLimit({
+    transport,
+    transportModelId,
+    apiKeys,
+    request,
+}: Parameters<
+    IWorkflowLlmInvocationDeps["complete"]
+>[0]): Promise<CompletionResult> {
+    return getLimitedEvalProvider(apiKeys, {
+        transport,
+        exactTransportModelId: transportModelId,
+        gatewayFallbackModels: [],
+    }).complete(request);
+}
+
 const defaultDeps: IWorkflowLlmInvocationDeps = {
     sleep(delayMs) {
         return new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -699,6 +899,8 @@ const defaultDeps: IWorkflowLlmInvocationDeps = {
     random: Math.random,
     async resolveCredential({ teamId, execution }) {
         const transport = execution.route.transportConfig.transport;
+        if (isWorkflowEnvCredential(execution.credential))
+            return envWorkflowCredential(transport);
         const [row] = await db
             .select()
             .from(providerKeys)
@@ -706,7 +908,11 @@ const defaultDeps: IWorkflowLlmInvocationDeps = {
                 and(
                     eq(providerKeys.id, execution.credential.providerKeyId),
                     eq(providerKeys.teamId, teamId),
-                    eq(providerKeys.provider, transport),
+                    // Direct Gemini API steps use the saved Gemini key.
+                    eq(
+                        providerKeys.provider,
+                        providerKeyForWorkflowTransport(transport),
+                    ),
                 ),
             )
             .limit(1);
@@ -722,16 +928,10 @@ const defaultDeps: IWorkflowLlmInvocationDeps = {
                 teamId,
                 provider: row.provider,
             }),
-            ...(row.baseUrl ? { baseUrl: row.baseUrl } : {}),
+            ...savedKeyBaseUrl(transport, row.baseUrl),
         };
     },
-    async complete({ transport, transportModelId, apiKeys, request }) {
-        return getEvalProvider(apiKeys, {
-            transport,
-            exactTransportModelId: transportModelId,
-            gatewayFallbackModels: [],
-        }).complete(request);
-    },
+    complete: completeWithProviderLimit,
     async readReuse({ projectId, fingerprint }) {
         const [row] = await db
             .select({

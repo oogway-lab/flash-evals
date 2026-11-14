@@ -154,6 +154,11 @@ export function fmtDelta(
     return { text, direction, good };
 }
 
+/** A 0-to-1 rate as a percentage to at most one decimal: 0.234 → "23.4%", 0.9 → "90%". */
+export function fmtPercent(rate: Maybe<number>): string {
+    return orMissing(rate, (v) => `${Math.round(v * 1000) / 10}%`);
+}
+
 /** `count` with `noun`, adding an `s` unless `count` is 1: "1 file", "3 files". */
 export function plural(count: number, noun: string): string {
     return `${count} ${noun}${count === 1 ? "" : "s"}`;

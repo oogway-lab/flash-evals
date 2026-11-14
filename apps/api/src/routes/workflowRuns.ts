@@ -6,6 +6,7 @@ import type {
     IWorkflowNodeAggregate,
     IWorkflowEdge,
     IWorkflowNode,
+    IWorkflowStepSettings,
     IWorkflowNodeScore,
     IWorkflowRunCell,
     IWorkflowRunCellLlmExecution,
@@ -17,6 +18,8 @@ import type {
     IWorkflowSttPreparation,
     IWorkflowSttScore,
     IWorkflowSnapshot,
+    IPipelineFinalAnswer,
+    IWorkflowRunAnswer,
     IWorkflowLlmCapabilitySnapshot,
     IWorkflowLlmResolvedExecution,
     IWorkflowLlmRouteConfig,
@@ -24,7 +27,11 @@ import type {
     ISttRunConfig,
     ReviewVerdict,
     RunStatus,
+    RunStopReason,
+    IWorkflowRunConfig,
     WorkflowRunTarget,
+    IWorkflowLlmCredentialReference,
+    WorkflowLlmGenerationControl,
     WorkflowLlmTransport,
 } from "@flash-evals/api-contract";
 import {
@@ -33,7 +40,15 @@ import {
     WORKFLOW_LLM_EXECUTION_CONTRACT_VERSION,
     canonicalJsonString,
     isWorkflowModelBackedNodeType,
+    providerKeyForWorkflowTransport,
+    WORKFLOW_ENV_CREDENTIAL,
 } from "@flash-evals/api-contract";
+import {
+    isDirectMakerTransport,
+    registryEntryForBifrostModel,
+    rejectsSamplingSettings,
+    transportCapabilityForModel,
+} from "@flash-evals/llm-core";
 import type { IApiConfig } from "../config.js";
 import { assertRunCellLimit, assertTeamSpendUnderCap } from "../runLimits.js";
 import type { IDb } from "../db.js";
@@ -45,13 +60,22 @@ import {
     ApiNotFoundError,
 } from "../errors.js";
 import { resolveApiKeys } from "../secrets/resolveApiKeys.js";
-import { registryEntryFor } from "../modelRegistry.js";
+import { registryEntryFor, registryModelFor } from "../modelRegistry.js";
+import { TRANSPORT_LABELS_FOR_MESSAGES } from "../transportLabels.js";
 import {
     sttConfigForSnapshot,
+    validateTransliterationProviderKeys,
     validateSttConfigForRun,
 } from "./runs/creation.js";
 import { workflowDetailPayload } from "./workflows.js";
 import { validatePinnedWorkflowLlmRouteConfig } from "./llmRouting.js";
+import { hasUsableEnvKey, type EnvKeyConfig } from "./llmRoutingCredentials.js";
+import { workflowRunConfigFor } from "./workflowRunConfig.js";
+import { answersToRejudge } from "./workflowRunRetry.js";
+import {
+    pipelineComparisonFor,
+    pipelineComparisonPayload,
+} from "./workflowRunComparison.js";
 
 interface IWorkflowRunRow {
     id: string;
@@ -63,6 +87,9 @@ interface IWorkflowRunRow {
     status: RunStatus;
     workflowSnapshot: IWorkflowSnapshot;
     runTarget: WorkflowRunTarget;
+    configSnapshot: IWorkflowRunConfig | null;
+    stopReason: RunStopReason | null;
+    error: string | null;
     createdAt: Date | string;
 }
 
@@ -171,6 +198,19 @@ function workflowSttAggregate(
 
 function iso(value: Date | string): string {
     return value instanceof Date ? value.toISOString() : value;
+}
+
+/**
+ * The hosting company that served a step's call, from its routing evidence
+ * (the gateway or OpenRouter names it). A reused result made no call.
+ */
+export function workflowCellServedBy(
+    cell: Pick<IWorkflowRunCell, "outputJson">,
+): string | undefined {
+    const actual = cell.outputJson?.executionProvenance?.actual;
+    if (!actual || !("identity" in actual)) return undefined;
+    const host = actual.identity?.upstreamProvider;
+    return typeof host === "string" && host.length > 0 ? host : undefined;
 }
 
 function workflowRunCellLlmExecution(
@@ -312,11 +352,26 @@ export async function createWorkflowRunPayload(
     );
 }
 
+/** How a setup comparison creates one of its pipeline runs. */
+export interface IWorkflowRunCreateOptions {
+    /** The comparison the run belongs to. */
+    setupComparisonId?: string;
+    /** Run only these items (the comparison's eval run items). */
+    itemIds?: string[];
+}
+
+/**
+ * Creates a pipeline run inside the caller's transaction. A setup
+ * comparison passes its id: the run is compared with the comparison's own
+ * eval run, which has not finished yet (scoring waits for it), on that
+ * run's items.
+ */
 // eslint-disable-next-line complexity -- run creation coordinates validation, snapshotting, and enqueue atomicity.
-async function createWorkflowRunInTransaction(
+export async function createWorkflowRunInTransaction(
     db: IDb,
     input: ICreateWorkflowRunRequest,
     config?: IApiConfig,
+    options: IWorkflowRunCreateOptions = {},
 ): Promise<ICreateWorkflowRunResponse> {
     const idempotencyFingerprint = input.idempotencyKey
         ? workflowRunRequestFingerprint(input)
@@ -477,6 +532,10 @@ async function createWorkflowRunInTransaction(
                 sttConfig: sttNodeConfig,
                 config: effectiveConfig,
             });
+    validateTransliterationProviderKeys(
+        [requestedSttConfig, ...sttNodeConfigs],
+        effectiveConfig,
+    );
     const sttConfig = sttConfigForSnapshot(requestedSttConfig, effectiveConfig);
     const resolvedLlmExecutions = await resolveWorkflowLlmExecutions(
         db,
@@ -484,7 +543,31 @@ async function createWorkflowRunInTransaction(
         input.teamId,
         input.projectId,
         schemaHashes,
+        config,
     );
+    const runConfig = workflowRunConfigFor(
+        input,
+        detail.nodes.flatMap((node) => {
+            const execution = resolvedLlmExecutions.get(node.id);
+            return execution
+                ? [{ label: node.label || node.nodeKey, execution }]
+                : [];
+        }),
+    );
+    if (input.compareWithRunId !== undefined)
+        runConfig.comparison = await pipelineComparisonFor(
+            db,
+            {
+                teamId: input.teamId,
+                projectId: input.projectId,
+                datasetId: input.datasetId,
+                compareWithRunId: input.compareWithRunId,
+                hasFinalAnswer: Boolean(detail.finalAnswer?.fields.length),
+                pipelineDataPolicy: runConfig.dataPolicy,
+                ...(options.setupComparisonId ? { sameComparison: true } : {}),
+            },
+            config,
+        );
     const scoringConfigs = await resolveWorkflowScoringConfigs(
         db,
         detail.nodes,
@@ -553,13 +636,23 @@ async function createWorkflowRunInTransaction(
         })),
         edges: detail.edges,
         ...(sttConfig ? { sttConfig } : {}),
+        ...(detail.finalAnswer
+            ? {
+                  finalAnswer: await finalAnswerForSnapshot(
+                      db,
+                      detail.finalAnswer,
+                      input,
+                  ),
+              }
+            : {}),
     };
     const items = await db.query<IDatasetItemRow>(
         `select id
         from dataset_items
         where dataset_id=$1 and ($2::uuid is null or id=$2)
+          and ($3::uuid[] is null or id = any($3::uuid[]))
         for share`,
-        [input.datasetId, targetItemId ?? null],
+        [input.datasetId, targetItemId ?? null, options.itemIds ?? null],
     );
     if (!items.rows.length)
         throw new ApiBadRequestError("The selected workflow run has no items.");
@@ -585,7 +678,7 @@ async function createWorkflowRunInTransaction(
             nodeKeys.push(node.nodeKey);
         }
     await db.query(
-        `insert into workflow_runs(id,team_id,project_id,workflow_id,dataset_id,target_item_id,status,workflow_snapshot,run_target,created_by,enqueue_status,idempotency_key,idempotency_fingerprint) values($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,'pending_enqueue',$10,$11)`,
+        `insert into workflow_runs(id,team_id,project_id,workflow_id,dataset_id,target_item_id,status,workflow_snapshot,run_target,created_by,enqueue_status,idempotency_key,idempotency_fingerprint,config_snapshot,setup_comparison_id) values($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,'pending_enqueue',$10,$11,$12,$13)`,
         [
             runId,
             input.teamId,
@@ -598,6 +691,8 @@ async function createWorkflowRunInTransaction(
             input.createdBy,
             input.idempotencyKey ?? null,
             idempotencyFingerprint ?? null,
+            runConfig,
+            options.setupComparisonId ?? null,
         ],
     );
     await db.query(
@@ -649,6 +744,15 @@ function workflowRunRequestFingerprint(
                 itemId: input.itemId ?? null,
                 sttConfig: input.sttConfig ?? null,
                 createdBy: input.createdBy,
+                // Only present when set, so keys made before these settings
+                // existed keep matching their original request.
+                ...(input.maxCostUsd !== undefined
+                    ? { maxCostUsd: input.maxCostUsd }
+                    : {}),
+                ...(input.dataPolicy ? { dataPolicy: input.dataPolicy } : {}),
+                ...(input.compareWithRunId !== undefined
+                    ? { compareWithRunId: input.compareWithRunId }
+                    : {}),
             }),
         )
         .digest("hex");
@@ -761,6 +865,7 @@ async function resolveWorkflowLlmExecutions(
     teamId: string,
     projectId: string,
     promptSchemaHashes: Map<string, string | null>,
+    config?: Partial<EnvKeyConfig>,
 ): Promise<Map<string, IWorkflowLlmResolvedExecution>> {
     const resolved = new Map<string, IWorkflowLlmResolvedExecution>();
     const modelNodes = nodes.filter((node) =>
@@ -827,16 +932,20 @@ async function resolveWorkflowLlmExecutions(
         ? (
               await db.query<{
                   id: string;
-                  provider: WorkflowLlmTransport;
+                  provider: string;
                   rotationVersion: string;
               }>(
                   `select id, provider, rotation_version as "rotationVersion"
                    from provider_keys
                    where team_id = $1 and provider = any($2::text[])`,
-                  [teamId, simpleTransports],
+                  [
+                      teamId,
+                      simpleTransports.map(providerKeyForWorkflowTransport),
+                  ],
               )
           ).rows
         : [];
+    // Keyed by Settings key name: direct Gemini API steps use the Gemini key.
     const simpleCredentials = new Map(
         simpleCredentialRows.map((credential) => [
             credential.provider,
@@ -854,8 +963,10 @@ async function resolveWorkflowLlmExecutions(
                     `Workflow node "${node.label}" needs a model for Simple mode.`,
                     "Choose a provider and model.",
                 );
-            const credential = simpleCredentials.get(
+            const credential = simpleCredentialFor(
+                simpleCredentials,
                 requestedSelection.transport,
+                config,
             );
             if (!credential)
                 throw routingRunError(
@@ -863,12 +974,31 @@ async function resolveWorkflowLlmExecutions(
                     `No ${requestedSelection.transport} provider key is configured for Simple mode.`,
                     "Add a provider key, then choose a model again.",
                 );
-            const route = simpleWorkflowRoute(
-                requestedSelection.transport,
-                node.modelId,
-                node.reasoningConfig?.effort,
-                nodeType === "judge",
+            const { modelId: routeModelId, transportModelId } =
+                simpleTransportModel(
+                    requestedSelection.transport,
+                    node.modelId,
+                );
+            if (!transportModelId)
+                throw routingRunError(
+                    `nodes.${node.nodeKey}.modelId`,
+                    `Workflow node "${node.label}" uses ${node.modelId}, which ${TRANSPORT_LABELS_FOR_MESSAGES[requestedSelection.transport]} doesn't serve directly.`,
+                    "Choose a model listed for this provider.",
+                );
+            const route = withStepSettings(
+                simpleWorkflowRoute(
+                    requestedSelection.transport,
+                    routeModelId,
+                    node.reasoningConfig?.effort,
+                    nodeType === "judge",
+                ),
+                node.stepSettings,
             );
+            const supportedGenerationControls = simpleGenerationControls(
+                routeModelId,
+                requestedSelection.transport,
+            );
+            assertStepSettingsSupported(node, supportedGenerationControls);
             const promptSchemaDigest = node.promptVersionId
                 ? promptSchemaHashes.get(node.promptVersionId)
                 : undefined;
@@ -888,10 +1018,7 @@ async function resolveWorkflowLlmExecutions(
                 routeVersionId: identity,
                 routeVersion: 0,
                 route,
-                credential: {
-                    providerKeyId: credential.id,
-                    rotationVersion: credential.rotationVersion,
-                },
+                credential,
                 capability: {
                     capabilityVersionId: identity,
                     capabilityDigest: identity,
@@ -899,18 +1026,18 @@ async function resolveWorkflowLlmExecutions(
                     stale: false,
                     transport: {
                         transport: requestedSelection.transport,
-                        modelId: node.modelId,
-                        transportModelId: node.modelId,
+                        modelId: routeModelId,
+                        transportModelId,
                         upstreamRoutingModes:
                             requestedSelection.transport === "openrouter"
                                 ? ["auto"]
-                                : requestedSelection.transport === "openai"
+                                : requestedSelection.transport === "openai" ||
+                                    isDirectMakerTransport(
+                                        requestedSelection.transport,
+                                    )
                                   ? ["none"]
                                   : ["auto"],
-                        supportedGenerationControls: [
-                            "maxOutputTokens",
-                            "reasoningEffort",
-                        ],
+                        supportedGenerationControls,
                         // Simple mode asks the provider to enforce schemas at invocation time.
                         supportsStructuredOutput: true,
                         requiresCurrentDiscovery: false,
@@ -969,6 +1096,10 @@ async function resolveWorkflowLlmExecutions(
                     : "Choose settings supported by the captured capability.",
             );
         }
+        assertStepSettingsSupported(
+            node,
+            route.capabilitySnapshot.transport.supportedGenerationControls,
+        );
         if (node.modelId && node.modelId !== route.config.modelId) {
             throw routingRunError(
                 `nodes.${node.nodeKey}.modelId`,
@@ -1025,7 +1156,7 @@ async function resolveWorkflowLlmExecutions(
             routeId: route.routeId,
             routeVersionId: route.routeVersionId,
             routeVersion: route.routeVersion,
-            route: route.config,
+            route: withStepSettings(route.config, node.stepSettings),
             credential: {
                 providerKeyId: route.providerKeyId,
                 rotationVersion: route.capturedRotationVersion,
@@ -1037,6 +1168,114 @@ async function resolveWorkflowLlmExecutions(
     return resolved;
 }
 
+/**
+ * Generation controls a Simple-mode step may send: what the model registry
+ * lists for the model on that transport. A model the registry doesn't list
+ * there keeps the sampling controls unless it is known to refuse them (a
+ * Bifrost id of a listed model, OpenAI reasoning or Claude 5 names); its
+ * provider decides the rest. The step's output limit is not checked
+ * against the model's: the registry records no output limits (only a
+ * Bifrost model list does, and calls through Bifrost warn when over it).
+ */
+export function simpleGenerationControls(
+    modelId: string,
+    transport: WorkflowLlmTransport,
+): WorkflowLlmGenerationControl[] {
+    const listed = transportCapabilityForModel(modelId, transport);
+    const sampling = listed
+        ? (["temperature", "topP", "seed"] as const).filter((control) =>
+              listed.supportedGenerationControls.includes(control),
+          )
+        : rejectsSamplingSettings(modelId)
+          ? []
+          : (["temperature", "topP", "seed"] as const);
+    return ["maxOutputTokens", "reasoningEffort", ...sampling];
+}
+
+/**
+ * Refuses a step's own temperature when its model's route can't send one
+ * (OpenAI and Claude thinking models refuse sampling settings), so the run
+ * fails at creation rather than on every call.
+ */
+export function assertStepSettingsSupported(
+    node: {
+        nodeKey: string;
+        label: string;
+        stepSettings?: IWorkflowStepSettings | null;
+    },
+    supportedControls: readonly WorkflowLlmGenerationControl[],
+): void {
+    if (
+        node.stepSettings?.temperature !== undefined &&
+        !supportedControls.includes("temperature")
+    )
+        throw routingRunError(
+            `nodes.${node.nodeKey}.stepSettings.temperature`,
+            `Workflow node "${node.label}" sets a temperature, which its model doesn't take.`,
+            "Remove the step's temperature, or choose a model that takes one.",
+        );
+}
+
+/**
+ * A step's own temperature and output limit, captured in its route so they
+ * are sent on every call, whatever the provider. Unset values keep the
+ * route's.
+ */
+export function withStepSettings(
+    route: IWorkflowLlmRouteConfig,
+    settings: IWorkflowStepSettings | undefined,
+): IWorkflowLlmRouteConfig {
+    if (!settings) return route;
+    return {
+        ...route,
+        generation: {
+            ...route.generation,
+            ...(settings.maxOutputTokens !== undefined
+                ? { maxOutputTokens: settings.maxOutputTokens }
+                : {}),
+            ...(settings.temperature !== undefined
+                ? { temperature: settings.temperature }
+                : {}),
+        },
+    };
+}
+
+/**
+ * The id Simple mode sends for a model. Gateways take the Flash Evals model
+ * id; a maker's own API takes its direct id from the model registry
+ * ("anthropic/claude-sonnet-4.6" is "claude-sonnet-4-6" on Anthropic), and
+ * a model the maker doesn't serve directly has none.
+ */
+/**
+ * The model a Simple-mode step names (`modelId`, used for its label and
+ * list prices) and the id sent to the provider. A Bifrost step may save a
+ * Bifrost id picked from Bifrost's own list (e.g.
+ * `openrouter/google/gemini-2.5-flash`): that id is sent as is, and the
+ * registry model behind it, when known, prices the call. A registry id
+ * keeps working and is sent as the registry's Bifrost id.
+ */
+export function simpleTransportModel(
+    transport: WorkflowLlmTransport,
+    modelId: string,
+): { modelId: string; transportModelId: string | undefined } {
+    if (isDirectMakerTransport(transport))
+        return {
+            modelId,
+            transportModelId: registryEntryFor(modelId)?.transports[transport],
+        };
+    if (transport !== "bifrost") return { modelId, transportModelId: modelId };
+    const known = registryEntryFor(modelId);
+    if (known && (known.id === modelId || known.gatewayModelId === modelId))
+        return {
+            modelId,
+            transportModelId: known.transports.bifrost ?? modelId,
+        };
+    return {
+        modelId: registryEntryForBifrostModel(modelId)?.id ?? modelId,
+        transportModelId: modelId,
+    };
+}
+
 function simpleWorkflowRoute(
     transport: WorkflowLlmTransport,
     modelId: string,
@@ -1044,7 +1283,11 @@ function simpleWorkflowRoute(
     isJudge: boolean,
 ): IWorkflowLlmRouteConfig {
     const isGemini3 = modelId.startsWith("google/gemini-3");
-    const timeoutMs = isGemini3 ? 300_000 : 60_000;
+    // Steps can be asked for long answers (thousands of tokens, with
+    // thinking), which slow models or busy hosts take over a minute to
+    // write; a call is billed on tokens, not time, so a generous limit costs
+    // nothing. 60 s cut off a third of long-answer steps on busy hosts.
+    const timeoutMs = 300_000;
     return {
         modelId,
         generation: {
@@ -1131,12 +1374,62 @@ async function resolvedRouteRows(
     return result.rows;
 }
 
+/**
+ * The key a Simple mode step runs with: the one saved in Settings, else (for
+ * Vercel AI Gateway and Bifrost, see WORKFLOW_ENV_KEYS) the server's .env key,
+ * as eval runs use. An env key records no key id; the worker reads the env key
+ * when the step runs.
+ */
+function simpleCredentialFor(
+    saved: ReadonlyMap<string, { id: string; rotationVersion: string }>,
+    transport: WorkflowLlmTransport,
+    config: Partial<EnvKeyConfig> | undefined,
+): IWorkflowLlmCredentialReference | undefined {
+    const row = saved.get(providerKeyForWorkflowTransport(transport));
+    if (row)
+        return { providerKeyId: row.id, rotationVersion: row.rotationVersion };
+    if (hasUsableEnvKey(transport, config))
+        return { ...WORKFLOW_ENV_CREDENTIAL };
+    return undefined;
+}
+
 function routingRunError(
     path: string,
     message: string,
     remediation: string,
 ): ApiFieldValidationError {
     return new ApiFieldValidationError(message, path, remediation);
+}
+
+/** The final answer mapping with its output schema, captured for the run. */
+async function finalAnswerForSnapshot(
+    db: IDb,
+    finalAnswer: IPipelineFinalAnswer,
+    scope: { teamId: string; projectId: string },
+): Promise<NonNullable<IWorkflowSnapshot["finalAnswer"]>> {
+    if (!finalAnswer.schemaPromptVersionId) return finalAnswer;
+    const row = (
+        await db.query<{
+            schemaHash: string | null;
+            jsonSchema: Record<string, unknown> | null;
+        }>(
+            `select psv.schema_hash as "schemaHash", psv.json_schema as "jsonSchema"
+             from prompt_versions pv
+             join prompts p on p.id = pv.prompt_id
+             join prompt_schema_versions psv on psv.id = pv.schema_version_id
+             where pv.id=$1 and p.team_id=$2 and p.project_id=$3
+             for share of pv, p`,
+            [finalAnswer.schemaPromptVersionId, scope.teamId, scope.projectId],
+        )
+    ).rows[0];
+    if (!row?.schemaHash || !row.jsonSchema)
+        throw new ApiBadRequestError(
+            "The final answer's output schema is no longer available in this project.",
+        );
+    return {
+        ...finalAnswer,
+        schema: { digest: row.schemaHash, schema: row.jsonSchema },
+    };
 }
 
 export function validateMultiWorkflowRunInput(
@@ -1178,7 +1471,7 @@ export function validateWorkflowVisionCapabilities(
             )
         )
             continue;
-        if (!registryEntryFor(target.modelId)?.vision)
+        if (!registryModelFor(target.modelId)?.vision)
             throw new ApiBadRequestError(
                 `${target.modelId} cannot run on image inputs because vision support is not available.`,
             );
@@ -1196,6 +1489,7 @@ async function workflowConfigWithResolvedKeys(
         openaiApiKey: resolved.apiKeys.openai,
         aiGatewayApiKey: resolved.apiKeys.gateway,
         sonioxApiKey: resolved.sttProviderKeys.soniox,
+        elevenlabsApiKey: resolved.sttProviderKeys.elevenlabs,
         geminiApiKey: resolved.sttProviderKeys.gemini,
         openrouterApiKey: resolved.apiKeys.openrouter,
         openrouterBaseUrl: resolved.apiKeys.openrouterBaseUrl,
@@ -1212,20 +1506,45 @@ export async function workflowRunProgressPayload(
     runId: string,
 ): Promise<IWorkflowRunProgressResponse> {
     const row = (
-        await db.query<IWorkflowRunProgressResponse>(
+        await db.query<
+            IWorkflowRunProgressResponse & {
+                enqueueStatus: string | null;
+                stopReason: RunStopReason | null;
+                error: string | null;
+                pendingSince: Date | string | null;
+            }
+        >(
             `select r.status,count(c.id)::int total,
-                    count(c.id) filter(where c.status in ('succeeded','cached'))::int done,
+                    count(c.id) filter(where c.status in ('succeeded','cached','skipped'))::int done,
                     count(c.id) filter(where c.status='failed')::int failed,
-                    count(c.id) filter(where c.status in ('pending','running'))::int pending
+                    count(c.id) filter(where c.status in ('pending','running'))::int pending,
+                    r.enqueue_status as "enqueueStatus",
+                    r.stop_reason as "stopReason",
+                    r.error,
+                    coalesce(
+                        (select coalesce(o.queued_at, o.updated_at) from workflow_run_enqueue_outbox o where o.workflow_run_id=r.id),
+                        r.created_at
+                    ) as "pendingSince"
              from workflow_runs r
              left join workflow_run_cells c on c.workflow_run_id=r.id
              where r.id=$1 and r.workflow_id=$2 and r.team_id=$3 and r.project_id=$4
-             group by r.status`,
+             group by r.id`,
             [runId, workflowId, teamId, projectId],
         )
     ).rows[0];
     if (!row) throw new ApiNotFoundError("Workflow run not found.");
-    return row;
+    const { enqueueStatus, stopReason, error, pendingSince, ...progress } = row;
+    return {
+        ...progress,
+        ...(enqueueStatus === "queued" || enqueueStatus === "pending_enqueue"
+            ? { enqueueStatus }
+            : {}),
+        ...(stopReason ? { stopReason } : {}),
+        ...(error ? { error } : {}),
+        ...(progress.status === "pending" && pendingSince
+            ? { pendingSince: new Date(pendingSince).toISOString() }
+            : {}),
+    };
 }
 
 export async function workflowRunSummaryPayload(
@@ -1430,9 +1749,10 @@ export async function listWorkflowRunsPayload(
                 r.dataset_id as "datasetId",
                 d.name as "datasetName",
                 r.status,
+                r.stop_reason as "stopReason",
                 r.run_target as "runTarget",
                 count(c.*)::int as total,
-                count(*) filter (where c.status in ('succeeded','cached'))::int as done,
+                count(*) filter (where c.status in ('succeeded','cached','skipped'))::int as done,
                 count(*) filter (where c.status = 'failed')::int as failed,
                 r.created_at as "createdAt"
          from workflow_runs r
@@ -1453,6 +1773,7 @@ function workflowRunSummaryRow(row: IWorkflowRunSummary): IWorkflowRunSummary {
         datasetId: row.datasetId,
         datasetName: row.datasetName,
         status: row.status,
+        ...(row.stopReason ? { stopReason: row.stopReason } : {}),
         runTarget: row.runTarget,
         total: row.total,
         done: row.done,
@@ -1472,9 +1793,9 @@ export async function listWorkflowRunSummariesPagePayload(
         IWorkflowRunSummary & { cursor_created_at: string }
     >(
         `select r.id,r.workflow_id as "workflowId",r.dataset_id as "datasetId",
-                d.name as "datasetName",r.status,r.run_target as "runTarget",
+                d.name as "datasetName",r.status,r.stop_reason as "stopReason",r.run_target as "runTarget",
                 count(c.*)::int as total,
-                count(*) filter (where c.status in ('succeeded','cached'))::int as done,
+                count(*) filter (where c.status in ('succeeded','cached','skipped'))::int as done,
                 count(*) filter (where c.status='failed')::int as failed,
                 r.created_at as "createdAt",
                 to_char(r.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_created_at
@@ -1520,7 +1841,7 @@ export async function workflowRunDetailPayload(
 ): Promise<IWorkflowRunDetailResponse> {
     const run = (
         await db.query<IWorkflowRunRow>(
-            `select id,team_id as "teamId",project_id as "projectId",workflow_id as "workflowId",dataset_id as "datasetId",target_item_id as "targetItemId",status,workflow_snapshot as "workflowSnapshot",run_target as "runTarget",created_at as "createdAt" from workflow_runs where id=$1 and workflow_id=$2 and team_id=$3 and project_id=$4`,
+            `select id,team_id as "teamId",project_id as "projectId",workflow_id as "workflowId",dataset_id as "datasetId",target_item_id as "targetItemId",status,workflow_snapshot as "workflowSnapshot",run_target as "runTarget",config_snapshot as "configSnapshot",stop_reason as "stopReason",error,created_at as "createdAt" from workflow_runs where id=$1 and workflow_id=$2 and team_id=$3 and project_id=$4`,
             [runId, workflowId, teamId, projectId],
         )
     ).rows[0];
@@ -1536,7 +1857,7 @@ export async function workflowRunDetailPayload(
         progress,
     ] = await Promise.all([
         db.query<IWorkflowRunCell>(
-            `select id,workflow_run_id as "workflowRunId",dataset_item_id as "datasetItemId",node_key as "nodeKey",status,input_text as "inputText",output_json as "outputJson",latency_ms as "latencyMs",cost_usd as "costUsd",error from workflow_run_cells where workflow_run_id=$1`,
+            `select id,workflow_run_id as "workflowRunId",dataset_item_id as "datasetItemId",node_key as "nodeKey",status,input_text as "inputText",output_json as "outputJson",latency_ms as "latencyMs",cost_usd as "costUsd",judge_cost_usd as "judgeCostUsd",error from workflow_run_cells where workflow_run_id=$1`,
             [runId],
         ),
         db.query<IWorkflowRunDetailResponse["items"][number]>(
@@ -1599,13 +1920,16 @@ export async function workflowRunDetailPayload(
     const nodesByKey = new Map(
         run.workflowSnapshot.nodes.map((node) => [node.nodeKey, node]),
     );
-    const cells = cellsResult.rows.map((cell) => {
+    const cells = cellsResult.rows.map(({ judgeCostUsd, ...cell }) => {
         const llmExecution = workflowRunCellLlmExecution(
             cell,
             nodesByKey.get(cell.nodeKey),
         );
+        const servedBy = workflowCellServedBy(cell);
         return {
             ...cell,
+            ...(typeof judgeCostUsd === "number" ? { judgeCostUsd } : {}),
+            ...(servedBy ? { servedBy } : {}),
             ...(llmExecution ? { llmExecution } : {}),
             annotation: annotationsByCell.get(cell.id),
         };
@@ -1686,10 +2010,34 @@ export async function workflowRunDetailPayload(
             (aggregate): aggregate is IWorkflowSttAggregate =>
                 aggregate !== undefined,
         );
+    const answers = run.workflowSnapshot.finalAnswer
+        ? await workflowRunAnswers(db, run.id)
+        : undefined;
+    const comparison = answers
+        ? await pipelineComparisonPayload(db, {
+              teamId,
+              projectId,
+              pipelineName: run.workflowSnapshot.name,
+              config: run.configSnapshot,
+              answers,
+              scoredItemIds: new Set(
+                  answers.flatMap((answer) =>
+                      answer.scored ? [answer.datasetItemId] : [],
+                  ),
+              ),
+          })
+        : undefined;
+    const rejudge = await rejudgeField(db, run, answers !== undefined);
+    const { configSnapshot, stopReason, error, ...runFields } = run;
     return {
         workflowRun: {
-            ...run,
+            ...runFields,
             targetItemId: run.targetItemId ?? undefined,
+            ...(configSnapshot && Object.keys(configSnapshot).length > 0
+                ? { configSnapshot }
+                : {}),
+            ...(stopReason ? { stopReason } : {}),
+            ...(error ? { error } : {}),
             createdAt: iso(run.createdAt),
         },
         progress,
@@ -1702,8 +2050,81 @@ export async function workflowRunDetailPayload(
         sttItems,
         sttScoresByItem,
         sttAggregates,
+        ...(answers
+            ? { answers: answers.map(({ scored: _, ...a }) => a) }
+            : {}),
+        ...(comparison ? { comparison } : {}),
+        ...rejudge,
         note,
     };
+}
+
+/**
+ * On a completed run with final answers, how many a retry would judge again
+ * because their judge failed (see retryWorkflowRunPayload); the page offers
+ * that retry. Empty when there are none.
+ */
+async function rejudgeField(
+    db: IDb,
+    run: { id: string; status: RunStatus },
+    hasAnswers: boolean,
+): Promise<{ answersToRejudge?: number }> {
+    if (!hasAnswers || run.status !== "completed") return {};
+    const count = await answersToRejudge(db, run.id);
+    return count > 0 ? { answersToRejudge: count } : {};
+}
+
+/**
+ * Each item's final answer in a pipeline run that defines one, with its
+ * comparison score on a run compared with an eval run (`scored` is
+ * internal: whether the comparison has scored it).
+ */
+async function workflowRunAnswers(
+    db: IDb,
+    runId: string,
+): Promise<Array<IWorkflowRunAnswer & { scored: boolean }>> {
+    const rows = (
+        await db.query<{
+            datasetItemId: string;
+            answer: Record<string, unknown> | null;
+            status: IWorkflowRunAnswer["status"];
+            schemaErrors: IWorkflowRunAnswer["schemaErrors"] | null;
+            costUsd: number | null;
+            latencyMs: number | null;
+            benchmarkScore: number | null;
+            benchmarkDetails: IWorkflowRunAnswer["benchmarkDetails"] | null;
+            scored: boolean;
+            judgeCostUsd: number | null;
+        }>(
+            `select dataset_item_id as "datasetItemId", answer, status,
+                    schema_errors as "schemaErrors", cost_usd as "costUsd",
+                    latency_ms as "latencyMs",
+                    benchmark_score as "benchmarkScore",
+                    benchmark_details as "benchmarkDetails",
+                    benchmark_scored_at is not null as scored,
+                    judge_cost_usd as "judgeCostUsd"
+             from workflow_run_answers where workflow_run_id=$1`,
+            [runId],
+        )
+    ).rows;
+    return rows.map((row) => ({
+        datasetItemId: row.datasetItemId,
+        status: row.status,
+        scored: Boolean(row.scored),
+        ...(row.answer ? { answer: row.answer } : {}),
+        ...(row.schemaErrors?.length ? { schemaErrors: row.schemaErrors } : {}),
+        ...(row.costUsd != null ? { costUsd: Number(row.costUsd) } : {}),
+        ...(row.latencyMs != null ? { latencyMs: Number(row.latencyMs) } : {}),
+        ...(row.benchmarkScore != null
+            ? { benchmarkScore: Number(row.benchmarkScore) }
+            : {}),
+        ...(row.benchmarkDetails
+            ? { benchmarkDetails: row.benchmarkDetails }
+            : {}),
+        ...(row.judgeCostUsd != null
+            ? { judgeCostUsd: Number(row.judgeCostUsd) }
+            : {}),
+    }));
 }
 
 const REVIEW_VERDICTS = new Set<string>([

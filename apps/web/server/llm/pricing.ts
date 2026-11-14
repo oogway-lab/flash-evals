@@ -6,7 +6,7 @@ import {
     type IModelPricing,
     type EvalProviderTransport,
 } from "@flash-evals/llm-core";
-import { registryEntryFor } from "./modelRegistry";
+import { registryModelFor } from "./modelRegistry";
 
 export type ModelPricing = IModelPricing;
 
@@ -20,7 +20,7 @@ interface IPricingCacheEntry {
 const gatewayPricingCache = new Map<string, IPricingCacheEntry>();
 
 export function pricingFor(modelId: string): ModelPricing | undefined {
-    return registryEntryFor(modelId)?.pricing;
+    return registryModelFor(modelId)?.pricing;
 }
 
 export async function resolvePricingFor(
@@ -28,8 +28,10 @@ export async function resolvePricingFor(
     apiKeys: ApiKeys,
     transport?: EvalProviderTransport,
 ): Promise<ModelPricing | undefined> {
+    // A Bifrost id from Bifrost's own list is priced as the registry model
+    // behind it (see `registryModelFor`).
     const staticPricing = transport
-        ? (registryEntryFor(modelId)?.pricingByTransport?.[transport] ??
+        ? (registryModelFor(modelId)?.pricingByTransport?.[transport] ??
           pricingFor(modelId))
         : pricingFor(modelId);
     if (staticPricing) return staticPricing;

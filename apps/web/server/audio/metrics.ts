@@ -1,6 +1,7 @@
 import { isRecord } from "../lib/objects";
 import { audioReferenceFromLabel } from "./reference";
 import {
+    DiarizationLimitError,
     scoreDiarizationMetrics,
     type IDiarizationMetricDetails,
 } from "./diarization";
@@ -31,6 +32,12 @@ export interface ITranscriptMetricDetails {
     domainTermRecall?: IDomainTermRecallDetails;
     numericAccuracy?: INumericAccuracyDetails;
     diarization?: IDiarizationMetricDetails;
+    /**
+     * Why speaker metrics were not computed although both sides had speaker
+     * turns (a recording too long for speaker scoring). Word error rate and
+     * the other metrics are still computed.
+     */
+    diarizationSkippedReason?: string;
     latencyMsTotal?: number;
     costUsd?: number;
     costSource?: "computed" | "unavailable";
@@ -134,7 +141,7 @@ export function scoreTranscriptMetrics(input: {
         expectedNumbers: audioReference?.expectedNumbers,
         candidateText: candidate,
     });
-    const diarization = scoreDiarizationMetrics({
+    const { diarization, diarizationSkippedReason } = diarizationOrSkipped({
         referenceTurns: audioReference?.expectedSpeakerTurns,
         candidateSegments: input.candidateSegments,
     });
@@ -167,9 +174,30 @@ export function scoreTranscriptMetrics(input: {
             domainTermRecall,
             numericAccuracy,
             diarization,
+            diarizationSkippedReason,
             hardFailures,
         }),
     };
+}
+
+/**
+ * Speaker metrics, or why they were skipped: on a long recording the speaker
+ * workload can pass its safe limit, and that must not fail the whole
+ * transcript score.
+ */
+function diarizationOrSkipped(
+    input: Parameters<typeof scoreDiarizationMetrics>[0],
+): {
+    diarization?: IDiarizationMetricDetails;
+    diarizationSkippedReason?: string;
+} {
+    try {
+        return { diarization: scoreDiarizationMetrics(input) };
+    } catch (error) {
+        if (error instanceof DiarizationLimitError)
+            return { diarizationSkippedReason: error.message };
+        throw error;
+    }
 }
 
 function transcriptMetricDetails(input: {
@@ -189,6 +217,7 @@ function transcriptMetricDetails(input: {
     domainTermRecall: IDomainTermRecallDetails | undefined;
     numericAccuracy: INumericAccuracyDetails | undefined;
     diarization: IDiarizationMetricDetails | undefined;
+    diarizationSkippedReason: string | undefined;
     hardFailures: TranscriptHardFailure[];
 }): ITranscriptMetricDetails {
     return {
@@ -221,6 +250,9 @@ function transcriptMetricDetails(input: {
             ? { numericAccuracy: input.numericAccuracy }
             : {}),
         ...(input.diarization ? { diarization: input.diarization } : {}),
+        ...(input.diarizationSkippedReason
+            ? { diarizationSkippedReason: input.diarizationSkippedReason }
+            : {}),
         ...(input.input.latencyMsTotal !== undefined
             ? { latencyMsTotal: input.input.latencyMsTotal }
             : {}),
@@ -380,13 +412,18 @@ const DECIMAL_PLACEHOLDER = "\uE000";
 
 export function normalizeTranscript(text: string): string {
     const plainText = text
+        // One form for nukta letters and accents ("क़" typed as one code
+        // point or as क + ़); joiners only shape a word, so drop them rather
+        // than letting them split it.
+        .normalize("NFC")
+        .replace(/[\u200c\u200d]/g, "")
         .toLowerCase()
         .replace(/[’`']/g, "'")
         // Protect digit-internal decimals so "2.5" / "2,5" survive punctuation
         // stripping as "2.5" instead of being split into "2 5".
         .replace(/(\d)[.,](\d)/g, `$1${DECIMAL_PLACEHOLDER}$2`)
         .replace(
-            new RegExp(`[^\\p{L}\\p{N}'\\s${DECIMAL_PLACEHOLDER}]`, "gu"),
+            new RegExp(`[^\\p{L}\\p{M}\\p{N}'\\s${DECIMAL_PLACEHOLDER}]`, "gu"),
             " ",
         )
         .replace(new RegExp(DECIMAL_PLACEHOLDER, "g"), ".")

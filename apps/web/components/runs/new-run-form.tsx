@@ -11,8 +11,13 @@ import type {
     IRunSetupModelOption,
     IRunSetupSttModelOption,
     IRunSetupVersionOption,
+    ProviderTransport,
 } from "@flash-evals/api-contract";
 import type { IActionState } from "@/app/actions";
+import { useBenchmarkForm } from "./benchmark-settings";
+import { RunBenchmarkSection } from "./run-benchmark-section";
+import { ItemFilterFields } from "./item-filter-fields";
+import type { ProposeTaskMapAction } from "./run-benchmark-controls";
 import { RunFormHiddenInputs } from "./run-form-hidden-inputs";
 import { RunSetupHeader } from "./run-form-basics";
 import { RunModeSections } from "./run-mode-sections";
@@ -30,6 +35,8 @@ interface INewRunFormProps {
     versionOptions: IRunSetupVersionOption[];
     availableModels: IRunSetupModelOption[];
     modelsDegraded: boolean;
+    /** Providers with a key, from Settings or the repo's .env files. */
+    savedKeyProviders?: ProviderTransport[];
     sttModels: IRunSetupSttModelOption[];
     defaultDatasetId?: string;
     defaultPromptVersionId?: string;
@@ -48,6 +55,18 @@ interface INewRunFormProps {
     ) => Promise<
         { ok: true; rubricPrompt: string } | { ok: false; error: string }
     >;
+    /** Has a model draft the benchmark Task Map; the button is hidden without it. */
+    proposeTaskMapAction?: ProposeTaskMapAction;
+}
+
+/** A rerun keeps the data rules of the run it repeats. */
+function rerunDataPolicy(snapshot: IRunConfigSnapshot | undefined) {
+    return snapshot?.dataPolicy;
+}
+
+/** Whether the dataset's stored answers can serve as the benchmark. */
+function hasStoredAnswers(dataset: IRunSetupDatasetOption | undefined) {
+    return dataset?.purpose === "golden" && (dataset.labeledItemCount ?? 0) > 0;
 }
 
 function initialAudioSettings(snapshot?: IRunConfigSnapshot) {
@@ -76,7 +95,8 @@ function runCanSubmit({
     promptVersionId,
     hasPrompt,
     hasPromptVersions,
-    modelCount,
+    readyModelCount,
+    benchmarkProblemCount,
     selectedSttModel,
 }: {
     selectedDataset: IRunSetupDatasetOption | undefined;
@@ -84,7 +104,9 @@ function runCanSubmit({
     promptVersionId: string;
     hasPrompt: boolean;
     hasPromptVersions: boolean;
-    modelCount: number;
+    /** Selected models, or 0 when any has no provider key in Settings. */
+    readyModelCount: number;
+    benchmarkProblemCount: number;
     selectedSttModel: IRunSetupSttModelOption | undefined;
 }) {
     const hasItems = (selectedDataset?.itemCount ?? 0) > 0;
@@ -96,11 +118,17 @@ function runCanSubmit({
         (Boolean(promptVersionId) &&
             hasPrompt &&
             hasPromptVersions &&
-            modelCount > 0);
+            readyModelCount > 0);
     const transcriptionReady =
         selectedDataset?.modality !== "audio" ||
         Boolean(selectedSttModel?.available);
-    return hasItems && hasGoldenLabels && promptReady && transcriptionReady;
+    return (
+        hasItems &&
+        hasGoldenLabels &&
+        promptReady &&
+        transcriptionReady &&
+        benchmarkProblemCount === 0
+    );
 }
 
 export function NewRunForm({
@@ -109,6 +137,7 @@ export function NewRunForm({
     versionOptions,
     availableModels,
     modelsDegraded,
+    savedKeyProviders,
     sttModels,
     defaultDatasetId,
     defaultPromptVersionId,
@@ -119,6 +148,7 @@ export function NewRunForm({
     judgePrompts,
     createRunAction,
     generateJudgeAction,
+    proposeTaskMapAction,
 }: INewRunFormProps) {
     const [runState, createRunFormAction] = useActionState(createRunAction, {});
     useFocusFirstRunError(runState.fieldErrors);
@@ -155,13 +185,28 @@ export function NewRunForm({
         (model) => model.id === sttVariantsController.variants[0]?.modelId,
     );
     const modelList = usesPromptEval ? promptEval.selectedModels : [];
+    // Benchmark comparison is offered with the judge section: text and
+    // image prompt runs.
+    const showBenchmark = !selectedDatasetIsAudio;
+    const storedAnswersAvailable = hasStoredAnswers(selectedDataset);
+    const benchmark = useBenchmarkForm({
+        show: showBenchmark,
+        storedAnswersAvailable,
+        versionOptions,
+        promptVersionId: promptEval.promptVersionId,
+        modelCount: modelList.length,
+        availableModels,
+        defaultJudgeModelId: promptEval.judgeModelId,
+        rerunConfig: initialRunConfig,
+    });
     const canSubmit = runCanSubmit({
         selectedDataset,
         usesPromptEval,
         promptVersionId: promptEval.promptVersionId,
         hasPrompt,
         hasPromptVersions: versionOptions.length > 0,
-        modelCount: modelList.length,
+        readyModelCount: promptEval.readyModelCount,
+        benchmarkProblemCount: benchmark.problems.length,
         selectedSttModel: usesPromptEval
             ? audioController.selectedSttModel
             : firstVariantModel,
@@ -186,6 +231,11 @@ export function NewRunForm({
                         reasoningConfigs={
                             usesPromptEval ? promptEval.reasoningConfigs : []
                         }
+                        // Speech-to-text metric runs make no model calls, so
+                        // their request leaves temperatures out.
+                        temperatureAssignments={
+                            promptEval.temperatureAssignments
+                        }
                         transportAssignments={
                             usesPromptEval
                                 ? promptEval.transportAssignments
@@ -193,6 +243,7 @@ export function NewRunForm({
                         }
                         models={modelList}
                         sourceRunId={sourceRunId}
+                        benchmark={benchmark.request}
                     />
                     <RunSetupHeader
                         datasets={datasets}
@@ -217,8 +268,38 @@ export function NewRunForm({
                         availableModels={availableModels}
                         versionOptions={versionOptions}
                         modelsDegraded={modelsDegraded}
+                        savedKeyProviders={savedKeyProviders}
+                        initialDataPolicy={rerunDataPolicy(initialRunConfig)}
                         judgePrompts={judgePrompts}
                         fieldErrors={runState.fieldErrors}
+                    />
+                    {showBenchmark && (
+                        <RunBenchmarkSection
+                            state={benchmark.state}
+                            onChange={benchmark.setState}
+                            selectedModels={modelList}
+                            benchmarkModel={promptEval.effectiveReference}
+                            onBenchmarkModelChange={
+                                promptEval.setReferenceModel
+                            }
+                            availableModels={availableModels}
+                            outputSchema={benchmark.outputSchema}
+                            errors={benchmark.problems}
+                            serverError={runState.fieldErrors?.benchmark?.[0]}
+                            promptVersionId={promptEval.promptVersionId}
+                            proposeTaskMapAction={proposeTaskMapAction}
+                            canUseStoredAnswers={storedAnswersAvailable}
+                        />
+                    )}
+                    {/* Task filters need the benchmark; a path filter kept
+                        from the repeated run shows on any run. */}
+                    <ItemFilterFields
+                        tasks={
+                            showBenchmark && benchmark.state.enabled
+                                ? benchmark.state.taskMap.tasks
+                                : []
+                        }
+                        initial={initialRunConfig?.itemFilter}
                     />
                     <RunReviewSection
                         selectedDataset={selectedDataset}
@@ -226,6 +307,10 @@ export function NewRunForm({
                             usesPromptEval
                                 ? audioController.selectedSttModel
                                 : firstVariantModel
+                        }
+                        sttVolumeLevelled={
+                            audioController.audioTranscriptionProps
+                                .sttLevelVolume
                         }
                         usesPromptEval={usesPromptEval}
                         evaluationModelCount={
@@ -235,6 +320,7 @@ export function NewRunForm({
                         }
                         canSubmit={canSubmit}
                         formError={runState.formError}
+                        fieldErrors={runState.fieldErrors}
                     />
                 </PendingFieldset>
             </form>

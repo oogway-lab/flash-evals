@@ -169,11 +169,11 @@ export const lineItems = [
 export const installSteps = [
     `git clone ${REPO_URL}`,
     "cd flash-evals",
-    "pnpm install --frozen-lockfile",
-    "pnpm run setup:local",
+    "bun install --frozen-lockfile",
+    "bun run setup:local",
     "docker compose up -d --wait postgres",
     "node scripts/build-packages.mjs",
-    "pnpm run db:migrate",
-    "pnpm run seed",
-    "pnpm run dev",
+    "bun run db:migrate",
+    "bun run seed",
+    "bun run dev",
 ];

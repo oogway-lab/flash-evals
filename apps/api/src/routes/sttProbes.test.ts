@@ -148,6 +148,72 @@ describe("STT route probes", () => {
         );
     });
 
+    it("probes ElevenLabs Scribe with one request and passes on a silent tone", async () => {
+        const db = database();
+        vi.mocked(fetch).mockResolvedValue(
+            new Response(
+                JSON.stringify({
+                    language_code: "en",
+                    language_probability: 0.5,
+                    text: "",
+                    words: [],
+                }),
+                { status: 200 },
+            ),
+        );
+
+        const result = await createSttRouteProbePayload(
+            db,
+            config({ elevenlabsApiKey: "el-test" }),
+            {
+                teamId: TEAM_ID,
+                projectId: PROJECT_ID,
+                modelId: "elevenlabs:scribe_v2",
+                probedBy: USER_ID,
+            },
+        );
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                modelId: "elevenlabs:scribe_v2",
+                routeId: "elevenlabs-speech-to-text",
+                status: "available",
+                transcript: "(no speech in the probe tone)",
+            }),
+        );
+        expect(fetch).toHaveBeenCalledTimes(1);
+        const [url, request] = vi.mocked(fetch).mock.calls[0] ?? [];
+        expect(url).toBe("https://api.elevenlabs.io/v1/speech-to-text");
+        expect(request?.headers).toEqual({ "xi-api-key": "el-test" });
+        const form = request?.body as FormData;
+        expect(form.get("model_id")).toBe("scribe_v2");
+        // The same fields a run sends.
+        expect(form.get("diarize")).toBe("false");
+        expect(form.get("timestamps_granularity")).toBe("word");
+        expect(form.get("tag_audio_events")).toBe("false");
+    });
+
+    it("fails an ElevenLabs probe whose reply is not a Scribe transcript", async () => {
+        vi.mocked(fetch).mockResolvedValue(
+            new Response(JSON.stringify({ message: "queued" }), {
+                status: 200,
+            }),
+        );
+
+        const result = await createSttRouteProbePayload(
+            database(),
+            config({ elevenlabsApiKey: "el-test" }),
+            {
+                teamId: TEAM_ID,
+                projectId: PROJECT_ID,
+                modelId: "elevenlabs:scribe_v2",
+                probedBy: USER_ID,
+            },
+        );
+
+        expect(result.status).toBe("failed");
+    });
+
     it("returns and persists a safe provider error without exposing raw JSON", async () => {
         const db = database();
         vi.mocked(fetch).mockResolvedValue(

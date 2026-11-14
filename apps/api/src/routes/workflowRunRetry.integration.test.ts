@@ -33,7 +33,8 @@ describe.skipIf(!databaseUrl)(
         beforeEach(async () => {
             await client.query("begin");
             await client.query(`
-            create temporary table workflow_runs (id uuid primary key, team_id uuid, project_id uuid, workflow_id uuid, status text, enqueue_status text);
+            create temporary table workflow_runs (id uuid primary key, team_id uuid, project_id uuid, workflow_id uuid, status text, enqueue_status text, cancel_requested_at timestamptz, stop_reason text, error text);
+            create temporary table workflow_run_answers (workflow_run_id uuid, status text, benchmark_details jsonb, benchmark_scored_at timestamptz);
             create temporary table workflow_run_cells (id uuid primary key, workflow_run_id uuid, status text, output_json jsonb, latency_ms float8, cost_usd float8, error text, claimed_at timestamptz);
             create temporary table workflow_cell_scores (workflow_run_cell_id uuid);
             create temporary table workflow_run_items (workflow_run_id uuid, preparation_status text, evaluation_status text, claimed_at timestamptz, lease_owner uuid, error text, updated_at timestamptz);
@@ -83,7 +84,7 @@ describe.skipIf(!databaseUrl)(
                         { query: (text, values) => client.query(text, values) },
                         input,
                     ),
-                ).toEqual({ retriedCellCount: 1 });
+                ).toEqual({ retriedCellCount: 1, requeued: true });
                 const row = (
                     await client.query(
                         "select * from workflow_run_cells where id=$1",

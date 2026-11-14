@@ -53,6 +53,6 @@ describe("marketing demo content", () => {
         expect(DOCS_URL).toContain(`${REPO_URL}/blob/main/docs/`);
         expect(MCP_DOCS_URL).toContain(`${REPO_URL}/blob/main/docs/`);
         expect(STT_DOCS_URL).toContain(`${REPO_URL}/blob/main/docs/`);
-        expect(installSteps).toContain("pnpm run dev");
+        expect(installSteps).toContain("bun run dev");
     });
 });

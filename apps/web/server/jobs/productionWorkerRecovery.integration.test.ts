@@ -66,7 +66,11 @@ integration("production worker wrappers recover real stale cells", () => {
         await pool.query(`
             create table ${schema}.runs (
                 id uuid primary key,
-                status text not null
+                status text not null,
+                execution_lease_id uuid,
+                execution_lease_at timestamptz,
+                execution_lease_stale_ms integer,
+                error text
             );
             create table ${schema}.run_cells (
                 id uuid primary key,
@@ -76,7 +80,8 @@ integration("production worker wrappers recover real stale cells", () => {
             );
             create table ${schema}.workflow_runs (
                 id uuid primary key,
-                status text not null
+                status text not null,
+                config_snapshot jsonb not null default '{}'::jsonb
             );
             create table ${schema}.workflow_run_cells (
                 id uuid primary key,
@@ -224,6 +229,31 @@ integration("production worker wrappers recover real stale cells", () => {
             [evalRunId],
         );
         expect(jobs.rows[0]?.count).toBe(1);
+        // A run can take hours: no 15-minute expiry and no pg-boss retries,
+        // on the job and on the queue (updated even if it already existed).
+        const jobOptions = await pool.query<{
+            expire_seconds: number;
+            retry_limit: number;
+        }>(
+            `select expire_seconds, retry_limit from ${PG_BOSS_SCHEMA}.job
+             where name = 'eval-run' and data->>'runId' = $1`,
+            [evalRunId],
+        );
+        expect(jobOptions.rows[0]).toEqual({
+            expire_seconds: 86_400,
+            retry_limit: 0,
+        });
+        const queueOptions = await pool.query<{
+            expire_seconds: number;
+            retry_limit: number;
+        }>(
+            `select expire_seconds, retry_limit from ${PG_BOSS_SCHEMA}.queue
+             where name = 'eval-run'`,
+        );
+        expect(queueOptions.rows[0]).toEqual({
+            expire_seconds: 86_400,
+            retry_limit: 0,
+        });
 
         const stopping = runQueue.stopRunWorker(5_000);
         releaseProvider.resolve();
@@ -243,6 +273,79 @@ integration("production worker wrappers recover real stale cells", () => {
         );
         expect(afterRestart.rows[0]?.count).toBe(1);
         expect(paidProvider).toHaveBeenCalledOnce();
+    });
+
+    it("defers a second job for a run another pass is executing", async () => {
+        if (!runQueue) throw new Error("The eval queue module did not load.");
+        evalRunId = randomUUID();
+        await pool.query(
+            `insert into ${schema}.runs (id, status, execution_lease_id, execution_lease_at)
+             values ($1, 'running', $2, now())`,
+            [evalRunId, randomUUID()],
+        );
+        await pool.query(
+            `insert into ${schema}.run_cells (id, run_id, status, claimed_at)
+             values ($1, $2, 'running', now())`,
+            [randomUUID(), evalRunId],
+        );
+
+        await runQueue.startRunWorker();
+        await runQueue.enqueueRun(evalRunId);
+        const deadline = Date.now() + 10_000;
+        let deferred: { count: number } | undefined;
+        while (Date.now() < deadline) {
+            deferred = (
+                await pool.query<{ count: number }>(
+                    `select count(*)::int as count from ${PG_BOSS_SCHEMA}.job
+                     where name = 'eval-run' and data->>'runId' = $1
+                       and state = 'created' and start_after > now()`,
+                    [evalRunId],
+                )
+            ).rows[0];
+            if (deferred?.count) break;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+
+        expect(deferred?.count).toBe(1);
+        expect(mocks.executeRun).not.toHaveBeenCalled();
+    });
+
+    it("marks a run that fails before starting any cell failed instead of leaving it pending", async () => {
+        if (!runQueue) throw new Error("The eval queue module did not load.");
+        evalRunId = randomUUID();
+        await pool.query(
+            `insert into ${schema}.runs (id, status) values ($1, 'pending')`,
+            [evalRunId],
+        );
+        mocks.executeRun.mockRejectedValueOnce(
+            new Error("Please add your OpenRouter API key to run evals."),
+        );
+
+        await runQueue.startRunWorker();
+        await runQueue.enqueueRun(evalRunId);
+        const deadline = Date.now() + 10_000;
+        let row: { status: string; error: string | null } | undefined;
+        while (Date.now() < deadline) {
+            row = (
+                await pool.query<{ status: string; error: string | null }>(
+                    `select status, error from ${schema}.runs where id = $1`,
+                    [evalRunId],
+                )
+            ).rows[0];
+            if (row?.status === "failed") break;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+
+        expect(row).toEqual({
+            status: "failed",
+            error: "Please add your OpenRouter API key to run evals.",
+        });
+        // The lease is released so Retry can run it again.
+        const lease = await pool.query<{ execution_lease_id: string | null }>(
+            `select execution_lease_id from ${schema}.runs where id = $1`,
+            [evalRunId],
+        );
+        expect(lease.rows[0]?.execution_lease_id).toBeNull();
     });
 
     it("replays one stale workflow cell through the production queue after restart", async () => {

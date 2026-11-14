@@ -1,5 +1,9 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import type { ITranscriptArtifact } from "./transcription/types";
+import { sttCostUsdForDuration } from "@flash-evals/api-contract";
+import {
+    EmptyTranscriptError,
+    type ITranscriptArtifact,
+} from "./transcription/types";
 import type * as TranscriptionExecution from "./transcription/execute";
 
 const mocks = vi.hoisted(() => ({
@@ -98,4 +102,49 @@ it("checkpoints each newly paid chunk before a later failure, without charging r
     expect(cached.incurredCostUsd).toBe(0);
     expect(onCostIncurred).toHaveBeenCalledTimes(2);
     expect(mocks.dispatch).toHaveBeenCalledTimes(3);
+});
+
+it("records the charge for a billed reply with empty text, then fails", async () => {
+    mocks.prepare.mockResolvedValue({ kind: "original" });
+    const onCostIncurred = vi.fn(async () => undefined);
+    mocks.dispatch.mockRejectedValueOnce(
+        new EmptyTranscriptError(
+            "ElevenLabs transcription returned empty text.",
+            { durationMs: 600_000 },
+        ),
+    );
+    await expect(
+        getOrCreateAudioTranscriptArtifactWithProvenance({
+            datasetItemId: "item",
+            storageKey: "audio/silent.wav",
+            mimeType: "audio/wav",
+            modelId: "elevenlabs:scribe_v2",
+            elevenlabsApiKey: "fixture-key",
+            onCostIncurred,
+        }),
+    ).rejects.toThrow("returned empty text");
+    const expected = sttCostUsdForDuration("elevenlabs:scribe_v2", 600_000);
+    expect(expected).toBeGreaterThan(0);
+    expect(onCostIncurred.mock.calls).toEqual([[expected]]);
+
+    // A provider-reported price wins over the duration.
+    mocks.dispatch.mockRejectedValueOnce(
+        new EmptyTranscriptError(
+            "OpenRouter transcription returned empty text.",
+            {
+                costUsd: 0.004,
+            },
+        ),
+    );
+    await expect(
+        getOrCreateAudioTranscriptArtifactWithProvenance({
+            datasetItemId: "item",
+            storageKey: "audio/silent-2.wav",
+            mimeType: "audio/wav",
+            modelId: "elevenlabs:scribe_v2",
+            elevenlabsApiKey: "fixture-key",
+            onCostIncurred,
+        }),
+    ).rejects.toThrow("returned empty text");
+    expect(onCostIncurred).toHaveBeenLastCalledWith(0.004);
 });

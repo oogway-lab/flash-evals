@@ -1,8 +1,8 @@
 import {
-    registryEntryFor,
     registryEntryForLiveGatewayModel,
     type ModelProvider,
 } from "./models/registry.js";
+import { registryModelFor } from "./providers/bifrost.js";
 
 export interface IPromptOptimizerGuidanceSource {
     title: string;
@@ -115,7 +115,9 @@ const GENERIC_GUIDANCE = {
     ].join("\n"),
 } satisfies IPromptOptimizerGuidance;
 
-const PROVIDER_GUIDANCE: Partial<Record<ModelProvider, IPromptOptimizerGuidance>> = {
+const PROVIDER_GUIDANCE: Partial<
+    Record<ModelProvider, IPromptOptimizerGuidance>
+> = {
     openai: OPENAI_GENERAL_GUIDANCE,
     anthropic: CLAUDE_GUIDANCE,
     google: GEMINI_GUIDANCE,
@@ -125,7 +127,8 @@ const PROVIDER_GUIDANCE: Partial<Record<ModelProvider, IPromptOptimizerGuidance>
 export function guidanceForModel(modelId: string): IPromptOptimizerGuidance {
     const normalized = modelId.toLowerCase();
     const registryEntry =
-        registryEntryFor(normalized) ?? registryEntryForLiveGatewayModel(normalized);
+        registryModelFor(normalized) ??
+        registryEntryForLiveGatewayModel(normalized);
     const family = registryEntry?.family;
     const bareModelId = registryEntry?.id ?? bareProviderModelId(normalized);
     const provider = registryEntry?.provider;
@@ -143,7 +146,9 @@ export function guidanceForModel(modelId: string): IPromptOptimizerGuidance {
         return GPT_4_1_GUIDANCE;
     }
 
-    return provider ? PROVIDER_GUIDANCE[provider] ?? GENERIC_GUIDANCE : GENERIC_GUIDANCE;
+    return provider
+        ? (PROVIDER_GUIDANCE[provider] ?? GENERIC_GUIDANCE)
+        : GENERIC_GUIDANCE;
 }
 
 function bareProviderModelId(modelId: string): string {

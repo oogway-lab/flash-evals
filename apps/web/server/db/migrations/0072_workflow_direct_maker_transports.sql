@@ -1,0 +1,2 @@
+ALTER TABLE "llm_capability_versions" DROP CONSTRAINT "llm_capability_versions_transport_check";--> statement-breakpoint
+ALTER TABLE "llm_capability_versions" ADD CONSTRAINT "llm_capability_versions_transport_check" CHECK ("llm_capability_versions"."transport" in ('openai', 'gateway', 'openrouter', 'bifrost', 'anthropic', 'google'));

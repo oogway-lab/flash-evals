@@ -2,10 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { IRunProgress, RunStatus } from "@flash-evals/api-contract";
+import type {
+    IRunProgress,
+    RunStatus,
+    RunStopReason,
+} from "@flash-evals/api-contract";
 
 export interface IRunProgressSnapshot extends IRunProgress {
     status: RunStatus;
+    /** Set once a stop was asked for. */
+    stopReason?: RunStopReason;
+    /** Why the run failed before any cell started. */
+    error?: string;
+    /** For a pending run: when it was last queued. */
+    pendingSince?: string;
+    /** Whether the run's queue publication has gone through. */
+    enqueueStatus?: "pending_enqueue" | "queued";
 }
 
 /**
@@ -85,7 +97,14 @@ export function isRunProgressSnapshot(
 }
 
 function snapshotKey(s: IRunProgressSnapshot) {
-    return `${s.status}:${s.done}:${s.total}:${s.failed}`;
+    return [
+        s.status,
+        s.done,
+        s.total,
+        s.failed,
+        s.stopReason ?? "",
+        s.error ?? "",
+    ].join(":");
 }
 
 /**

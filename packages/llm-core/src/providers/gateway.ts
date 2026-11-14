@@ -12,16 +12,24 @@ import {
     type TextPart,
     type UserModelMessage,
 } from "ai";
-import type {
-    CompletionRequest,
-    CompletionResult,
-    EvalImage,
-    IEvalCompletionProvider,
-    ProviderMetadata,
-    UsageData,
+import {
+    hasDataPolicy,
+    type CompletionRequest,
+    type CompletionResult,
+    type EvalImage,
+    type ICompletionActualRoute,
+    type IEvalCompletionProvider,
+    type ProviderMetadata,
+    type UsageData,
 } from "../types.js";
+import type { JSONValue } from "ai";
 import { gatewayModelIdFor } from "../models/registry.js";
 import { parseStructuredOutput } from "./structuredOutput.js";
+import {
+    rejectsSamplingSettings,
+    thinkingPlanFor,
+    type IThinkingPlan,
+} from "./thinking.js";
 
 type GenerateTextFn = (input: Parameters<typeof generateText>[0]) => Promise<{
     text: string;
@@ -68,31 +76,18 @@ export class GatewayEvalProvider implements IEvalCompletionProvider {
         const modelId =
             gatewayModelIdFor(req.model) ??
             (req.model.includes("/") ? req.model : `openai/${req.model}`);
+        const thinking = thinkingPlanFor(
+            modelId,
+            "gateway",
+            req.reasoningEffort,
+        );
         try {
             const result = await this.generate({
                 model: this.modelFor(modelId),
                 instructions: req.system,
                 messages: messagesFor(req),
-                maxOutputTokens: req.maxTokens,
-                temperature: isReasoningModel(req.model)
-                    ? undefined
-                    : req.temperature,
-                topP: isReasoningModel(req.model) ? undefined : req.topP,
-                seed: req.seed,
-                abortSignal: req.signal,
-                maxRetries: req.maxRetries ?? 2,
-                timeout: req.timeoutMs ?? 120_000,
-                providerOptions: providerOptionsFor(req),
-                output: req.responseSchema
-                    ? Output.object({
-                          name: req.responseSchema.name,
-                          schema: jsonSchema<unknown>(
-                              req.responseSchema.schema as Parameters<
-                                  typeof jsonSchema
-                              >[0],
-                          ),
-                      })
-                    : undefined,
+                ...callSettings(req, modelId, thinking),
+                output: outputFor(req),
             });
             const latencyMs = performance.now() - start;
             const structuredOutput = req.responseSchema
@@ -115,17 +110,8 @@ export class GatewayEvalProvider implements IEvalCompletionProvider {
                 usage: usageFrom(result.usage),
                 latencyMs,
                 providerMetadata: metadata,
-                actualRoute: {
-                    status: "unresolved",
-                    transport: "gateway",
-                    modelId,
-                    ...(metadata?.gateway?.generationId
-                        ? { generationId: metadata.gateway.generationId }
-                        : {}),
-                    evidenceCompleteness: metadata?.gateway?.generationId
-                        ? "partial"
-                        : "absent",
-                },
+                actualRoute: actualRouteFor(modelId, metadata),
+                ...(thinking ? { thinking: thinking.outcome } : {}),
                 cache:
                     (result.usage.inputTokenDetails?.cacheReadTokens ?? 0) > 0
                         ? {
@@ -143,6 +129,7 @@ export class GatewayEvalProvider implements IEvalCompletionProvider {
                     schemaViolation: true,
                     usage: err.usage ? usageFrom(err.usage) : {},
                     latencyMs: performance.now() - start,
+                    ...(thinking ? { thinking: thinking.outcome } : {}),
                 };
             }
             throw withCause(
@@ -153,6 +140,43 @@ export class GatewayEvalProvider implements IEvalCompletionProvider {
             );
         }
     }
+}
+
+/** Resolved when Vercel said which host served the call. */
+function actualRouteFor(
+    modelId: string,
+    metadata: ProviderMetadata | undefined,
+): ICompletionActualRoute {
+    const generationId = metadata?.gateway?.generationId;
+    const id = generationId ? { generationId } : {};
+    if (metadata?.servedBy)
+        return {
+            status: "resolved",
+            transport: "gateway",
+            modelId,
+            upstreamProvider: metadata.servedBy,
+            ...id,
+            evidenceCompleteness: "complete",
+        };
+    return {
+        status: "unresolved",
+        transport: "gateway",
+        modelId,
+        ...id,
+        evidenceCompleteness: generationId ? "partial" : "absent",
+    };
+}
+
+/** Structured output: the request's schema, any JSON object, or none. */
+function outputFor(req: CompletionRequest) {
+    if (req.responseSchema)
+        return Output.object({
+            name: req.responseSchema.name,
+            schema: jsonSchema<unknown>(
+                req.responseSchema.schema as Parameters<typeof jsonSchema>[0],
+            ),
+        });
+    return req.jsonMode ? Output.json() : undefined;
 }
 
 function messagesFor(req: CompletionRequest): ModelMessage[] {
@@ -180,22 +204,51 @@ function imagePartFor(img: EvalImage) {
     };
 }
 
-function providerOptionsFor(req: CompletionRequest) {
-    const openAIOptions =
-        isReasoningModel(req.model) && req.reasoningEffort
-            ? { reasoningEffort: req.reasoningEffort }
-            : undefined;
-
-    if (!openAIOptions) return undefined;
+/** Limits, sampling, retries, thinking and routing options for one call. */
+function callSettings(
+    req: CompletionRequest,
+    modelId: string,
+    thinking: IThinkingPlan | undefined,
+) {
+    const noSampling = rejectsSamplingSettings(modelId);
     return {
-        ...(openAIOptions ? { openai: openAIOptions } : {}),
+        maxOutputTokens: req.maxTokens,
+        temperature: noSampling ? undefined : req.temperature,
+        topP: noSampling ? undefined : req.topP,
+        seed: req.seed,
+        abortSignal: req.signal,
+        maxRetries: req.maxRetries ?? 2,
+        timeout: req.timeoutMs ?? 120_000,
+        ...(thinking?.reasoning ? { reasoning: thinking.reasoning } : {}),
+        providerOptions: providerOptionsFor(req, thinking?.providerOptions),
     };
 }
 
-function isReasoningModel(model: string): boolean {
-    const parts = model.split("/");
-    const bareModel = model.includes("/") ? parts[parts.length - 1]! : model;
-    return /^o\d/.test(bareModel) || /^gpt-5/.test(bareModel);
+/** The maker's thinking options (keyed by maker) and Vercel's data rules. */
+function providerOptionsFor(
+    req: CompletionRequest,
+    thinkingOptions: Record<string, Record<string, JSONValue>> | undefined,
+) {
+    const gatewayOptions = gatewayDataOptions(req.dataPolicy);
+    if (!thinkingOptions && !gatewayOptions) return undefined;
+    return {
+        ...thinkingOptions,
+        ...(gatewayOptions ? { gateway: gatewayOptions } : {}),
+    };
+}
+
+/** Vercel's routing options for a data policy, or undefined when it sets none. */
+export function gatewayDataOptions(
+    policy: CompletionRequest["dataPolicy"],
+): Record<string, JSONValue> | undefined {
+    if (!hasDataPolicy(policy)) return undefined;
+    return {
+        ...(policy?.onlyHosts?.length ? { only: policy.onlyHosts } : {}),
+        ...(policy?.zeroDataRetention ? { zeroDataRetention: true } : {}),
+        ...(policy?.disallowPromptTraining
+            ? { disallowPromptTraining: true }
+            : {}),
+    };
 }
 
 function usageFrom(usage: LanguageModelUsage): UsageData {
@@ -209,16 +262,28 @@ function usageFrom(usage: LanguageModelUsage): UsageData {
     };
 }
 
-function providerMetadataFrom(
+export function providerMetadataFrom(
     metadata: Record<string, unknown> | undefined,
 ): ProviderMetadata | undefined {
     const gateway = metadata?.gateway;
     if (!isRecord(gateway)) return undefined;
-    const generationId = gateway.generationId;
-    if (typeof generationId !== "string" || generationId.length === 0) {
-        return undefined;
-    }
-    return { gateway: { generationId } };
+    const generationId =
+        typeof gateway.generationId === "string" &&
+        gateway.generationId.length > 0
+            ? gateway.generationId
+            : undefined;
+    // Which hosting company Vercel routed the call to.
+    const routing = isRecord(gateway.routing) ? gateway.routing : undefined;
+    const served = routing?.finalProvider ?? routing?.resolvedProvider;
+    const servedBy =
+        typeof served === "string" && served.length > 0 && served.length <= 100
+            ? served
+            : undefined;
+    if (!generationId && !servedBy) return undefined;
+    return {
+        ...(generationId ? { gateway: { generationId } } : {}),
+        ...(servedBy ? { servedBy } : {}),
+    };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -120,9 +120,48 @@ describe("executeSttWorkflowNode cost", () => {
                 incurredCostUsd: 0.03,
             };
         });
+        // The known part is kept, still marked incomplete.
+        const retried = await run({ id: "cell-1", ...checkpoint });
+        expect(retried.costUsd).toBeCloseTo(0.03);
+        expect(retried.artifact.providerMetadata).toMatchObject({
+            transcriptionSpend: { costSource: "unavailable" },
+        });
+    });
+
+    it("keeps known spend after an unknown part, marked as at least", async () => {
+        mocks.transcribe.mockImplementationOnce(async ({ onCostIncurred }) => {
+            await onCostIncurred(0.02);
+            await onCostIncurred(undefined);
+            await onCostIncurred(0.01);
+            throw new Error("later chunk failed");
+        });
+        await expect(run()).rejects.toThrow();
+        const checkpoints = mocks.persist.mock.calls.map(
+            ([checkpoint]) =>
+                checkpoint as {
+                    costUsd: number | null;
+                    outputJson: IWorkflowNodeArtifact;
+                },
+        );
+        // Each rise reaches cost_usd (and so the spend ledger).
+        expect(checkpoints.map((c) => c.costUsd)).toEqual([0.02, 0.02, 0.03]);
         expect(
-            (await run({ id: "cell-1", ...checkpoint })).costUsd,
-        ).toBeUndefined();
+            checkpoints[2]!.outputJson.providerMetadata?.transcriptionSpend,
+        ).toEqual({ costUsd: 0.03, costSource: "unavailable" });
+        mocks.transcribe.mockImplementationOnce(async ({ onCostIncurred }) => {
+            await onCostIncurred(0.04);
+            return {
+                artifact,
+                cacheHit: false,
+                lookupLatencyMs: 1,
+                incurredCostUsd: 0.04,
+            };
+        });
+        const resumed = await run({ id: "cell-1", ...checkpoints[2]! });
+        expect(resumed.costUsd).toBeCloseTo(0.07);
+        expect(resumed.artifact.providerMetadata).toMatchObject({
+            transcriptionSpend: { costSource: "unavailable" },
+        });
     });
 
     it("charges nothing for a reused transcript but keeps its original cost", async () => {

@@ -4,7 +4,10 @@ import {
     canonicalJsonString,
     WORKFLOW_JUDGE_SCHEMA_DIGEST,
 } from "@flash-evals/api-contract";
-import type { CompletionRequest, CompletionResult } from "@flash-evals/llm-core";
+import type {
+    CompletionRequest,
+    CompletionResult,
+} from "@flash-evals/llm-core";
 import type * as LlmCore from "@flash-evals/llm-core";
 import { getEvalProvider } from "@flash-evals/llm-core";
 import { JUDGE_RESPONSE_SCHEMA, runJudge, type JudgeWinner } from "./judge";
@@ -50,6 +53,39 @@ it("keeps the frozen judge schema digest synchronized", () => {
 describe("runJudge", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+    });
+
+    it("records what the judge call cost from the model's prices", async () => {
+        providerComplete({ score: 0.76, criteria: ONE_CRITERION });
+
+        const result = await runJudge({
+            judgeModelId: "gpt-4o-mini",
+            rubricPrompt: "Score accuracy.",
+            apiKeys: { openai: "test" },
+            hasImage: false,
+            output: { answer: "yes" },
+            pricing: {
+                promptPricePerToken: 1e-6,
+                completionPricePerToken: 4e-6,
+            },
+        });
+
+        // 10 input tokens at $1/M and 5 output tokens at $4/M.
+        expect(result.costUsd).toBeCloseTo(0.00003);
+    });
+
+    it("reports no judge cost without prices or a provider-reported cost", async () => {
+        providerComplete({ score: 0.76, criteria: ONE_CRITERION });
+
+        const result = await runJudge({
+            judgeModelId: "gpt-4o-mini",
+            rubricPrompt: "Score accuracy.",
+            apiKeys: { openai: "test" },
+            hasImage: false,
+            output: { answer: "yes" },
+        });
+
+        expect(result).not.toHaveProperty("costUsd");
     });
 
     it("constructs the judge provider with the persisted transport", async () => {

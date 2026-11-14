@@ -172,6 +172,64 @@ describe("scoreWorkflowCell", () => {
         ]);
     });
 
+    it("adds the judge call's cost to the step and sends it under the run's data rules", async () => {
+        const dataPolicy = { zeroDataRetention: true };
+        let verdict: unknown;
+        mocks.executeWorkflowLlmInvocation.mockResolvedValue({
+            artifact: {
+                json: { score: 1, criteria: [], winner: "not_applicable" },
+            },
+            latencyMs: 10,
+            costUsd: 0.004,
+        });
+        mocks.scoreOutput.mockImplementation(async (_input, explicitJudge) => {
+            verdict = await explicitJudge({
+                judgeModelId: "judge-model",
+                rubricPrompt: "Judge it",
+                apiKeys: {},
+                hasImage: false,
+                output: { text: "candidate" },
+            });
+            return {
+                judge: { score: 1, rationale: "Right", costUsd: 0.004 },
+            };
+        });
+
+        await scoreWorkflowCell({
+            cellId: "cell-1",
+            node: {
+                id: "node-a",
+                nodeKey: "a",
+                label: "A",
+                promptVersionId: "pv-a",
+                promptContent: "Do A",
+                modelId: "judge-model",
+                resolvedLlmExecution: {
+                    route: {
+                        modelId: "judge-model",
+                        generation: { maxOutputTokens: 4000 },
+                    },
+                } as never,
+                evalConfig: { type: "judge", judgeConfigId: "judge-1" },
+            },
+            item: { id: "item-1", inputText: "input" },
+            output: { text: "candidate" },
+            apiKeys: {},
+            context,
+            teamId: "team-1",
+            projectId: "project-1",
+            dataPolicy,
+        });
+
+        expect(mocks.executeWorkflowLlmInvocation).toHaveBeenCalledWith(
+            expect.objectContaining({ dataPolicy }),
+        );
+        expect(verdict).toMatchObject({ ok: true, costUsd: 0.004 });
+        // Added to what earlier scoring passes cost, never replaced.
+        expect(mocks.itemUpdates).toHaveLength(1);
+        expect(mocks.itemUpdates[0]).toHaveProperty("judgeCostUsd");
+    });
+
     it("does nothing when evaluation is disabled", async () => {
         await scoreWorkflowCell({
             cellId: "cell-1",

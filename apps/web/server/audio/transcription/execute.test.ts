@@ -1,6 +1,12 @@
 import { TRANSCRIPT_CHUNK_KEY_MARKER } from "@flash-evals/api-contract";
 import { describe, expect, it, vi } from "vitest";
-import { AUDIO_PREPARATION_VERSION, type PreparedAudio } from "../preparation";
+import {
+    AUDIO_PREPARATION_VERSION,
+    LEVELLED_AUDIO_PREPARATION_VERSION,
+    PREVIOUS_LEVELLED_AUDIO_PREPARATION_VERSION,
+    VOLUME_LEVELLING_FILTER,
+    type PreparedAudio,
+} from "../preparation";
 import {
     cachedPreparationIsCurrent,
     chunkStorageKey,
@@ -60,7 +66,13 @@ function memoryStore(seed: Record<string, ITranscriptArtifact> = {}) {
     return { store, rows };
 }
 
-const policy = { maxAttempts: 3, timeoutMs: 180_000, maxAudioBytes: 14 };
+const policy = {
+    maxAttempts: 3,
+    timeoutMs: 180_000,
+    maxAudioBytes: 14,
+    levelledAudioFormat: "wav" as const,
+    levelledAudioMaxBytes: 23 * 1024 * 1024,
+};
 
 describe("executeTranscription", () => {
     it("sends audio within budget unchanged with the route's timeout", async () => {
@@ -321,5 +333,138 @@ describe("cachedPreparationIsCurrent", () => {
             chunks: [],
         };
         expect(cachedPreparationIsCurrent(stale)).toBe(false);
+    });
+
+    it("keeps transcripts levelled before FLAC output as current", () => {
+        const before = transcript("levelled as WAV");
+        before.providerMetadata!.audioPreparation = {
+            version: PREVIOUS_LEVELLED_AUDIO_PREPARATION_VERSION,
+            sourceBytes: 1,
+            sourceMimeType: "audio/mpeg",
+            sourceDurationMs: 1,
+            chunks: [],
+        };
+        expect(cachedPreparationIsCurrent(before)).toBe(true);
+    });
+});
+
+describe("executeTranscription with volume levelling", () => {
+    const levelled: Extract<PreparedAudio, { kind: "prepared" }> = {
+        kind: "prepared",
+        version: LEVELLED_AUDIO_PREPARATION_VERSION,
+        probe: { durationMs: 30_000 },
+        volumeLevelled: true,
+        chunks: [
+            {
+                index: 0,
+                startMs: 0,
+                endMs: 30_000,
+                bytes: Buffer.from("levelled-flac"),
+                mimeType: "audio/flac",
+                hardCut: false,
+                silent: false,
+            },
+        ],
+    };
+    const elevenlabs = {
+        modelId: "elevenlabs:scribe_v2",
+        canonicalModelId: "scribe_v2",
+        providerId: "elevenlabs" as const,
+        language: undefined,
+        elevenlabsApiKey: "key",
+    };
+
+    it("asks preparation to level when on and sends the levelled audio", async () => {
+        const dispatch = vi.fn(async () => transcript("found words", 0.002));
+        const prepare = vi.fn(async () => levelled);
+        const result = await executeTranscription(
+            {
+                request: elevenlabs,
+                storageKey: "audio/quiet.mp3",
+                bytes: Buffer.from("mp3"),
+                mimeType: "audio/mpeg",
+                policy: {
+                    maxAttempts: 1,
+                    levelledAudioFormat: "flac",
+                    levelledAudioMaxBytes: 1024,
+                },
+                chunkStore: memoryStore().store,
+                levelVolume: true,
+            },
+            { dispatch, prepare },
+        );
+        expect(prepare).toHaveBeenCalledWith({
+            bytes: Buffer.from("mp3"),
+            mimeType: "audio/mpeg",
+            policy: undefined,
+            levelVolume: true,
+            levelledFormat: "flac",
+            levelledMaxBytes: 1024,
+        });
+        expect(dispatch).toHaveBeenCalledWith(
+            expect.objectContaining({
+                bytes: Buffer.from("levelled-flac"),
+                mimeType: "audio/flac",
+            }),
+        );
+        expect(result.text).toBe("found words");
+        expect(result.providerMetadata?.volumeLevelled).toBe(true);
+        expect(result.providerMetadata?.audioPreparation).toMatchObject({
+            version: LEVELLED_AUDIO_PREPARATION_VERSION,
+            volumeLevelling: VOLUME_LEVELLING_FILTER,
+        });
+        expect(cachedPreparationIsCurrent(result)).toBe(true);
+    });
+
+    it("passes the route's levelled duration limit to preparation", async () => {
+        const prepare = vi.fn(async () => levelled);
+        await executeTranscription(
+            {
+                request: elevenlabs,
+                storageKey: "audio/long.mp3",
+                bytes: Buffer.from("mp3"),
+                mimeType: "audio/mpeg",
+                policy: {
+                    maxAttempts: 1,
+                    levelledAudioFormat: "flac",
+                    levelledAudioMaxBytes: 1024,
+                    levelledAudioMaxDurationMs: 1_400_000,
+                },
+                chunkStore: memoryStore().store,
+                levelVolume: true,
+            },
+            {
+                dispatch: vi.fn(async () => transcript("found words", 0.002)),
+                prepare,
+            },
+        );
+        expect(prepare).toHaveBeenCalledWith(
+            expect.objectContaining({ levelledMaxDurationMs: 1_400_000 }),
+        );
+    });
+
+    it("does not ask for levelling when off", async () => {
+        const prepare = vi.fn(async () => ({ kind: "original" as const }));
+        const result = await executeTranscription(
+            {
+                request: elevenlabs,
+                storageKey: "audio/a.mp3",
+                bytes: Buffer.from("mp3"),
+                mimeType: "audio/mpeg",
+                policy: {
+                    maxAttempts: 1,
+                    levelledAudioFormat: "flac",
+                    levelledAudioMaxBytes: 1024,
+                },
+                chunkStore: memoryStore().store,
+            },
+            { dispatch: async () => transcript("plain"), prepare },
+        );
+        expect(prepare).toHaveBeenCalledWith({
+            bytes: Buffer.from("mp3"),
+            mimeType: "audio/mpeg",
+            policy: undefined,
+        });
+        expect(result.providerMetadata?.volumeLevelled).toBeUndefined();
     });
 });

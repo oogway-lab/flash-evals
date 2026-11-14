@@ -25,7 +25,7 @@ test(
         const dir = mkdtempSync(path.join(tmpdir(), "flash-evals-shutdown-"));
         const events = path.join(dir, "events");
         const wrapper = path.join(root, "scripts/node-with-supabase-ca.mjs");
-        const fakePnpm = `#!${process.execPath}
+        const fakeBun = `#!${process.execPath}
 const {spawn}=require('node:child_process');
 const worker=process.argv.includes('worker');
 require('node:fs').appendFileSync(${JSON.stringify(events)},JSON.stringify({event:'config',worker,origin:process.env.FLASH_EVALS_DEV_WEB_ORIGIN,cors:process.env.CORS_ORIGINS})+'\\n');
@@ -40,7 +40,7 @@ const child=spawn(process.execPath,[${JSON.stringify(wrapper)},'--eval',source],
 process.on('SIGTERM',()=>child.kill('SIGTERM'));
 child.on('exit',(code)=>process.exit(code??0));
 `;
-        writeFileSync(path.join(dir, "pnpm"), fakePnpm, { mode: 0o755 });
+        writeFileSync(path.join(dir, "bun"), fakeBun, { mode: 0o755 });
         const child = spawn(
             process.execPath,
             [path.join(root, "scripts/dev.mjs"), "--port", "4000"],
@@ -113,56 +113,111 @@ child.on('exit',(code)=>process.exit(code??0));
     },
 );
 
-test("failed database backup resumes development and publishes no incomplete snapshot", {
-    // backup-dev.sh needs util-linux flock and bash 4; it is Linux-only.
-    skip: process.platform !== "linux" && "backup helper is Linux-only",
-}, () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "flash-evals-backup-"));
-    try {
-        for (const folder of ["scripts/lib", "apps/api", "apps/web", "bin"])
-            mkdirSync(path.join(dir, folder), { recursive: true });
-        for (const file of [
-            "scripts/backup-dev.sh",
-            "scripts/lib/dev-env.cjs",
-            "scripts/lib/dev-host.cjs",
-        ])
-            copyFileSync(path.join(root, file), path.join(dir, file));
-        const url =
-            "postgres://synthetic:synthetic@localhost:54322/flash_evals";
-        writeFileSync(
-            path.join(dir, "apps/api/.env"),
-            `DATABASE_URL=${url}\nFLASH_EVALS_STORAGE_ADAPTER=local\n`,
-        );
-        writeFileSync(
-            path.join(dir, "apps/web/.env"),
-            `FLASH_EVALS_WEB_DATABASE_URL=${url}\n`,
-        );
-        writeFileSync(
-            path.join(dir, "bin/systemctl"),
-            '#!/bin/sh\ncase "$*" in *show*) echo active;; *stop*) echo stop >> "$FLASH_EVALS_TEST_EVENTS";; *start*) echo start >> "$FLASH_EVALS_TEST_EVENTS";; esac\n',
-            { mode: 0o755 },
-        );
-        writeFileSync(path.join(dir, "bin/docker"), "#!/bin/sh\nexit 1\n", {
-            mode: 0o755,
-        });
-        const events = path.join(dir, "events");
-        const result = spawnSync(
-            "bash",
-            [path.join(dir, "scripts/backup-dev.sh")],
-            {
-                env: {
-                    ...process.env,
-                    PATH: `${dir}/bin:${process.env.PATH}`,
-                    FLASH_EVALS_TEST_EVENTS: events,
+test(
+    "failed database backup resumes development and publishes no incomplete snapshot",
+    {
+        // backup-dev.sh needs util-linux flock and bash 4; it is Linux-only.
+        skip: process.platform !== "linux" && "backup helper is Linux-only",
+    },
+    () => {
+        const dir = mkdtempSync(path.join(tmpdir(), "flash-evals-backup-"));
+        try {
+            for (const folder of ["scripts/lib", "apps/api", "apps/web", "bin"])
+                mkdirSync(path.join(dir, folder), { recursive: true });
+            for (const file of [
+                "scripts/backup-dev.sh",
+                "scripts/lib/dev-env.cjs",
+                "scripts/lib/dev-host.cjs",
+            ])
+                copyFileSync(path.join(root, file), path.join(dir, file));
+            const url =
+                "postgres://synthetic:synthetic@localhost:54322/flash_evals";
+            writeFileSync(
+                path.join(dir, "apps/api/.env"),
+                `DATABASE_URL=${url}\nFLASH_EVALS_STORAGE_ADAPTER=local\n`,
+            );
+            writeFileSync(
+                path.join(dir, "apps/web/.env"),
+                `FLASH_EVALS_WEB_DATABASE_URL=${url}\n`,
+            );
+            writeFileSync(
+                path.join(dir, "bin/systemctl"),
+                '#!/bin/sh\ncase "$*" in *show*) echo active;; *stop*) echo stop >> "$FLASH_EVALS_TEST_EVENTS";; *start*) echo start >> "$FLASH_EVALS_TEST_EVENTS";; esac\n',
+                { mode: 0o755 },
+            );
+            writeFileSync(path.join(dir, "bin/docker"), "#!/bin/sh\nexit 1\n", {
+                mode: 0o755,
+            });
+            const events = path.join(dir, "events");
+            const result = spawnSync(
+                "bash",
+                [path.join(dir, "scripts/backup-dev.sh")],
+                {
+                    env: {
+                        ...process.env,
+                        PATH: `${dir}/bin:${process.env.PATH}`,
+                        FLASH_EVALS_TEST_EVENTS: events,
+                    },
+                    encoding: "utf8",
                 },
-                encoding: "utf8",
-            },
+            );
+            assert.equal(result.status, 1);
+            assert.equal(readFileSync(events, "utf8"), "stop\nstart\n");
+            assert(!result.stdout.includes("Private backup saved"));
+            assert.deepEqual(
+                readdirSync(path.join(dir, ".dev.local/backups")),
+                [".lock"],
+            );
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    },
+);
+
+test("local runs take provider keys and settings from the app's env file, not the shell", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "flash-evals-shell-env-"));
+    const wrapper = path.join(root, "scripts/node-with-supabase-ca.mjs");
+    const envFile = path.join(dir, "app.env");
+    writeFileSync(
+        envFile,
+        "OPENAI_API_KEY=file-key\nFLASH_EVALS_LLM_PROVIDER=openrouter\n",
+    );
+    const names = [
+        "OPENAI_API_KEY",
+        "FLASH_EVALS_LLM_PROVIDER",
+        "ELEVENLABS_API_KEY",
+        "ANTHROPIC_BASE_URL",
+        "OPENAI_ORG_ID",
+    ];
+    const show = `console.log(JSON.stringify(${JSON.stringify(names)}.map((name) => process.env[name] ?? null)))`;
+    const shell = {
+        ...process.env,
+        OPENAI_API_KEY: "shell-key",
+        FLASH_EVALS_LLM_PROVIDER: "openai",
+        ELEVENLABS_API_KEY: "shell-eleven",
+        ANTHROPIC_BASE_URL: "https://shell.invalid",
+        OPENAI_ORG_ID: "org-shell",
+    };
+    const run = (args) => {
+        const result = spawnSync(process.execPath, [wrapper, ...args], {
+            env: shell,
+            encoding: "utf8",
+        });
+        assert.equal(result.status, 0, result.stderr);
+        return JSON.parse(result.stdout.trim().split("\n").at(-1));
+    };
+    try {
+        assert.deepEqual(
+            run([`--env-file-if-exists=${envFile}`, "--eval", show]),
+            ["file-key", "openrouter", null, null, null],
         );
-        assert.equal(result.status, 1);
-        assert.equal(readFileSync(events, "utf8"), "stop\nstart\n");
-        assert(!result.stdout.includes("Private backup saved"));
-        assert.deepEqual(readdirSync(path.join(dir, ".dev.local/backups")), [
-            ".lock",
+        // A platform run (no env file) keeps its configured environment.
+        assert.deepEqual(run(["--eval", show]), [
+            "shell-key",
+            "openai",
+            "shell-eleven",
+            "https://shell.invalid",
+            "org-shell",
         ]);
     } finally {
         rmSync(dir, { recursive: true, force: true });

@@ -33,12 +33,23 @@ export interface CellData {
     id: string;
     datasetItemId: string;
     runModelId: string;
-    status: "pending" | "running" | "succeeded" | "failed" | "cached";
+    /** Eval run cells are never "skipped"; that is for pipeline steps. */
+    status:
+        "pending" | "running" | "succeeded" | "failed" | "cached" | "skipped";
     outputJson: OutputJson | null;
     latencyMs: number | null;
     costUsd: number | null;
     promptTokens: number | null;
     completionTokens: number | null;
+    /** Thinking tokens, part of completionTokens, when reported. */
+    reasoningTokens?: number;
+    /** Whether the run's thinking level was sent with this call. */
+    thinking?: {
+        requested: string;
+        sent: boolean;
+        via?: string;
+        reason?: string;
+    };
     annotation?: CellAnnotation;
     error: string | null;
 }
@@ -144,6 +155,8 @@ export interface TranscriptMetricDetails {
         missed: number[];
     };
     hardFailures?: string[];
+    /** Why speaker metrics were not computed, when they were skipped. */
+    diarizationSkippedReason?: string;
     diarization?: {
         speakerCountDelta: number;
         coverageRatio: number | null;
@@ -201,6 +214,10 @@ export function toTranscriptMetricDetails(
             : undefined,
         hardFailures: stringArray(v.hardFailures),
         diarization: parseDiarizationDetails(v.diarization),
+        diarizationSkippedReason:
+            typeof v.diarizationSkippedReason === "string"
+                ? v.diarizationSkippedReason
+                : undefined,
     };
 }
 

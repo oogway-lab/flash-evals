@@ -404,6 +404,59 @@ describe("SttRunResults", () => {
         expect(summary).toHaveTextContent("$0.01");
     });
 
+    it("summarizes a prompt pipeline, which has no input block, as one chain", () => {
+        const result = detail();
+        const first = {
+            ...result.nodes[0]!,
+            nodeType: "prompt" as const,
+            label: "Extract lists",
+            nodeConfig: { type: "prompt" as const },
+        };
+        result.nodes = [first, result.nodes[1]!];
+        result.workflowRun.workflowSnapshot = {
+            ...result.workflowRun.workflowSnapshot,
+            kind: "prompt",
+            nodes: result.nodes,
+        };
+        result.cells = result.cells
+            .filter(
+                (cell) =>
+                    cell.datasetItemId === "item-1" && cell.nodeKey !== "stt-b",
+            )
+            .map((cell) => ({ ...cell, costUsd: 0.01 }));
+        render(<SttRunResults detail={result} />);
+        const summary = screen
+            .getByRole("heading", { name: "Extract lists" })
+            .closest('[data-slot="card"]');
+        expect(summary).toHaveTextContent("Completed branch");
+        expect(summary).toHaveTextContent("$0.02");
+    });
+
+    it("shows a skipped step with its reason and counts it apart", () => {
+        const result = detail();
+        result.cells = result.cells.map((cell) =>
+            cell.nodeKey === "text-a" && cell.datasetItemId === "item-1"
+                ? {
+                      ...cell,
+                      status: "skipped" as const,
+                      costUsd: 0,
+                      outputJson: {
+                          text: "",
+                          skipReason:
+                              "Skipped: runs only when Classify $.is_sales is true (it was false).",
+                      },
+                  }
+                : cell,
+        );
+        render(<SttRunResults detail={result} />);
+        expect(
+            screen.getAllByText(
+                "Skipped: runs only when Classify $.is_sales is true (it was false).",
+            ).length,
+        ).toBeGreaterThan(0);
+        expect(screen.getAllByText(/1 skipped/).length).toBeGreaterThan(0);
+    });
+
     it("labels each branch from its cell statuses", () => {
         const completed = detail();
         render(<SttRunResults detail={completed} />);
@@ -432,6 +485,127 @@ describe("SttRunResults", () => {
             .closest(".border") as HTMLElement;
         expect(within(plain).getByText("Pending branch")).toBeInTheDocument();
         expect(screen.queryByText("Completed branch")).not.toBeInTheDocument();
+    });
+
+    it("shows Volume levelled on a branch whose STT step levels volume first", () => {
+        const levelled = detail();
+        const [node] = levelled.nodes;
+        if (node?.nodeConfig?.type === "stt")
+            node.nodeConfig.sttConfig.levelVolume = true;
+        render(<SttRunResults detail={levelled} />);
+        const text = "Volume levelled · diarization: true";
+        // getByText also fails if the unlevelled branch shows the label.
+        expect(screen.getByText(/Volume levelled/)).toHaveTextContent(text);
+    });
+
+    it("shows Volume levelled from what the STT step ran, not its setting", () => {
+        const ran = detail();
+        const [node] = ran.nodes;
+        if (node?.nodeConfig?.type === "stt")
+            node.nodeConfig.sttConfig.levelVolume = true;
+        ran.cells = ran.cells.map((cell) =>
+            cell.nodeKey === "stt-a" && cell.outputJson
+                ? {
+                      ...cell,
+                      outputJson: {
+                          ...cell.outputJson,
+                          providerMetadata: { provider: "soniox" },
+                      },
+                  }
+                : cell.nodeKey === "stt-b" && cell.outputJson
+                  ? {
+                        ...cell,
+                        outputJson: {
+                            ...cell.outputJson,
+                            providerMetadata: { volumeLevelled: true },
+                        },
+                    }
+                  : cell,
+        );
+        render(<SttRunResults detail={ran} />);
+        // Only the branch whose transcripts were levelled carries the label.
+        expect(screen.getByText(/Volume levelled/)).toHaveTextContent(
+            "Volume levelled · diarization: false",
+        );
+    });
+
+    it("keeps Volume levelled while the STT step holds only a spend checkpoint", () => {
+        const inFlight = detail();
+        inFlight.workflowRun.status = "running";
+        const [node] = inFlight.nodes;
+        if (node?.nodeConfig?.type === "stt")
+            node.nodeConfig.sttConfig.levelVolume = true;
+        inFlight.cells = inFlight.cells.map((cell) =>
+            cell.nodeKey === "stt-a"
+                ? {
+                      ...cell,
+                      status: "running" as const,
+                      outputJson: {
+                          text: "",
+                          providerMetadata: {
+                              transcriptionSpend: {
+                                  costUsd: 0.01,
+                                  costSource: "computed",
+                              },
+                          },
+                      },
+                  }
+                : cell,
+        );
+        render(<SttRunResults detail={inFlight} />);
+        expect(screen.getByText(/Volume levelled/)).toHaveTextContent(
+            "Volume levelled · diarization: true",
+        );
+    });
+
+    it("shows a speech-to-text cost with an unknown part as a lower bound", () => {
+        const result = detail();
+        result.cells = result.cells.map((cell) =>
+            cell.id === "cell-stt-a"
+                ? {
+                      ...cell,
+                      costUsd: 0.25,
+                      outputJson: {
+                          ...cell.outputJson!,
+                          providerMetadata: {
+                              transcriptionSpend: {
+                                  costUsd: 0.25,
+                                  costSource: "unavailable",
+                              },
+                          },
+                      },
+                  }
+                : { ...cell, costUsd: 0 },
+        );
+        render(<SttRunResults detail={result} />);
+        const summary = screen
+            .getByRole("heading", { name: "Diarized" })
+            .closest('[data-slot="card"]');
+        expect(summary).toHaveTextContent("at least $0.25");
+        const step = document.querySelector<HTMLElement>(
+            '[data-workflow-cell-id="cell-stt-a"]',
+        )!;
+        expect(step).toHaveTextContent("at least $0.25");
+        // A sibling step with a fully known cost keeps the plain amount.
+        expect(
+            document.querySelector<HTMLElement>(
+                '[data-workflow-cell-id="cell-stt-b"]',
+            ),
+        ).not.toHaveTextContent("at least");
+    });
+
+    it("shows steps a cancelled run never started as not run", () => {
+        const stopped = detail();
+        stopped.workflowRun.status = "cancelled";
+        stopped.cells = stopped.cells.map((cell) =>
+            cell.nodeKey === "stt-b" ? { ...cell, status: "pending" } : cell,
+        );
+        render(<SttRunResults detail={stopped} />);
+        expect(screen.getByText("Stopped branch")).toBeInTheDocument();
+        expect(screen.getAllByLabelText("Cell status: Not run")).toHaveLength(
+            stopped.cells.filter((cell) => cell.status === "pending").length,
+        );
+        expect(document.querySelector('[data-slot="skeleton"]')).toBeNull();
     });
 
     it("shows skeletons for in-flight cells and a pulsing badge while running", () => {
@@ -542,7 +716,9 @@ describe("SttRunResults", () => {
         render(<SttRunResults detail={detail()} />);
 
         expect(screen.getAllByText("gpt-4o")).not.toHaveLength(0);
-        expect(screen.getAllByText("openrouter → azure")).not.toHaveLength(0);
+        expect(
+            screen.getAllByText("openrouter, served by azure"),
+        ).not.toHaveLength(0);
 
         fireEvent.click(
             screen.getAllByRole("button", {
@@ -756,7 +932,7 @@ describe("SttRunResults", () => {
         view.rerender(<SttRunResults detail={estimated} />);
         expect(
             within(screen.getByRole("dialog", { name: "Cleanup" })).getByText(
-                "$0.0028 · Catalog estimate",
+                "$0.0028 · Registry list price",
             ),
         ).toBeVisible();
     });

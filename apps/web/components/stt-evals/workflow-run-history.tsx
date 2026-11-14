@@ -71,7 +71,10 @@ export function WorkflowRunHistory({
                                         : "Whole dataset"}
                                 </TableCell>
                                 <TableCell>
-                                    <RunStatusBadge status={run.status} />
+                                    <RunStatusBadge
+                                        status={run.status}
+                                        stopReason={run.stopReason}
+                                    />
                                 </TableCell>
                                 <TableCell align="numeric">
                                     {run.done}/{run.total}

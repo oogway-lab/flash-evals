@@ -3,6 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("../scoring/judge", () => ({
     runJudge: vi.fn(),
 }));
+vi.mock("../llm/pricing", () => ({
+    resolvePricingFor: vi.fn(async () => ({
+        promptPricePerToken: 0.000001,
+        completionPricePerToken: 0.000002,
+    })),
+}));
 
 import { runJudge } from "../scoring/judge";
 import { runTranscriptEvaluator } from "./customEvaluators";
@@ -114,6 +120,44 @@ describe("runTranscriptEvaluator", () => {
                 metricKind: "llm_judge",
                 error: "provider unavailable",
             },
+        });
+    });
+
+    it("applies the run's data rules and prices, and keeps the cost", async () => {
+        vi.mocked(runJudge).mockResolvedValueOnce({
+            ok: true,
+            score: 1,
+            rationale: "ok",
+            winner: "tie",
+            criteria: [],
+            costUsd: 0.0007,
+        });
+
+        const result = await runTranscriptEvaluator({
+            config: {
+                enabled: true,
+                modelId: "gpt-4o-mini",
+                rubricPrompt: "Score semantic accuracy.",
+            },
+            transcript: "hello",
+            label: undefined,
+            apiKeys: {},
+            maxTokens: 1000,
+            dataPolicy: { onlyHosts: ["vertex"] },
+        });
+
+        expect(runJudge).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                dataPolicy: { onlyHosts: ["vertex"] },
+                pricing: {
+                    promptPricePerToken: 0.000001,
+                    completionPricePerToken: 0.000002,
+                },
+            }),
+        );
+        expect(result).toMatchObject({
+            costUsd: 0.0007,
+            details: { costUsd: 0.0007 },
         });
     });
 });

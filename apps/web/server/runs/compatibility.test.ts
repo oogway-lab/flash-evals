@@ -47,7 +47,11 @@ describe("validatePromptDatasetCompatibility", () => {
         const result = validatePromptDatasetCompatibility({
             promptSchema: schema,
             fieldConfigs: [
-                { field: "serving_size", kind: "factual", spec: { matcher: "exact" } },
+                {
+                    field: "serving_size",
+                    kind: "factual",
+                    spec: { matcher: "exact" },
+                },
             ],
         });
 

@@ -6,6 +6,7 @@ import {
     type IModelCatalogSnapshot,
 } from "./catalog.js";
 import type { ReasoningEffort } from "../types.js";
+import { claudeRejectsSampling } from "./claudeLimits.js";
 import type { ICostPricing, ICostPricingTier } from "../cost.js";
 
 export type KnownModelProvider =
@@ -14,7 +15,33 @@ export type KnownModelProvider =
 export type ModelProvider = KnownModelProvider | (string & {});
 
 export type EvalProviderTransport =
-    "openai" | "gateway" | "openrouter" | "bifrost";
+    "openai" | "gateway" | "openrouter" | "bifrost" | "anthropic" | "google";
+
+/** Transports that call the model's maker directly with a key from Settings. */
+export type DirectMakerTransport = "anthropic" | "google";
+
+export const DIRECT_MAKER_TRANSPORTS: readonly DirectMakerTransport[] = [
+    "anthropic",
+    "google",
+];
+
+export function isDirectMakerTransport(
+    transport: string | undefined,
+): transport is DirectMakerTransport {
+    return transport === "anthropic" || transport === "google";
+}
+
+/**
+ * Host names a run's data rules can use to allow a direct call. The first is
+ * the name recorded as "served by"; it matches Vercel AI Gateway's name for the
+ * maker, and the rest are OpenRouter's names for the same company.
+ */
+export const DIRECT_MAKER_HOSTS: Readonly<
+    Record<DirectMakerTransport, readonly string[]>
+> = {
+    anthropic: ["anthropic"],
+    google: ["google", "google-ai-studio"],
+};
 export type ModelTransports = Readonly<
     Partial<Record<EvalProviderTransport, string>>
 >;
@@ -72,6 +99,46 @@ const GPT_REASONING_EFFORTS = [
     "xhigh",
 ] as const satisfies readonly ReasoningEffort[];
 
+/*
+ * Thinking levels for open-weight and non-OpenAI models, as OpenRouter's
+ * `reasoning.effort` takes them (OpenRouter lists `reasoning` for each).
+ * Where a maker documents only thinking on/off or a budget, the set is kept
+ * to none/low/medium/high; OpenRouter turns the effort into on/off or a
+ * budget. Checked 2026-11-07 against the makers' public docs.
+ */
+// Gemini 3 Flash: thinking_level minimal, low, medium or high; it can't be
+// turned off, and high is Google's default
+// (https://ai.google.dev/gemini-api/docs/thinking).
+const GEMINI_3_FLASH_THINKING: IReasoningEffortCapability = {
+    supportedLevels: ["minimal", "low", "medium", "high"],
+    defaultLevel: "high",
+};
+// Gemma 4: thinking is a switch, off unless turned on.
+const GEMMA_4_THINKING: IReasoningEffortCapability = {
+    supportedLevels: ["none", "low", "medium", "high"],
+    defaultLevel: "none",
+};
+// GLM 5.2: thinking on by default, can be turned off.
+const GLM_5_THINKING: IReasoningEffortCapability = {
+    supportedLevels: ["none", "low", "medium", "high"],
+    defaultLevel: "medium",
+};
+// MiniMax M3: a thinking model; MiniMax documents no way to turn thinking
+// off for its M series, so "none" is left out.
+const MINIMAX_M3_THINKING: IReasoningEffortCapability = {
+    supportedLevels: ["low", "medium", "high"],
+    defaultLevel: "medium",
+};
+
+// Muse Ember: Meta says it reasons, but no thinking levels are documented
+// for it, and Vercel AI Gateway documents no thinking option for Meta models
+// (a requested level is not sent there, with a warning). Kept to
+// low/medium/high, without "none", until Meta documents its levels.
+const MUSE_EMBER_THINKING: IReasoningEffortCapability = {
+    supportedLevels: ["low", "medium", "high"],
+    defaultLevel: "medium",
+};
+
 const M = 1_000_000;
 
 const OPENROUTER_MODEL_IDS: Readonly<Record<string, string>> = {
@@ -98,6 +165,93 @@ const OPENROUTER_MODEL_IDS: Readonly<Record<string, string>> = {
     "mistral/magistral-medium": "mistralai/magistral-medium-2506",
 };
 
+interface IDirectMakerModel {
+    transport: DirectMakerTransport;
+    transportModelId: string;
+    pricing: IModelPricing;
+}
+
+/**
+ * Models that can be called on their maker's own API, keyed by registry id.
+ * Only models whose direct id is confirmed in the maker's docs are listed.
+ * Prices are the makers' list prices in USD per 1M tokens, checked 2026-11-06:
+ * - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing
+ *   (input, output, cache hits, 5-minute cache writes).
+ * - Google: https://ai.google.dev/gemini-api/docs/pricing (paid tier, text
+ *   input). Gemma 4 has no paid-tier price there: it is free of charge, so
+ *   direct Gemma calls record $0.
+ */
+const DIRECT_MAKER_MODELS: Readonly<Record<string, IDirectMakerModel>> = {
+    "anthropic/claude-opus-5.5": {
+        transport: "anthropic",
+        transportModelId: "claude-opus-5-5",
+        pricing: cachedPrice(4, 20, 0.2, 5),
+    },
+    "anthropic/claude-sonnet-5.5": {
+        transport: "anthropic",
+        transportModelId: "claude-sonnet-5-5",
+        pricing: cachedPrice(2, 10, 0.1, 2.5),
+    },
+    "anthropic/claude-haiku-5.5": {
+        transport: "anthropic",
+        transportModelId: "claude-haiku-5-5",
+        // Prompts over 100,000 tokens pay $0.50 input; only the input tier
+        // is recorded, since cost tiers apply per token kind.
+        pricing: {
+            ...cachedPrice(0.1, 0.5, 0.01, 0.125),
+            promptTiers: [
+                { minTokens: 0, maxTokens: 100_001, pricePerToken: 0.1 / M },
+                { minTokens: 100_001, pricePerToken: 0.5 / M },
+            ],
+        },
+    },
+    "anthropic/claude-sonnet-4.6": {
+        transport: "anthropic",
+        transportModelId: "claude-sonnet-4-6",
+        pricing: cachedPrice(3, 15, 0.3, 3.75),
+    },
+    "google/gemini-3-flash": {
+        transport: "google",
+        transportModelId: "gemini-3-flash-preview",
+        pricing: cachedPrice(0.5, 3, 0.05),
+    },
+    "google/gemini-3.5-flash-lite": {
+        transport: "google",
+        transportModelId: "gemini-3.5-flash-lite",
+        pricing: cachedPrice(0.3, 2.5, 0.03),
+    },
+    "google/gemma-4-31b-it": {
+        transport: "google",
+        transportModelId: "gemma-4-31b-it",
+        pricing: price(0, 0),
+    },
+};
+
+/** Registry ids that can run on the given maker's own API. */
+export function directMakerModelIds(transport: DirectMakerTransport): string[] {
+    return Object.entries(DIRECT_MAKER_MODELS).flatMap(([id, model]) =>
+        model.transport === transport ? [id] : [],
+    );
+}
+
+function withDirectMakerTransport(
+    entry: IModelRegistryEntry,
+): IModelRegistryEntry {
+    const direct = DIRECT_MAKER_MODELS[entry.id];
+    if (!direct) return entry;
+    return {
+        ...entry,
+        transports: {
+            ...entry.transports,
+            [direct.transport]: direct.transportModelId,
+        },
+        pricingByTransport: {
+            ...entry.pricingByTransport,
+            [direct.transport]: direct.pricing,
+        },
+    };
+}
+
 // Static token prices, in USD per 1M tokens, for the OpenAI entries below
 // (`promptPerM` / `completionPerM`). These are published list prices as of
 // 2026-07-08, the last time they were updated; source:
@@ -108,6 +262,21 @@ function price(promptPerM: number, completionPerM: number): IModelPricing {
     return {
         promptPricePerToken: promptPerM / M,
         completionPricePerToken: completionPerM / M,
+    };
+}
+
+function cachedPrice(
+    promptPerM: number,
+    completionPerM: number,
+    cacheReadPerM: number,
+    cacheWritePerM?: number,
+): IModelPricing {
+    return {
+        ...price(promptPerM, completionPerM),
+        cacheReadPricePerToken: cacheReadPerM / M,
+        ...(cacheWritePerM === undefined
+            ? {}
+            : { cacheWritePricePerToken: cacheWritePerM / M }),
     };
 }
 
@@ -161,6 +330,8 @@ function gatewayEntry(input: {
     vision: boolean;
     structuredOutput: boolean;
     judgeSuitable: boolean;
+    reasoningEffort?: IReasoningEffortCapability;
+    pricing?: IModelPricing;
 }): IModelRegistryEntry {
     return {
         id: input.id,
@@ -169,7 +340,10 @@ function gatewayEntry(input: {
         family: input.family,
         provider: input.provider,
         providerLabel: input.providerLabel,
-        reasoning: false,
+        reasoning: input.reasoningEffort !== undefined,
+        ...(input.reasoningEffort
+            ? { reasoningEffort: input.reasoningEffort }
+            : {}),
         vision: input.vision,
         structuredOutput: input.structuredOutput,
         judgeSuitable: input.judgeSuitable,
@@ -180,6 +354,7 @@ function gatewayEntry(input: {
             bifrost: input.id,
             ...optionalOpenRouterTransport(input.id),
         },
+        ...(input.pricing ? { pricing: input.pricing } : {}),
     };
 }
 
@@ -282,7 +457,8 @@ const STATIC_MODEL_REGISTRY: readonly IModelRegistryEntry[] = [
         promptPerM: 0.2,
         completionPerM: 1.25,
     }),
-    // Price from Vercel AI Gateway's model list (2026-10-12), not openai.com.
+    // OpenAI list price, checked 2026-11-06:
+    // https://developers.openai.com/api/docs/models/gpt-6-luna
     openAiEntry({
         id: "gpt-6-luna",
         label: "GPT-6 Luna",
@@ -371,6 +547,7 @@ const STATIC_MODEL_REGISTRY: readonly IModelRegistryEntry[] = [
         vision: true,
         structuredOutput: true,
         judgeSuitable: true,
+        reasoningEffort: GEMINI_3_FLASH_THINKING,
     }),
     gatewayEntry({
         id: "google/gemini-3.1-flash-lite",
@@ -431,6 +608,7 @@ const STATIC_MODEL_REGISTRY: readonly IModelRegistryEntry[] = [
         vision: true,
         structuredOutput: true,
         judgeSuitable: true,
+        reasoningEffort: GEMMA_4_THINKING,
     }),
     gatewayEntry({
         id: "google/gemma-3n-e4b-it",
@@ -532,6 +710,23 @@ const STATIC_MODEL_REGISTRY: readonly IModelRegistryEntry[] = [
         structuredOutput: true,
         judgeSuitable: true,
     }),
+    // Served by Meta itself on Vercel AI Gateway (host "meta", which a run's
+    // allowed-host rule can name). Context window 1,048,576 tokens; takes
+    // response_format (structured output), reasoning and temperature.
+    // Unverified: price from launch coverage, not a Meta or Vercel price
+    // page ($0.10 input, $0.50 output, $0.004 cached input per 1M tokens).
+    gatewayEntry({
+        id: "meta/muse-ember",
+        label: "Muse Ember",
+        family: "muse",
+        provider: "meta",
+        providerLabel: "Meta",
+        vision: false,
+        structuredOutput: true,
+        judgeSuitable: true,
+        reasoningEffort: MUSE_EMBER_THINKING,
+        pricing: cachedPrice(0.1, 0.5, 0.004),
+    }),
     gatewayEntry({
         id: "mistral/mistral-large-3",
         label: "Mistral Large 3",
@@ -569,10 +764,12 @@ const STATIC_MODEL_REGISTRY: readonly IModelRegistryEntry[] = [
         family: "glm",
         provider: "zai",
         providerLabel: "Z.ai",
-        reasoning: false,
+        reasoning: true,
+        reasoningEffort: GLM_5_THINKING,
         vision: false,
-        structuredOutput: false,
-        judgeSuitable: false,
+        // OpenRouter lists structured_outputs and response_format for it.
+        structuredOutput: true,
+        judgeSuitable: true,
         supportsOpenAI: false,
         supportsGateway: false,
         transports: { bifrost: "openrouter/z-ai/glm-5.2" },
@@ -584,14 +781,19 @@ const STATIC_MODEL_REGISTRY: readonly IModelRegistryEntry[] = [
         family: "minimax",
         provider: "minimax",
         providerLabel: "MiniMax",
-        reasoning: false,
+        reasoning: true,
+        reasoningEffort: MINIMAX_M3_THINKING,
         vision: false,
-        structuredOutput: false,
-        judgeSuitable: false,
+        // OpenRouter lists structured_outputs and response_format for it.
+        structuredOutput: true,
+        judgeSuitable: true,
         supportsOpenAI: false,
         supportsGateway: false,
         transports: { bifrost: "openrouter/minimax/minimax-m3" },
     },
+    // Structured output stays off on Vercel AI Gateway: only OpenRouter's
+    // listing says these two take it. Vercel documents no thinking option
+    // for Z.ai or MiniMax, so a level is not sent there (with a warning).
     gatewayEntry({
         id: "zai/glm-5.2",
         label: "GLM 5.2",
@@ -601,6 +803,7 @@ const STATIC_MODEL_REGISTRY: readonly IModelRegistryEntry[] = [
         vision: false,
         structuredOutput: false,
         judgeSuitable: false,
+        reasoningEffort: GLM_5_THINKING,
     }),
     gatewayEntry({
         id: "minimax/minimax-m3",
@@ -611,6 +814,7 @@ const STATIC_MODEL_REGISTRY: readonly IModelRegistryEntry[] = [
         vision: false,
         structuredOutput: false,
         judgeSuitable: false,
+        reasoningEffort: MINIMAX_M3_THINKING,
     }),
     gatewayEntry({
         id: "alibaba/qwen3-max",
@@ -650,7 +854,7 @@ function rebuildRegistry(): void {
     MODEL_REGISTRY = mergeModelCatalogs(
         STATIC_MODEL_REGISTRY,
         orderCatalogSnapshots(catalogSnapshots.values()),
-    );
+    ).map(withDirectMakerTransport);
     BY_ID_LENGTH_DESC = [...MODEL_REGISTRY].sort(
         (a, b) => b.id.length - a.id.length,
     );
@@ -718,6 +922,18 @@ export function transportsForModel(
     return registryEntryFor(modelId)?.transports;
 }
 
+/**
+ * The id `transport` calls a model by, when the registry knows it. The same
+ * model can have a different id per provider (Vercel "zai/glm-5.2",
+ * OpenRouter "z-ai/glm-5.2"); any of its ids finds the entry.
+ */
+export function transportModelIdFor(
+    modelId: string,
+    transport: EvalProviderTransport,
+): string | undefined {
+    return registryEntryFor(modelId)?.transports[transport];
+}
+
 export function transportCapabilityForModel(
     modelId: string,
     transport: EvalProviderTransport,
@@ -728,9 +944,14 @@ export function transportCapabilityForModel(
 
     const supportedGenerationControls: ModelGenerationControl[] = [
         "maxOutputTokens",
-        // Toggle/budget reasoning models do not expose an effort selector.
-        ...(entry.reasoningEffort
-            ? (["reasoningEffort"] as const)
+        ...(entry.reasoningEffort ? (["reasoningEffort"] as const) : []),
+        // OpenAI and Claude thinking models refuse or limit sampling
+        // settings; other thinking models (Gemini, Gemma, GLM, MiniMax)
+        // take them.
+        ...((entry.reasoning &&
+            (entry.provider === "openai" || entry.provider === "anthropic")) ||
+        claudeRejectsSampling(entry.id)
+            ? []
             : (["temperature", "topP", "seed"] as const)),
     ];
     const upstreamRoutingModes: readonly UpstreamRoutingMode[] =

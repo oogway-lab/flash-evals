@@ -42,28 +42,74 @@ export async function forEachPool<T>(
 }
 
 /**
- * A counting semaphore. `limit` is read on each acquire so it can follow
- * configuration; the returned release function is idempotent.
+ * A whole positive number read from the environment, or `fallback` when the
+ * value is unset, empty or not a whole positive number.
+ */
+/**
+ * Calls one task fans out at once (field judges of one answer, pieces of one
+ * transliteration). FLASH_EVALS_INNER_CONCURRENCY overrides the caller's
+ * default; provider slots still cap the total.
+ */
+export function innerConcurrency(
+    fallback: number,
+    value = process.env.FLASH_EVALS_INNER_CONCURRENCY,
+): number {
+    return positiveIntegerSetting(value, fallback);
+}
+
+/**
+ * Runs (or pipeline runs) one worker process takes at once, from
+ * FLASH_EVALS_RUN_SLOTS (default 1). Provider slots still cap the calls.
+ */
+export function runSlots(value = process.env.FLASH_EVALS_RUN_SLOTS): number {
+    return positiveIntegerSetting(value, 1);
+}
+
+export function positiveIntegerSetting(
+    value: string | undefined,
+    fallback: number,
+): number {
+    const trimmed = value?.trim() ?? "";
+    if (!/^\d+$/.test(trimmed)) return fallback;
+    const parsed = Number(trimmed);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/**
+ * A first-in, first-out counting semaphore. `limit` is read on each acquire
+ * and release so it can follow configuration; when it is raised, waiting
+ * callers are let in, in order, before any new one. The returned release
+ * function is idempotent.
  */
 export function createSemaphore(limit: () => number): {
     acquire(): Promise<() => void>;
 } {
     let active = 0;
     const waiters: Array<() => void> = [];
+    const admitWaiting = () => {
+        while (waiters.length > 0 && active < Math.max(1, limit())) {
+            active += 1;
+            waiters.shift()?.();
+        }
+    };
     return {
         async acquire() {
-            if (active >= Math.max(1, limit())) {
-                await new Promise<void>((resolve) => waiters.push(resolve));
-            } else {
+            if (waiters.length === 0 && active < Math.max(1, limit())) {
                 active += 1;
+            } else {
+                const admitted = new Promise<void>((resolve) =>
+                    waiters.push(resolve),
+                );
+                // A raised limit may already have room for those waiting.
+                admitWaiting();
+                await admitted;
             }
             let released = false;
             return () => {
                 if (released) return;
                 released = true;
-                const next = waiters.shift();
-                if (next) next();
-                else active -= 1;
+                active -= 1;
+                admitWaiting();
             };
         },
     };

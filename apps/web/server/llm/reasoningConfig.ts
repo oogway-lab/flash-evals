@@ -1,12 +1,14 @@
 import type { ReasoningEffort } from "@flash-evals/llm-core";
-import { registryEntryFor } from "./modelRegistry";
+import { registryModelFor } from "./modelRegistry";
 
 export function resolveReasoningEffort(
     modelId: string,
     requested?: ReasoningEffort,
 ): ReasoningEffort | undefined {
-    const capability = registryEntryFor(modelId)?.reasoningEffort;
+    const capability = registryModelFor(modelId)?.reasoningEffort;
     if (!capability) return undefined;
     if (requested === undefined) return capability.defaultLevel;
-    return capability.supportedLevels.includes(requested) ? requested : undefined;
+    return capability.supportedLevels.includes(requested)
+        ? requested
+        : undefined;
 }

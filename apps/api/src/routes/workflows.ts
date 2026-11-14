@@ -10,9 +10,17 @@ import type {
     IWorkflowNodeInput,
     WorkflowKind,
     IWorkflowLlmRouteConfig,
+    WorkflowLlmTransport,
 } from "@flash-evals/api-contract";
-import { isWorkflowModelBackedNodeType } from "@flash-evals/api-contract";
-import { registryEntryFor } from "@flash-evals/llm-core";
+import {
+    finalAnswerErrors,
+    inputTemplateErrors,
+    isWorkflowModelBackedNodeType,
+    runConditionErrors,
+    stepSettingsErrors,
+    type IPipelineFinalAnswer,
+} from "@flash-evals/api-contract";
+import { registryModelFor } from "@flash-evals/llm-core";
 import type { IDb } from "../db.js";
 import { withTransaction } from "../db.js";
 import {
@@ -31,6 +39,7 @@ interface IWorkflowRow {
     name: string;
     description: string;
     sttConfig: ISttRunConfig | null;
+    finalAnswer: IPipelineFinalAnswer | null;
     kind: WorkflowKind;
     createdAt: Date | string;
 }
@@ -49,6 +58,31 @@ interface IWorkflowDagNode {
 interface IWorkflowDagEdge {
     fromNodeKey: string;
     toNodeKey: string;
+    orderOnly?: boolean;
+}
+
+const ORDER_ONLY_TARGET_TYPES = new Set(["prompt", "llm_text"]);
+
+/**
+ * An order-only connection makes a prompt or LLM text step wait for another
+ * step without reading its answer; other blocks need their source's output.
+ */
+export function validateOrderOnlyEdges(
+    nodes: IWorkflowDagNode[],
+    edges: IWorkflowDagEdge[],
+): void {
+    const nodeByKey = new Map(nodes.map((node) => [node.nodeKey, node]));
+    for (const edge of edges) {
+        if (edge.orderOnly === undefined) continue;
+        if (typeof edge.orderOnly !== "boolean")
+            throw new ApiBadRequestError("orderOnly must be true or false.");
+        if (!edge.orderOnly) continue;
+        const target = nodeByKey.get(edge.toNodeKey);
+        if (!ORDER_ONLY_TARGET_TYPES.has(target?.nodeType ?? "prompt"))
+            throw new ApiBadRequestError(
+                `Only a Prompt or LLM text step can wait for a step without reading its answer; "${target?.label ?? edge.toNodeKey}" can't.`,
+            );
+    }
 }
 
 interface IWorkflowDagIndexes {
@@ -193,6 +227,112 @@ export function validateWorkflowDag(
     });
 }
 
+/**
+ * The final answer may only take fields from the pipeline's steps, and its
+ * schema must come from a prompt version in this project that has one.
+ */
+async function validateFinalAnswer(
+    db: IDb,
+    input: ICreateWorkflowRequest | IUpdateWorkflowRequest,
+): Promise<void> {
+    const finalAnswer = input.finalAnswer;
+    if (!finalAnswer) return;
+    if (!Array.isArray(finalAnswer.fields) || finalAnswer.fields.length === 0)
+        throw new ApiBadRequestError(
+            "Add at least one field to the final answer, or remove it.",
+        );
+    const stepKeys = new Set(
+        input.nodes
+            .filter(
+                (node) =>
+                    !NODE_TYPES_WITHOUT_CONDITION.has(
+                        node.nodeType ?? "prompt",
+                    ),
+            )
+            .map((node) => node.nodeKey),
+    );
+    const errors = finalAnswerErrors(
+        finalAnswer,
+        stepKeys,
+        new Map(input.nodes.map((node) => [node.nodeKey, node.label])),
+    );
+    if (errors.length > 0) throw new ApiBadRequestError(errors[0]!);
+    if (!finalAnswer.schemaPromptVersionId) return;
+    const found = await db.query<{ id: string }>(
+        `select pv.id from prompt_versions pv
+         join prompts p on p.id = pv.prompt_id
+         where pv.id=$1 and p.team_id=$2 and p.project_id=$3 and pv.schema_version_id is not null`,
+        [finalAnswer.schemaPromptVersionId, input.teamId, input.projectId],
+    );
+    if (!found.rows[0])
+        throw new ApiBadRequestError(
+            "The final answer's schema must come from a prompt version in this project that has an output schema.",
+        );
+}
+
+/** Steps that run before `nodeKey`: every node with a path to it. */
+function ancestorKeys(nodeKey: string, edges: IWorkflowDagEdge[]): Set<string> {
+    const ancestors = new Set<string>();
+    const pending = [nodeKey];
+    while (pending.length) {
+        const key = pending.pop()!;
+        for (const edge of edges)
+            if (edge.toNodeKey === key && !ancestors.has(edge.fromNodeKey)) {
+                ancestors.add(edge.fromNodeKey);
+                pending.push(edge.fromNodeKey);
+            }
+    }
+    return ancestors;
+}
+
+const NODE_TYPES_WITHOUT_CONDITION = new Set(["input", "stt"]);
+
+/**
+ * A step's run condition (one condition, or several that must all hold) may
+ * only check steps that run before it, so their answers are known when the
+ * condition is evaluated.
+ */
+/**
+ * A step's input template may only read steps that run before it, so their
+ * answers are known when its message is built.
+ */
+export function validateInputTemplates(
+    nodes: IWorkflowNodeInput[],
+    edges: IWorkflowDagEdge[],
+): void {
+    const labels = new Map(nodes.map((node) => [node.nodeKey, node.label]));
+    for (const node of nodes) {
+        const template = node.stepSettings?.inputTemplate;
+        if (template === undefined) continue;
+        const errors = inputTemplateErrors(
+            template,
+            node.label,
+            labels,
+            ancestorKeys(node.nodeKey, edges),
+        );
+        if (errors.length > 0) throw new ApiBadRequestError(errors[0]!);
+    }
+}
+
+export function validateStepConditions(
+    nodes: IWorkflowNodeInput[],
+    edges: IWorkflowDagEdge[],
+): void {
+    for (const node of nodes) {
+        if (!node.runCondition) continue;
+        if (NODE_TYPES_WITHOUT_CONDITION.has(node.nodeType ?? "prompt"))
+            throw new ApiBadRequestError(
+                `Node "${node.label}" starts a branch and cannot have a run condition.`,
+            );
+        const errors = runConditionErrors(
+            node.runCondition,
+            node.label,
+            ancestorKeys(node.nodeKey, edges),
+        );
+        if (errors.length > 0) throw new ApiBadRequestError(errors[0]!);
+    }
+}
+
 interface IWorkflowRootValidation {
     nodeType: "stt" | "input";
     rootError: string;
@@ -291,11 +431,24 @@ function validateReasoningConfig(node: IWorkflowNodeInput): void {
             `Node "${node.label}" has an invalid reasoning configuration.`,
         );
     if (!node.modelId) return;
-    const supported = registryEntryFor(node.modelId)?.reasoningEffort;
+    const supported = registryModelFor(node.modelId)?.reasoningEffort;
     if (supported && !supported.supportedLevels.includes(effort))
         throw new ApiBadRequestError(
             `Node "${node.label}" does not support ${effort} reasoning effort.`,
         );
+}
+
+/** Prompt and LLM text steps can have their own call settings. */
+const NODE_TYPES_WITH_STEP_SETTINGS = new Set(["prompt", "llm_text"]);
+
+export function validateStepSettings(node: IWorkflowNodeInput): void {
+    if (node.stepSettings === undefined || node.stepSettings === null) return;
+    if (!NODE_TYPES_WITH_STEP_SETTINGS.has(node.nodeType ?? "prompt"))
+        throw new ApiBadRequestError(
+            `Node "${node.label}" can't have step settings; only Prompt and LLM text steps can.`,
+        );
+    const errors = stepSettingsErrors(node.stepSettings, node.label);
+    if (errors.length > 0) throw new ApiBadRequestError(errors[0]!);
 }
 
 function validateNodeDefinition(node: IWorkflowNodeInput): void {
@@ -306,11 +459,12 @@ function validateNodeDefinition(node: IWorkflowNodeInput): void {
             `Node "${node.label}" has a configuration for the wrong node type.`,
         );
     validateReasoningConfig(node);
+    validateStepSettings(node);
     nodeDefinitionValidator(configType)(node);
     if (
         (nodeType === "llm_text" || nodeType === "judge") &&
         (!node.modelId ||
-            (!registryEntryFor(node.modelId) &&
+            (!registryModelFor(node.modelId) &&
                 node.llmExecutionSelection?.mode !== "simple"))
     )
         throw new ApiBadRequestError(
@@ -401,7 +555,7 @@ function validateTransliterationNodeDefinition(node: IWorkflowNodeInput): void {
         throw new ApiBadRequestError(
             `Node "${node.label}" has an invalid transliteration configuration.`,
         );
-    if (!registryEntryFor(config.modelId))
+    if (!registryModelFor(config.modelId))
         throw new ApiBadRequestError(
             `Node "${node.label}" must reference a registered model.`,
         );
@@ -580,20 +734,21 @@ export async function replaceWorkflowGraph(
         const nodeId = randomUUID();
         nodeIds.set(node.nodeKey, nodeId);
         await db.query(
-            `insert into workflow_nodes(id, workflow_id, node_key, label, node_type, node_config, prompt_version_id, model_id, reasoning_config, llm_selection_mode, llm_transport, llm_route_version_id, eval_config, position)
-             values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+            `insert into workflow_nodes(id, workflow_id, node_key, label, node_type, node_config, prompt_version_id, model_id, reasoning_config, llm_selection_mode, llm_transport, llm_route_version_id, eval_config, position, run_condition, step_settings)
+             values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
             workflowNodeInsertValues(nodeId, workflowId, node),
         );
     }
     for (const edge of input.edges) {
         await db.query(
-            `insert into workflow_edges(id, workflow_id, from_node_id, to_node_id, carry_original_input) values($1,$2,$3,$4,$5)`,
+            `insert into workflow_edges(id, workflow_id, from_node_id, to_node_id, carry_original_input, order_only) values($1,$2,$3,$4,$5,$6)`,
             [
                 randomUUID(),
                 workflowId,
                 nodeIds.get(edge.fromNodeKey),
                 nodeIds.get(edge.toNodeKey),
                 edge.carryOriginalInput,
+                edge.orderOnly === true,
             ],
         );
     }
@@ -623,6 +778,10 @@ function workflowNodeInsertValues(
             : null,
         node.evalConfig,
         node.position ?? null,
+        node.runCondition ?? null,
+        node.stepSettings && Object.keys(node.stepSettings).length > 0
+            ? node.stepSettings
+            : null,
     ];
 }
 
@@ -727,7 +886,7 @@ export async function workflowDetailPayload(
 ): Promise<IPromptWorkflow> {
     const workflow = (
         await db.query<IWorkflowRow>(
-            `select id, team_id as "teamId", project_id as "projectId", name, description, kind, stt_config as "sttConfig", created_at as "createdAt" from prompt_workflows where id=$1 and team_id=$2 and project_id=$3 and archived_at is null${lockForRun ? " for share" : ""}`,
+            `select id, team_id as "teamId", project_id as "projectId", name, description, kind, stt_config as "sttConfig", final_answer as "finalAnswer", created_at as "createdAt" from prompt_workflows where id=$1 and team_id=$2 and project_id=$3 and archived_at is null${lockForRun ? " for share" : ""}`,
             [workflowId, teamId, projectId],
         )
     ).rows[0];
@@ -738,7 +897,7 @@ export async function workflowDetailPayload(
                 position: IWorkflowNode["position"] | null;
             }
         >(
-            `select id, workflow_id as "workflowId", node_key as "nodeKey", label, node_type as "nodeType", node_config as "nodeConfig", prompt_version_id as "promptVersionId", model_id as "modelId", reasoning_config as "reasoningConfig", llm_selection_mode as "llmSelectionMode", llm_transport as "llmTransport", llm_route_version_id as "llmRouteVersionId", eval_config as "evalConfig", position from workflow_nodes where workflow_id=$1 order by node_key${lockForRun ? " for share" : ""}`,
+            `select id, workflow_id as "workflowId", node_key as "nodeKey", label, node_type as "nodeType", node_config as "nodeConfig", prompt_version_id as "promptVersionId", model_id as "modelId", reasoning_config as "reasoningConfig", llm_selection_mode as "llmSelectionMode", llm_transport as "llmTransport", llm_route_version_id as "llmRouteVersionId", eval_config as "evalConfig", position, run_condition as "runCondition", step_settings as "stepSettings" from workflow_nodes where workflow_id=$1 order by node_key${lockForRun ? " for share" : ""}`,
             [workflowId],
         )
     ).rows;
@@ -746,8 +905,7 @@ export async function workflowDetailPayload(
         const stored = node as typeof node & {
             llmSelectionMode?:
                 "simple" | "pinned_route" | "project_default" | null;
-            llmTransport?:
-                "openai" | "gateway" | "openrouter" | "bifrost" | null;
+            llmTransport?: WorkflowLlmTransport | null;
             llmRouteVersionId?: string | null;
         };
         const {
@@ -786,15 +944,16 @@ export async function workflowDetailPayload(
     });
     const edges = (
         await db.query<IWorkflowEdge>(
-            `select id, workflow_id as "workflowId", from_node_id as "fromNodeId", to_node_id as "toNodeId", carry_original_input as "carryOriginalInput" from workflow_edges where workflow_id=$1${lockForRun ? " for share" : ""}`,
+            `select id, workflow_id as "workflowId", from_node_id as "fromNodeId", to_node_id as "toNodeId", carry_original_input as "carryOriginalInput", order_only as "orderOnly" from workflow_edges where workflow_id=$1${lockForRun ? " for share" : ""}`,
             [workflowId],
         )
     ).rows;
-    const { sttConfig, ...workflowFields } = workflow;
+    const { sttConfig, finalAnswer, ...workflowFields } = workflow;
     return {
         ...workflowFields,
         kind: workflow.kind ?? "prompt",
         ...(sttConfig ? { sttConfig } : {}),
+        ...(finalAnswer ? { finalAnswer } : {}),
         createdAt: iso(workflow.createdAt),
         nodes,
         edges,
@@ -817,6 +976,8 @@ const NULLABLE_OPTIONAL_NODE_FIELDS = [
     "promptVersionId",
     "reasoningConfig",
     "nodeConfig",
+    "runCondition",
+    "stepSettings",
 ] as const;
 
 function stripFieldsTheNodeTypeForbids<
@@ -843,6 +1004,10 @@ export async function createWorkflowPayload(
     validateWorkflowKind(kind);
     validateNodeTypesForWorkflow(input.nodes, kind);
     validateWorkflowDag(input.nodes, input.edges, kind);
+    validateOrderOnlyEdges(input.nodes, input.edges);
+    validateStepConditions(input.nodes, input.edges);
+    validateInputTemplates(input.nodes, input.edges);
+    await validateFinalAnswer(db, input);
     if (input.sttConfig) validateSttConfigDefinition(input.sttConfig);
     await validateNodeReferences(db, input);
     await validateWorkflowLlmSelections(
@@ -854,7 +1019,7 @@ export async function createWorkflowPayload(
     const id = randomUUID();
     await withTransaction(db, async (tx) => {
         await tx.query(
-            `insert into prompt_workflows(id,team_id,project_id,name,description,kind,stt_config,created_by) values($1,$2,$3,$4,$5,$6,$7,$8)`,
+            `insert into prompt_workflows(id,team_id,project_id,name,description,kind,stt_config,created_by,final_answer) values($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
             [
                 id,
                 input.teamId,
@@ -864,6 +1029,7 @@ export async function createWorkflowPayload(
                 kind,
                 input.sttConfig ?? null,
                 input.createdBy,
+                input.finalAnswer ?? null,
             ],
         );
         await replaceWorkflowGraph(tx, id, input);
@@ -881,6 +1047,10 @@ export async function updateWorkflowPayload(
         validateWorkflowKind(kind);
         validateNodeTypesForWorkflow(input.nodes, kind);
         validateWorkflowDag(input.nodes, input.edges, kind);
+        validateOrderOnlyEdges(input.nodes, input.edges);
+        validateStepConditions(input.nodes, input.edges);
+        validateInputTemplates(input.nodes, input.edges);
+        await validateFinalAnswer(tx, input);
         if (input.sttConfig) validateSttConfigDefinition(input.sttConfig);
         await validateNodeReferences(tx, input);
         await validateWorkflowLlmSelections(
@@ -890,12 +1060,15 @@ export async function updateWorkflowPayload(
             input.nodes,
         );
         const updatesSttConfig = Object.hasOwn(input, "sttConfig");
+        // Omitted keeps the saved final answer (e.g. MCP edits of the graph).
+        const updatesFinalAnswer = Object.hasOwn(input, "finalAnswer");
         const updated = await tx.query<{ id: string }>(
             `update prompt_workflows
              set name=$1,
                  description=$2,
                  stt_config=case when $3::boolean then $4::jsonb else stt_config end,
-                 kind=$5
+                 kind=$5,
+                 final_answer=case when $9::boolean then $10::jsonb else final_answer end
              where id=$6 and team_id=$7 and project_id=$8 and archived_at is null
              returning id`,
             [
@@ -907,6 +1080,8 @@ export async function updateWorkflowPayload(
                 input.workflowId,
                 input.teamId,
                 input.projectId,
+                updatesFinalAnswer,
+                input.finalAnswer ?? null,
             ],
         );
         if (!updated.rows[0]) throw new ApiNotFoundError("Workflow not found.");
@@ -1075,3 +1250,7 @@ export {
     workflowRunProgressPayload,
     workflowRunSummaryPayload,
 } from "./workflowRuns.js";
+export {
+    cancelWorkflowRunPayload,
+    retryWorkflowRunPayload,
+} from "./workflowRunRetry.js";

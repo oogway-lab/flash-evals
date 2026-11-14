@@ -3,8 +3,8 @@
     "configurations": [
         {
             "name": "site",
-            "runtimeExecutable": "pnpm",
-            "runtimeArgs": ["--filter", "@flash-evals/site", "dev"],
+            "runtimeExecutable": "bun",
+            "runtimeArgs": ["run", "--cwd", "apps/site", "dev"],
             "port": 4321
         }
     ]

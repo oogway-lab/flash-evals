@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { logWorkerEvent, safeWorkerError } from "./workerObservability";
+import {
+    logQueueWarning,
+    logWorkerEvent,
+    safeWorkerError,
+} from "./workerObservability";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -46,5 +50,34 @@ describe("worker observability", () => {
         });
         expect(payload).not.toHaveProperty("message");
         expect(payload).not.toHaveProperty("stack");
+    });
+
+    it("logs pg-boss warnings by type without their message", () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        logQueueWarning("eval-run", {
+            message: "select * from secret_table where prompt = 'private'",
+            data: {
+                type: "handler_overrun",
+                queue: "eval-run",
+                jobs: ["job-1"],
+                expireInSeconds: 900,
+            },
+        });
+        logQueueWarning("eval-run", {
+            message: "x",
+            data: { type: "sk-live-secret" },
+        });
+
+        const lines = warn.mock.calls.map((call) =>
+            JSON.parse(String(call[0])),
+        );
+        expect(lines[0]).toMatchObject({
+            event: "queue.warning",
+            queue: "eval-run",
+            warningType: "handler_overrun",
+            expireInSeconds: 900,
+        });
+        expect(JSON.stringify(lines)).not.toContain("secret");
+        expect(lines[1].warningType).toBe("unknown");
     });
 });

@@ -1,4 +1,14 @@
 import type { ILeaderboardRow, IRunBestModel } from "./leaderboard.js";
+import type { BenchmarkTaskMethod } from "./benchmark.js";
+import type { IPipelineComparisonRunOption } from "./pipelineComparison.js";
+import type {
+    ICancelSetupComparisonRequest,
+    ICancelSetupComparisonResponse,
+    ICreateSetupComparisonRequest,
+    ICreateSetupComparisonResponse,
+    ISetupComparison,
+    ISetupComparisonPipelineOption,
+} from "./setupComparison.js";
 import type {
     IClearWorkflowLlmProjectDefaultRequest,
     ICreateWorkflowLlmRouteForModelRequest,
@@ -14,6 +24,8 @@ import type {
     IWorkflowLlmRouteHistoryResponse,
 } from "./llm-routing.js";
 import type {
+    ICancelWorkflowRunRequest,
+    ICancelWorkflowRunResponse,
     ICreateWorkflowRequest,
     ICreateWorkflowRunRequest,
     ICreateWorkflowRunResponse,
@@ -55,6 +67,86 @@ export {
     canonicalJsonString,
     canonicalJsonValue,
 } from "./canonical-json.js";
+export {
+    benchmarkPathSegments,
+    benchmarkTaskSource,
+    benchmarkUsesSource,
+    isJudgedTask,
+    isRulesTask,
+    isSelfScoredTask,
+    pickClosestReplacement,
+    proposeTaskMapFromSchema,
+    RUBRIC_MAX_SCORE,
+    RUBRIC_MIN_SCORE,
+    rubricScoreToAgreement,
+    RULE_PATTERN_MAX_LENGTH,
+    summarizeBenchmarkComparison,
+    taskMapNeedsJudge,
+    taskPaths,
+    validateTaskMap,
+    valueAtBenchmarkPath,
+    type BenchmarkSource,
+    type BenchmarkTaskMethod,
+    type BenchmarkVerdict,
+    type IBenchmarkAgreementField,
+    type IBenchmarkAgreementTask,
+    type IBenchmarkCellDetails,
+    type BenchmarkJudgeCostCovers,
+    type IBenchmarkCellInput,
+    type IBenchmarkClassResult,
+    type IBenchmarkCriterion,
+    type IBenchmarkCriterionScore,
+    type IBenchmarkCriterionSummary,
+    type IBenchmarkFieldAgreement,
+    type IBenchmarkJudgeSpec,
+    type IBenchmarkHeadToHeadTask,
+    type IBenchmarkModelInput,
+    type IBenchmarkModelSummary,
+    type IBenchmarkRule,
+    type IBenchmarkRuleResult,
+    type IBenchmarkRulesTask,
+    type IBenchmarkRubricTask,
+    type IBenchmarkTask,
+    type IBenchmarkTaskResult,
+    type IBenchmarkTaskSummary,
+    type IBenchmarkTextMatching,
+    type IBenchmarkWordCount,
+    type IRunBenchmarkConfig,
+    type ITaskMap,
+} from "./benchmark.js";
+export { countWords, wordCountProblem, wordLimitText } from "./wordCount.js";
+export {
+    canonicalizePair,
+    normalizeText,
+    textSimilarity,
+} from "./textMatching.js";
+export {
+    BENCHMARK_CONFIDENT_ITEMS,
+    BENCHMARK_MIN_ITEMS,
+    DEFAULT_BENCHMARK_POLICY,
+    agreementInterval,
+    assessModel,
+    assessTask,
+    differenceInterval,
+    meanInterval,
+    points,
+    sampleSizeFor,
+    wilsonInterval,
+    type BenchmarkModelVerdict,
+    type BenchmarkSampleSize,
+    type BenchmarkTaskVerdict,
+    type IBenchmarkModelAssessment,
+    type IBenchmarkPolicy,
+    type IBenchmarkTaskAssessment,
+    type IBenchmarkTaskThreshold,
+    type IRateInterval,
+    type IReferenceComparison,
+} from "./benchmarkVerdict.js";
+import type {
+    IBenchmarkModelSummary,
+    IRunBenchmarkConfig,
+    ITaskMap,
+} from "./benchmark.js";
 export {
     isEmailAllowedForDomain,
     isValidEmailAddress,
@@ -121,8 +213,18 @@ export interface IPromptListRow {
         status: "legacy" | "runnable";
         createdAt: string;
         optimizedWithAi: boolean;
+        /** See IPromptDetailVersion.modelCheck. */
+        modelCheck?: PromptModelCheck;
     };
 }
+
+/**
+ * Whether a runnable version's output was checked on a model when it was
+ * saved: "checked" when Flash Evals ran it on sample input and it passed;
+ * "not_checked" when it was saved runnable without that (for example
+ * through the direct save endpoint).
+ */
+export type PromptModelCheck = "checked" | "not_checked";
 
 export interface IPromptDetailResponse {
     prompt: {
@@ -146,15 +248,116 @@ export interface IPromptDetailVersion {
     createdAt: string;
     schemaVersionId: string | null;
     optimizerAttemptId: string | null;
+    /** Runnable eval versions: whether a model check passed when saved. */
+    modelCheck?: PromptModelCheck;
 }
 
 export type RunStatus =
-    "pending" | "running" | "completed" | "partial" | "failed";
+    "pending" | "running" | "completed" | "partial" | "failed" | "cancelled";
 
+/**
+ * Why an eval or pipeline run stopped before running every cell: someone
+ * cancelled it, or its spend reached the run's `maxCostUsd`. The run ends
+ * `cancelled` once the worker has stopped.
+ */
+export type RunStopReason = "cancelled" | "spend_cap";
+
+/** The largest per-run spend limit the API accepts, in USD. */
+export const MAX_RUN_COST_LIMIT_USD = 100_000;
+
+/**
+ * "skipped": a pipeline step whose run condition did not hold (or that
+ * follows one) for this item. It made no model call and cost nothing.
+ */
 export type CellStatus =
-    "pending" | "running" | "succeeded" | "failed" | "cached";
+    "pending" | "running" | "succeeded" | "failed" | "cached" | "skipped";
+
+export {
+    applyTemplateFilters,
+    inputPart,
+    inputTemplateErrors,
+    parsePlaceholder,
+    placeholderValue,
+    renderTemplate,
+    templatePlaceholderList,
+    templateStepKey,
+    templateStepNamed,
+    templateText,
+    type ITemplateFilter,
+    type ITemplatePlaceholder,
+    type ITemplateStep,
+} from "./stepTemplates.js";
+export {
+    assembleFinalAnswer,
+    finalAnswerErrors,
+    formatFinalValue,
+    isEmptyFinalValue,
+    parseFinalValue,
+    resolveFallback,
+    templatePlaceholders,
+    type FinalAnswerFallback,
+    type IFinalAnswerValueMapping,
+    type IFinalAnswerRule,
+    type IFinalAnswerStepResult,
+    type IPipelineFinalAnswer,
+    type IPipelineFinalAnswerField,
+    type IWorkflowRunAnswer,
+    describeRunCondition,
+    describeStepCondition,
+    formatConditionValues,
+    parseConditionValues,
+    stepAnswerValue,
+    stepConditionErrors,
+    stepConditionHolds,
+    runConditionErrors,
+    runConditionFrom,
+    runConditionList,
+    STEP_INPUT_TEMPLATE_MAX_LENGTH,
+    STEP_MAX_OUTPUT_TOKENS,
+    stepSettingsErrors,
+    type IWorkflowStepCondition,
+    type IWorkflowStepConditionGroup,
+    type WorkflowRunCondition,
+    type WorkflowConditionValue,
+} from "./pipelineSteps.js";
+export {
+    combineDataPolicies,
+    PIPELINE_COMPARABLE_RUN_STATUSES,
+    PIPELINE_COMPARISON_MODEL_ID,
+    summarizePipelineComparison,
+    type IPipelineAnswerScore,
+    type IPipelineComparison,
+    type IPipelineComparisonConfig,
+    type IPipelineComparisonRunOption,
+    type IPipelineReferenceCell,
+} from "./pipelineComparison.js";
+export {
+    MAX_SETUP_COMPARISON_PIPELINES,
+    markNotBeaten,
+    pipelineRankingId,
+    pipelineSetupLabel,
+    pipelineStepOrder,
+    setupAccuracy,
+    setupComparisonStatus,
+    summarizeSetupComparison,
+    type ISetupRanking,
+    type ISetupRankingCell,
+    type ISetupRankingPipeline,
+    type ISetupRankingRow,
+    type ICancelSetupComparisonRequest,
+    type ICancelSetupComparisonResponse,
+    type ICreateSetupComparisonRequest,
+    type ICreateSetupComparisonResponse,
+    type ISetupComparison,
+    type ISetupComparisonConfig,
+    type ISetupComparisonMember,
+    type ISetupComparisonPipelineOption,
+    type ISetupComparisonPipelineStep,
+} from "./setupComparison.js";
 
 export type {
+    ICancelWorkflowRunRequest,
+    ICancelWorkflowRunResponse,
     ICreateMultiWorkflowSeedInput,
     ICreateWorkflowRequest,
     ICreateWorkflowRunRequest,
@@ -172,12 +375,15 @@ export type {
     IWorkflowNodeAggregate,
     IWorkflowNodeEvalConfig,
     IWorkflowNodeInput,
+    IWorkflowStepSettings,
+    WorkflowStepOutputMode,
     IWorkflowNodeScore,
     IWorkflowSnapshot,
     IWorkflowRunCell,
     IWorkflowRunCellLlmExecution,
     IWorkflowRunDetailResponse,
     IWorkflowRunNote,
+    IWorkflowRunConfig,
     IWorkflowRunProgressResponse,
     IWorkflowRunSummary,
     IWorkflowSttAggregate,
@@ -203,6 +409,7 @@ export type {
     IWorkflowLlmCacheProvenance,
     IWorkflowLlmCapabilitySnapshot,
     IWorkflowLlmCost,
+    IWorkflowEnvKeySource,
     IWorkflowLlmCredentialReference,
     IWorkflowLlmExecutionProvenance,
     IWorkflowLlmGenerationConfig,
@@ -220,12 +427,23 @@ export type {
     WorkflowLlmActualRouteStatus,
     WorkflowLlmCostSource,
     WorkflowLlmGenerationControl,
+    WorkflowDirectMakerTransport,
     WorkflowLlmRetryableErrorClass,
     WorkflowLlmTransport,
 } from "./workflows.js";
 export {
     createMultiWorkflowSeed,
+    isWorkflowLlmTransport,
     isWorkflowModelBackedNodeType,
+    isWorkflowEnvCredential,
+    providerKeyForWorkflowTransport,
+    WORKFLOW_ENV_CREDENTIAL,
+    WORKFLOW_ENV_KEYS,
+    describeWorkflowEnvKey,
+    workflowEnvKeySource,
+    workflowTransportAcceptsEnvKey,
+    WORKFLOW_LLM_TRANSPORTS,
+    WORKFLOW_STEP_OUTPUT_MODES,
     WORKFLOW_MODEL_BACKED_NODE_TYPES,
     WORKFLOW_JUDGE_SCHEMA_DIGEST,
     WORKFLOW_JUDGE_SCHEMA_NAME,
@@ -246,6 +464,8 @@ export interface IRunProgress {
 export interface IDashboardRun {
     id: string;
     status: RunStatus;
+    /** Why a cancelled eval run stopped. */
+    stopReason?: RunStopReason;
     createdAt: string;
     datasetId: string;
     datasetName: string;
@@ -302,11 +522,36 @@ export interface IRunModelPromptSnapshot {
 export interface IRunModelSpec {
     modelId: string;
     transport?: ProviderTransport;
+    /**
+     * The id sent to the provider when it isn't the registry's: a Bifrost
+     * id from Bifrost's own model list (e.g. openrouter/openai/gpt-4o).
+     */
+    transportModelId?: string;
     promptVersionId?: string | null;
     schemaVersionId?: string;
     promptSnapshot?: IRunModelPromptSnapshot;
     reasoningConfig?: IReasoningConfig;
+    /**
+     * Sampling temperature sent on every call of this model (0 to 2).
+     * Unset: the provider's default. A model that can't take it (OpenAI
+     * reasoning models, Claude with thinking on) refuses the run.
+     */
+    temperature?: number;
     isReference: boolean;
+}
+
+/** Lowest and highest temperature an eval run's model may be given. */
+export const RUN_TEMPERATURE_MIN = 0;
+export const RUN_TEMPERATURE_MAX = 2;
+
+/** Whether `value` is a temperature an eval run's model may be given. */
+export function isRunTemperature(value: unknown): value is number {
+    return (
+        typeof value === "number" &&
+        Number.isFinite(value) &&
+        value >= RUN_TEMPERATURE_MIN &&
+        value <= RUN_TEMPERATURE_MAX
+    );
 }
 
 export type AudioRunMode = "stt_metrics" | "prompt_eval";
@@ -349,6 +594,53 @@ export function parseSttMetricsModelId(
     };
 }
 
+/**
+ * Only items whose stored answer has a given label, e.g. only the items
+ * labelled "sales": the field is a benchmark task's (`taskKey`, a task with
+ * one field) or a path into the stored answer (`path`). Every model in the
+ * run, and every comparison built on it, uses the same items. Speech-to-text
+ * metrics runs have no tasks, so they take `path` only.
+ */
+export interface IRunItemFilter {
+    taskKey?: string;
+    /** `$.a.b` notation; resolved from `taskKey` when only that is given. */
+    path?: string;
+    /** Compared as text, trimmed and ignoring case ("Sales" = "sales", true = "true"). */
+    equals: string | number | boolean;
+}
+
+/** Whether a stored answer value matches an item filter's `equals`. */
+export function itemFilterMatches(
+    value: unknown,
+    equals: IRunItemFilter["equals"],
+): boolean {
+    if (
+        typeof value !== "string" &&
+        typeof value !== "number" &&
+        typeof value !== "boolean"
+    )
+        return false;
+    const text = (input: string | number | boolean) =>
+        String(input).trim().toLowerCase();
+    return text(value) === text(equals);
+}
+
+/** How many of a dataset's items an item filter's `path` and `equals` keep. */
+export interface ICountItemFilterMatchesRequest {
+    teamId: string;
+    projectId: string;
+    datasetId: string;
+    path: string;
+    equals: IRunItemFilter["equals"];
+}
+
+export interface ICountItemFilterMatchesResponse {
+    /** Items whose stored answer matches, by `itemFilterMatches`. */
+    matching: number;
+    /** All the dataset's items. */
+    total: number;
+}
+
 export interface ICreateRunRequest {
     /** Stable retry key, scoped to team/project/creator. Omit for a new run each time. */
     idempotencyKey?: string;
@@ -373,6 +665,103 @@ export interface ICreateRunRequest {
     sttVariants?: ISttRunVariant[];
     sttEvaluation?: ISttRunEvaluation;
     audioRunMode?: AudioRunMode;
+    benchmark?: IRunBenchmarkConfig;
+    dataPolicy?: IRunDataPolicy;
+    /** Run on only the dataset's first N items (a pilot). */
+    itemLimit?: number;
+    /** Run only on items whose stored answer has one label; before itemLimit. */
+    itemFilter?: IRunItemFilter;
+    /**
+     * Stop the run once its recorded spend (model and judge calls) reaches
+     * this many USD. Calls already sent finish, so spend can go a little over.
+     */
+    maxCostUsd?: number;
+}
+
+/** A change to a stored answer made by reviewing a disagreement. */
+export interface IAnswerDecision {
+    path: string;
+    /** "candidate": the model was right; "benchmark": the yardstick was. */
+    choice: "candidate" | "benchmark";
+    newValue: unknown;
+    decidedAt: string;
+    /** Set when the decision came from this run's answer. */
+    fromThisRun: boolean;
+}
+
+/** One transcript where a model and its yardstick differ on a task. */
+export interface IRunDisagreement {
+    cellId: string;
+    itemId: string;
+    /** The item's source name, when it has one. */
+    itemName?: string;
+    inputText?: string;
+    /** The model returned no usable answer; it counts as a miss. */
+    failed?: boolean;
+    error?: string;
+    /** Rule-check tasks: the checks this answer broke and what broke them. */
+    brokenRules?: Array<{ key: string; name: string; offending: string[] }>;
+    /**
+     * Rubric tasks: each criterion's 1–5 score, the reference model's on the
+     * same transcript, and the judge's reason.
+     */
+    criterionScores?: Array<{
+        key: string;
+        name: string;
+        score?: number;
+        referenceScore?: number;
+        reasoning?: string;
+    }>;
+    /** Agreement tasks: the fields that differ. */
+    fields: Array<{
+        path: string;
+        matcher: string;
+        score: number;
+        candidate: unknown;
+        benchmark: unknown;
+        /** The dataset's stored answer at this path now, if any. */
+        storedNow?: unknown;
+    }>;
+    /** Judged tasks: the judge's reasons, and both answers at the task's paths. */
+    rationale?: string;
+    /** Which letter the judge's notes use for the model's answer. */
+    candidateLetter?: "A" | "B";
+    candidateAnswer?: Record<string, unknown>;
+    benchmarkAnswer?: Record<string, unknown>;
+    /** Latest decision per path for this transcript. */
+    decisions: IAnswerDecision[];
+}
+
+export interface IRunDisagreementsResponse {
+    runModelId: string;
+    modelId: string;
+    taskKey: string;
+    taskName: string;
+    method: BenchmarkTaskMethod;
+    /** What the model was compared with on this task. */
+    yardstick: "model" | "labels";
+    /** The reference model's ID, when the yardstick is its answers. */
+    referenceModelId?: string;
+    /** Transcripts compared on this task. */
+    compared: number;
+    disagreements: IRunDisagreement[];
+}
+
+export interface IDecideDisagreementRequest {
+    teamId: string;
+    projectId: string;
+    runId: string;
+    cellId: string;
+    taskKey: string;
+    path: string;
+    choice: "candidate" | "benchmark";
+    decidedBy: string;
+}
+
+export interface IDecideDisagreementResponse {
+    itemId: string;
+    path: string;
+    newValue: unknown;
 }
 
 export interface ICreateRunResponse {
@@ -391,11 +780,115 @@ export interface IReasoningConfigAssignment {
     reasoningConfig?: IReasoningConfig;
 }
 
-export type ProviderTransport = "openai" | "gateway" | "openrouter" | "bifrost";
+/** A temperature (0 to 2) for one selected model; see IRunModelSpec.temperature. */
+export interface ITemperatureAssignment {
+    modelId: string;
+    temperature: number;
+}
+
+export type ProviderTransport =
+    "openai" | "gateway" | "openrouter" | "bifrost" | "anthropic" | "google";
+
+/**
+ * Who may serve a run's model and judge calls and what they may keep.
+ * Vercel AI Gateway and OpenRouter follow all of these rules. Direct Anthropic
+ * and Google calls follow an `onlyHosts` list that names the maker
+ * ("anthropic", "google") and nothing else.
+ */
+export interface IRunDataPolicy {
+    /** Hosting companies allowed to serve calls, in the gateway's own names. */
+    onlyHosts?: string[];
+    /** Only hosts with a zero-data-retention agreement. */
+    zeroDataRetention?: boolean;
+    /** Only hosts that don't train on prompts. */
+    disallowPromptTraining?: boolean;
+}
+
+export const PROVIDER_TRANSPORTS: readonly ProviderTransport[] = [
+    "gateway",
+    "openrouter",
+    "openai",
+    "anthropic",
+    "google",
+    "bifrost",
+];
+
+export function isProviderTransport(
+    value: unknown,
+): value is ProviderTransport {
+    return (
+        typeof value === "string" &&
+        (PROVIDER_TRANSPORTS as readonly string[]).includes(value)
+    );
+}
+
+/** One provider's offer for a model: its ID there, its list price and key status. */
+export interface IModelProviderOffer {
+    transport: ProviderTransport;
+    /** The model's ID on this provider's list. */
+    modelId: string;
+    /** Published price in USD per 1M input tokens, when the provider lists one. */
+    inputPerMillion?: number;
+    /** Published price in USD per 1M output tokens, when the provider lists one. */
+    outputPerMillion?: number;
+    /** This provider has a key, from Settings or the repo's .env files. */
+    keySaved: boolean;
+}
+
+/** Where a provider's key comes from: the server's .env, or Settings. */
+export interface IProviderKeyStatus {
+    provider: ProviderTransport;
+    /** Settings wins when both are set. */
+    source: "env" | "settings";
+}
+
+export interface IProviderStatusResponse {
+    /**
+     * The provider runs start each model on, from FLASH_EVALS_LLM_PROVIDER
+     * in the API's .env; undefined for "auto".
+     */
+    defaultProvider?: ProviderTransport;
+    /** Providers that have a key, and where it comes from. */
+    keys: IProviderKeyStatus[];
+    /** Set when Bifrost has a key and an address. */
+    bifrost?: {
+        /** The host of its address (never the key). */
+        baseUrlHost?: string;
+        /** How many models Bifrost lists, when its list was fetched. */
+        modelCount?: number;
+        /** Why its model list couldn't be fetched. */
+        modelListError?: string;
+    };
+}
+
+export interface IModelPriceListSource {
+    provider: "gateway" | "openrouter";
+    /** When this price list was last fetched, if it ever was. */
+    fetchedAt?: string;
+    modelCount: number;
+}
+
+export interface IModelPriceRow {
+    id: string;
+    label: string;
+    /** Who makes the model, e.g. "Claude", "Z.ai". */
+    vendor: string;
+    providers: IModelProviderOffer[];
+}
+
+export interface IModelPriceListResponse {
+    lists: IModelPriceListSource[];
+    models: IModelPriceRow[];
+    savedKeyProviders: ProviderTransport[];
+    /** From FLASH_EVALS_LLM_PROVIDER in the API's .env. */
+    preferredProvider?: ProviderTransport;
+}
 
 export interface ITransportAssignment {
     modelId: string;
     transport: ProviderTransport;
+    /** See IRunModelSpec.transportModelId (Bifrost only). */
+    transportModelId?: string;
 }
 
 export interface ICreateRunFromSelectionRequest {
@@ -417,6 +910,8 @@ export interface ICreateRunFromSelectionRequest {
     modelIds: string[];
     promptAssignments: IPromptAssignment[];
     reasoningConfigs: IReasoningConfigAssignment[];
+    /** Models not listed run at their provider's default temperature. */
+    temperatureAssignments?: ITemperatureAssignment[];
     transportAssignments?: ITransportAssignment[];
     fieldConfigs: IPipelineFieldConfig[];
     sourceRunId?: string;
@@ -424,13 +919,24 @@ export interface ICreateRunFromSelectionRequest {
     sttVariants?: ISttRunVariant[];
     sttEvaluation?: ISttRunEvaluation;
     audioRunMode?: AudioRunMode;
+    /** Score every model against `referenceModel`, task by task. */
+    benchmark?: IRunBenchmarkConfig;
+    /** Who may serve the run's calls and what they may keep. */
+    dataPolicy?: IRunDataPolicy;
+    /** Run on only the dataset's first N items (a pilot). */
+    itemLimit?: number;
+    /** Run only on items whose stored answer has one label; before itemLimit. */
+    itemFilter?: IRunItemFilter;
     createdBy: string;
+    /** See ICreateRunRequest.maxCostUsd. */
+    maxCostUsd?: number;
 }
 
 export type SttProviderId =
     | "openai"
     | "vercel-gateway"
     | "soniox"
+    | "elevenlabs"
     | "openrouter"
     | "bifrost"
     | "gemini";
@@ -459,6 +965,9 @@ export interface ISttModelIdentity {
 const STT_AUDIO_HOUR_PRICE_USD: Readonly<Record<string, number>> = {
     // soniox.com/pricing — $0.10/hour async file transcription.
     "soniox:stt-async-v5": 0.1,
+    // elevenlabs.io/pricing/api — Scribe v2 $0.22/hour on every plan.
+    // Keyterm prompting adds $0.05/hour (STT_KEYTERM_SURCHARGE_USD below).
+    "elevenlabs:scribe_v2": 0.22,
     // OpenAI publishes these per minute: $0.006 for whisper-1 and
     // gpt-4o-transcribe, $0.003 for the mini variant.
     "whisper-1": 0.36,
@@ -466,18 +975,72 @@ const STT_AUDIO_HOUR_PRICE_USD: Readonly<Record<string, number>> = {
     "gpt-4o-mini-transcribe": 0.18,
 };
 
-export function sttAudioHourPriceUsdForId(modelId: string): number | undefined {
-    return STT_AUDIO_HOUR_PRICE_USD[modelId];
+// Per-hour add-on charged when a request sends keyterms (boost words).
+// elevenlabs.io/pricing/api — "Keyterm prompting" $0.050/hour.
+const STT_KEYTERM_SURCHARGE_USD: Readonly<Record<string, number>> = {
+    "elevenlabs:scribe_v2": 0.05,
+};
+
+export function sttAudioHourPriceUsdForId(
+    modelId: string,
+    config?: Record<string, unknown>,
+): number | undefined {
+    const base = STT_AUDIO_HOUR_PRICE_USD[modelId];
+    if (base === undefined) return undefined;
+    const surcharge = STT_KEYTERM_SURCHARGE_USD[modelId];
+    if (
+        surcharge !== undefined &&
+        modelId.startsWith("elevenlabs:") &&
+        elevenLabsKeyterms(config?.keywords).terms.length > 0
+    )
+        return base + surcharge;
+    return base;
 }
 
 export function sttCostUsdForDuration(
     modelId: string,
     durationMs: number | undefined,
+    config?: Record<string, unknown>,
 ): number | undefined {
-    const perHour = sttAudioHourPriceUsdForId(modelId);
+    const perHour = sttAudioHourPriceUsdForId(modelId, config);
     if (perHour === undefined || durationMs === undefined || durationMs <= 0)
         return undefined;
     return (durationMs / 3_600_000) * perHour;
+}
+
+/** ElevenLabs keyterm limits from its speech-to-text API reference. */
+export const ELEVENLABS_KEYTERM_LIMITS = {
+    maxTerms: 1000,
+    maxChars: 50,
+    maxWords: 5,
+} as const;
+
+/**
+ * Splits the comma-separated keyword boost into terms ElevenLabs accepts:
+ * at most 1000 terms, each at most 50 characters and 5 words, none with
+ * `< > { } [ ] \`. Rejected terms are returned so the run can warn about them
+ * instead of failing the whole request.
+ */
+export function elevenLabsKeyterms(value: unknown): {
+    terms: string[];
+    rejected: string[];
+} {
+    if (typeof value !== "string") return { terms: [], rejected: [] };
+    const terms: string[] = [];
+    const rejected: string[] = [];
+    const seen = new Set<string>();
+    for (const entry of value.split(",")) {
+        const term = entry.trim().replace(/\s+/g, " ");
+        if (!term || seen.has(term)) continue;
+        seen.add(term);
+        const ok =
+            term.length <= ELEVENLABS_KEYTERM_LIMITS.maxChars &&
+            term.split(" ").length <= ELEVENLABS_KEYTERM_LIMITS.maxWords &&
+            !/[<>{}[\]\\]/.test(term) &&
+            terms.length < ELEVENLABS_KEYTERM_LIMITS.maxTerms;
+        (ok ? terms : rejected).push(term);
+    }
+    return { terms, rejected };
 }
 
 export function sttModelIdentityForId(modelId: string): ISttModelIdentity {
@@ -493,6 +1056,13 @@ export function sttModelIdentityForId(modelId: string): ISttModelIdentity {
             providerId: "soniox",
             routeId: "soniox-async-file-transcription",
             canonicalModelId: modelId.replace(/^soniox:/, ""),
+        };
+    }
+    if (modelId.startsWith("elevenlabs:")) {
+        return {
+            providerId: "elevenlabs",
+            routeId: "elevenlabs-speech-to-text",
+            canonicalModelId: modelId.replace(/^elevenlabs:/, ""),
         };
     }
     if (modelId.startsWith("gemini:")) {
@@ -659,6 +1229,19 @@ export const STT_THINKING_BUDGET_FIELD: ISttModelConfigField = {
         "Optional maximum reasoning-token budget for supported audio-understanding routes.",
 };
 
+/**
+ * Run-level option (ISttRunConfig.levelVolume), not a provider payload field:
+ * it applies to every provider route.
+ */
+export const STT_LEVEL_VOLUME_FIELD: ISttModelConfigField = {
+    key: "levelVolume",
+    label: "Level volume first",
+    kind: "boolean",
+    helpText:
+        "Raises quiet recordings to a standard loudness before transcription. Try it if transcripts come back empty.",
+    defaultValue: false,
+};
+
 export const STT_STANDARD_CONFIG_FIELDS: readonly ISttModelConfigField[] = [
     STT_LANGUAGE_FIELD,
     STT_INITIAL_PROMPT_FIELD,
@@ -703,6 +1286,9 @@ export function sttConfigFieldsForModelId(
             STT_CONTEXT_FIELD,
             STT_DIARIZATION_FIELD,
         ]);
+    }
+    if (modelId.startsWith("elevenlabs:")) {
+        return [STT_LANGUAGE_FIELD, STT_KEYWORDS_FIELD, STT_DIARIZATION_FIELD];
     }
     if (modelId.startsWith("gemini:")) {
         return [
@@ -859,6 +1445,11 @@ export interface ISttRunConfig {
     canonicalModelId?: string;
     language?: string;
     config?: Record<string, unknown>;
+    /**
+     * Level each recording to a standard loudness with FFmpeg before it is
+     * sent to the provider. Off when absent; part of the transcript cache key.
+     */
+    levelVolume?: boolean;
     transcriptVariant?: "raw" | "latin";
     transliteration?: ISttTransliterationConfig;
     evaluator?: ISttEvaluatorConfig;
@@ -881,6 +1472,17 @@ export interface ISttRunEvaluation {
 export interface IRunConfigSnapshot extends Record<string, unknown> {
     sttConfig?: ISttRunConfig;
     sttVariants?: Record<string, ISttRunVariant>;
+    benchmark?: IRunBenchmarkConfig;
+    dataPolicy?: IRunDataPolicy;
+    /** Set when the run used only the dataset's first N items. */
+    itemLimit?: number;
+    /**
+     * Set when the run used only items with one stored label; `path` is
+     * resolved from `taskKey` when the request named a task.
+     */
+    itemFilter?: IRunItemFilter;
+    /** The run's spend limit in USD, when one was set. */
+    maxCostUsd?: number;
 }
 
 export interface ISttTransliterationConfig {
@@ -902,6 +1504,25 @@ export interface ISttEvaluatorConfig {
     modelId: string;
     rubricPrompt: string;
     reasoningEffort?: ReasoningEffort;
+}
+
+export interface IProposeBenchmarkTaskMapRequest {
+    teamId: string;
+    projectId: string;
+    promptVersionId: string;
+    /** Model that reads the prompt; the prompt optimizer model by default. */
+    generatorModelId?: string;
+}
+
+export interface IProposeBenchmarkTaskMapResponse {
+    /** A draft for a person to review, never applied automatically. */
+    taskMap: ITaskMap;
+    /** "model" when the model's draft was valid; "schema" for the fallback. */
+    source: "model" | "schema";
+    /** One line per task: why it is scored this way. */
+    notes: string[];
+    /** Problems with the model's draft that caused the fallback. */
+    rejected: string[];
 }
 
 export interface IGenerateJudgeForRunRequest {
@@ -1299,6 +1920,8 @@ export interface IRunSetupDatasetOption {
     labeledItemCount: number;
     purpose: "golden" | "evaluation";
     modality: "audio" | "image" | "text";
+    /** Average input text length in characters, for cost estimates. */
+    avgInputChars?: number;
 }
 
 export interface IRunSetupBundleOption {
@@ -1313,6 +1936,10 @@ export interface IRunSetupVersionOption {
     label: string;
     fieldConfigs: IPipelineFieldConfig[];
     reasoningConfig?: IReasoningConfig;
+    /** The version's output schema; New run proposes a benchmark Task Map from it. */
+    outputSchema?: IJsonSchemaObject;
+    /** The prompt's length in characters, for cost estimates. */
+    promptChars?: number;
 }
 
 export interface IRunSetupModelOption {
@@ -1333,7 +1960,10 @@ export interface IRunSetupModelOption {
      * but must not prevent selecting it.
      */
     providerListed?: boolean;
+    /** Providers with a key that can run it; the first is the default. */
     transports: ProviderTransport[];
+    /** Every provider that lists the model, with its price and whether a key is saved. */
+    providers?: IModelProviderOffer[];
     unavailableReason?: string;
     disabledReason?: string;
     reasoningEffort?: {
@@ -1372,6 +2002,15 @@ export interface IRunSetupResponse {
     hasPrompt: boolean;
     judgePrompts: IRunSetupJudgePromptOption[];
     sttModels: IRunSetupSttModelOption[];
+    /** Providers with a key, from Settings or the repo's .env files. */
+    savedKeyProviders?: ProviderTransport[];
+    /** The provider runs start each model on, from the API's .env. */
+    preferredProvider?: ProviderTransport;
+    /**
+     * Set when a Bifrost key and address are configured but Bifrost's model
+     * list couldn't be fetched: no model is offered on Bifrost meanwhile.
+     */
+    bifrostModelListError?: string;
 }
 
 export interface IPromptWorkbenchInitialPrompt {
@@ -1460,6 +2099,12 @@ export interface ISaveRunnablePromptRequest {
     jsonSchema: Record<string, unknown>;
     fieldConfigs: IPipelineFieldConfig[];
     validationEvidence: unknown;
+    /**
+     * The passed check from validate (IValidateRunnablePromptResponse
+     * .validationAttemptId) for this content, schema and model. Without it
+     * the version is saved runnable but marked "not checked on a model".
+     */
+    validationAttemptId?: string;
     optimizerAttemptId?: string;
     reasoningConfig?: IReasoningConfig;
     fitTags: string[];
@@ -1623,6 +2268,8 @@ export interface IValidateRunnablePromptResponse {
     passed: boolean;
     evidence: IPromptValidationEvidence;
     failureMessage?: string;
+    /** When passed: the recorded check, to pass to the runnable save. */
+    validationAttemptId?: string;
 }
 
 export type JudgeDeclaredInput =
@@ -1659,11 +2306,37 @@ export interface IDashboardResponse {
 export interface IRunProgressResponse extends IRunProgress {
     status: RunStatus;
     enqueueStatus?: "pending_enqueue" | "queued";
+    /** Set once a stop was asked for, while the run is still winding down too. */
+    stopReason?: RunStopReason;
+    /** Why the run failed before any cell started. */
+    error?: string;
+    /** For a pending run: when it was last queued (or created). */
+    pendingSince?: string;
 }
 
+export interface IRetryRunResponse {
+    runId: string;
+    enqueueStatus: "pending_enqueue" | "queued";
+    /** False when there was nothing to retry (running, or still queued). */
+    requeued?: boolean;
+}
+
+export interface ICancelRunResponse {
+    runId: string;
+    /** `cancelled` at once for a run no worker had started; otherwise unchanged until the worker stops. */
+    status: RunStatus;
+    stopReason?: RunStopReason;
+}
+
+export type ScorerType =
+    | "field_diff"
+    | "judge"
+    | "transcript_metric"
+    | "transcript_judge"
+    | "benchmark";
+
 export interface IMatrixCellScore {
-    scorerType:
-        "field_diff" | "judge" | "transcript_metric" | "transcript_judge";
+    scorerType: ScorerType;
     score: number | null;
     rationale: string | null;
     detailsJson: unknown;
@@ -1674,6 +2347,8 @@ export interface IRunDetailModel {
     modelId: string;
     promptVersionId: string | null;
     isReference: boolean;
+    /** The temperature the run sent; absent: the provider's default. */
+    temperature?: number;
 }
 
 export interface IRunDetailItem {
@@ -1699,10 +2374,31 @@ export interface IRunDetailCell {
     outputJson: unknown;
     latencyMs: number | null;
     costUsd: number | null;
+    /** What judging this cell cost, when any judge call reported a cost. */
+    judgeCostUsd?: number;
     promptTokens: number | null;
     completionTokens: number | null;
+    /** Thinking (reasoning) tokens, part of completionTokens, when reported. */
+    reasoningTokens?: number;
+    /** Whether the run's thinking level was sent with this call. */
+    thinking?: IThinkingOutcome;
     annotation?: ICellAnnotation;
     error: string | null;
+    /** The hosting company that served this answer, when the gateway said. */
+    servedBy?: string;
+}
+
+/**
+ * What happened to a requested thinking (reasoning) level on one call:
+ * sent, with the request field that carried it, or not sent and why.
+ */
+export interface IThinkingOutcome {
+    requested: ReasoningEffort;
+    sent: boolean;
+    /** The request field(s) that carried it, e.g. `anthropic.effort=high`. */
+    via?: string;
+    /** Why it was not sent. */
+    reason?: string;
 }
 
 export interface IRunTranscriptSegment {
@@ -2077,6 +2773,10 @@ export interface IRunDetailResponse {
         teamId: string;
         datasetId: string;
         status: RunStatus;
+        /** Set once a stop was asked for; see RunStopReason. */
+        stopReason?: RunStopReason;
+        /** Why the run failed before any cell started. */
+        error?: string;
         createdAt: string;
         configSnapshot: IRunConfigSnapshot;
     };
@@ -2092,6 +2792,8 @@ export interface IRunDetailResponse {
     comparableRuns: IComparableRun[];
     baselineRunId?: string;
     comparison?: IModelComparison[];
+    /** Per-model comparison with the benchmark; set on benchmark runs. */
+    benchmarkComparison?: IBenchmarkModelSummary[];
 }
 
 export interface ISaveRunNoteRequest {
@@ -2177,9 +2879,11 @@ export const PROVIDER_KEY_PROVIDERS = [
     "openai",
     "gateway",
     "soniox",
+    "elevenlabs",
     "openrouter",
     "bifrost",
     "gemini",
+    "anthropic",
 ] as const;
 
 export type ProviderKeyProvider = (typeof PROVIDER_KEY_PROVIDERS)[number];
@@ -2366,6 +3070,22 @@ export class FlashEvalsApiClient {
 
     async clearProviderKey(input: IClearProviderKeyRequest): Promise<void> {
         await this.postJson("/api/provider-keys/clear", input);
+    }
+
+    async getProviderStatus(teamId: string): Promise<IProviderStatusResponse> {
+        const url = new URL("/api/provider-status", this.baseUrl);
+        url.searchParams.set("teamId", teamId);
+        return this.getJson<IProviderStatusResponse>(url);
+    }
+
+    async listModelPrices(teamId: string): Promise<IModelPriceListResponse> {
+        const url = new URL("/api/model-prices", this.baseUrl);
+        url.searchParams.set("teamId", teamId);
+        return this.getJson<IModelPriceListResponse>(url);
+    }
+
+    async refreshModelPrices(): Promise<void> {
+        await this.postJson("/api/model-prices/refresh", {});
     }
 
     async listWorkflowLlmCapabilities(
@@ -2896,6 +3616,15 @@ export class FlashEvalsApiClient {
         );
     }
 
+    async cancelWorkflowRun(
+        input: ICancelWorkflowRunRequest,
+    ): Promise<ICancelWorkflowRunResponse> {
+        return this.postJson<ICancelWorkflowRunResponse>(
+            `/api/workflows/${input.workflowId}/runs/${input.workflowRunId}/cancel`,
+            input,
+        );
+    }
+
     async listWorkflowRuns(
         teamId: string,
         projectId: string,
@@ -2905,6 +3634,67 @@ export class FlashEvalsApiClient {
         url.searchParams.set("teamId", teamId);
         url.searchParams.set("projectId", projectId);
         return this.getJson<IWorkflowRunSummary[]>(url);
+    }
+
+    /**
+     * Eval runs a pipeline run can be compared with: finished, with a
+     * benchmark Task Map, newest first; on one dataset when given.
+     */
+    async listPipelineComparisonRuns(
+        teamId: string,
+        projectId: string,
+        datasetId?: string,
+    ): Promise<IPipelineComparisonRunOption[]> {
+        const url = new URL("/api/workflow-comparison-runs", this.baseUrl);
+        url.searchParams.set("teamId", teamId);
+        url.searchParams.set("projectId", projectId);
+        if (datasetId) url.searchParams.set("datasetId", datasetId);
+        return this.getJson<IPipelineComparisonRunOption[]>(url);
+    }
+
+    /** Start a setup comparison: one eval run plus one pipeline run per pipeline. */
+    async createSetupComparison(
+        input: ICreateSetupComparisonRequest,
+    ): Promise<ICreateSetupComparisonResponse> {
+        return this.postJson<ICreateSetupComparisonResponse>(
+            "/api/setup-comparisons",
+            input,
+        );
+    }
+
+    async getSetupComparison(
+        teamId: string,
+        projectId: string,
+        setupComparisonId: string,
+    ): Promise<ISetupComparison> {
+        const url = new URL(
+            `/api/setup-comparisons/${setupComparisonId}`,
+            this.baseUrl,
+        );
+        url.searchParams.set("teamId", teamId);
+        url.searchParams.set("projectId", projectId);
+        return this.getJson<ISetupComparison>(url);
+    }
+
+    /** Cancel every member run of a setup comparison. */
+    async cancelSetupComparison(
+        input: ICancelSetupComparisonRequest,
+    ): Promise<ICancelSetupComparisonResponse> {
+        return this.postJson<ICancelSetupComparisonResponse>(
+            `/api/setup-comparisons/${input.setupComparisonId}/cancel`,
+            input,
+        );
+    }
+
+    /** Saved pipelines the setup comparison launcher can offer. */
+    async listSetupComparisonPipelines(
+        teamId: string,
+        projectId: string,
+    ): Promise<ISetupComparisonPipelineOption[]> {
+        const url = new URL("/api/setup-comparison-pipelines", this.baseUrl);
+        url.searchParams.set("teamId", teamId);
+        url.searchParams.set("projectId", projectId);
+        return this.getJson<ISetupComparisonPipelineOption[]>(url);
     }
 
     async getWorkflowRunDetail(
@@ -2947,6 +3737,15 @@ export class FlashEvalsApiClient {
         return this.getJson<IRunSetupResponse>(url);
     }
 
+    async countItemFilterMatches(
+        input: ICountItemFilterMatchesRequest,
+    ): Promise<ICountItemFilterMatchesResponse> {
+        return this.postJson<ICountItemFilterMatchesResponse>(
+            "/api/runs/item-filter-count",
+            input,
+        );
+    }
+
     async createRun(input: ICreateRunRequest): Promise<ICreateRunResponse> {
         return this.postJson<ICreateRunResponse>("/api/runs", input);
     }
@@ -2957,6 +3756,17 @@ export class FlashEvalsApiClient {
         return this.postJson<ICreateRunResponse>(
             "/api/runs/from-selection",
             input,
+        );
+    }
+
+    async proposeBenchmarkTaskMap(
+        input: IProposeBenchmarkTaskMapRequest,
+        context?: IWorkflowLlmTrustedContext,
+    ): Promise<IProposeBenchmarkTaskMapResponse> {
+        return this.postJson<IProposeBenchmarkTaskMapResponse>(
+            "/api/runs/propose-benchmark-task-map",
+            input,
+            context,
         );
     }
 
@@ -3008,6 +3818,33 @@ export class FlashEvalsApiClient {
         await this.postJson("/api/runs/note", input);
     }
 
+    async listRunDisagreements(input: {
+        teamId: string;
+        projectId: string;
+        runId: string;
+        runModelId: string;
+        taskKey: string;
+    }): Promise<IRunDisagreementsResponse> {
+        const url = new URL(
+            `/api/runs/${encodeURIComponent(input.runId)}/disagreements`,
+            this.baseUrl,
+        );
+        url.searchParams.set("teamId", input.teamId);
+        url.searchParams.set("projectId", input.projectId);
+        url.searchParams.set("runModelId", input.runModelId);
+        url.searchParams.set("taskKey", input.taskKey);
+        return this.getJson<IRunDisagreementsResponse>(url);
+    }
+
+    async decideDisagreement(
+        input: IDecideDisagreementRequest,
+    ): Promise<IDecideDisagreementResponse> {
+        return this.postJson<IDecideDisagreementResponse>(
+            "/api/runs/disagreements/decide",
+            input,
+        );
+    }
+
     async saveCellAnnotation(input: ISaveCellAnnotationRequest): Promise<{
         runId: string;
     }> {
@@ -3024,8 +3861,23 @@ export class FlashEvalsApiClient {
     async retryRun(
         input: IRunLifecycleRequest,
         context?: IWorkflowLlmTrustedContext,
-    ): Promise<void> {
-        await this.postJson("/api/runs/retry", input, context);
+    ): Promise<IRetryRunResponse | undefined> {
+        return this.postJson<IRetryRunResponse | undefined>(
+            "/api/runs/retry",
+            input,
+            context,
+        );
+    }
+
+    async cancelRun(
+        input: IRunLifecycleRequest,
+        context?: IWorkflowLlmTrustedContext,
+    ): Promise<ICancelRunResponse> {
+        return this.postJson<ICancelRunResponse>(
+            "/api/runs/cancel",
+            input,
+            context,
+        );
     }
 
     private async getJson<T>(

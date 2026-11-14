@@ -1,7 +1,8 @@
 import type { ITranscriptSegment } from "../../../db/jsonTypes";
-import type {
-    ITranscriptArtifact,
-    ITranscriptionProviderInput,
+import {
+    EmptyTranscriptError,
+    type ITranscriptArtifact,
+    type ITranscriptionProviderInput,
 } from "../types";
 import {
     audioUploadForm,
@@ -21,7 +22,9 @@ export async function transcribeWithSoniox(
     input: ITranscriptionProviderInput,
 ): Promise<ITranscriptArtifact> {
     if (!input.sonioxApiKey) {
-        throw new Error("Add SONIOX_API_KEY to run Soniox transcription.");
+        throw new Error(
+            "Add your Soniox API key in Settings (or SONIOX_API_KEY in the app's .env) to run Soniox transcription.",
+        );
     }
     const fileId = await uploadSonioxFile(input);
     const transcriptionId = await createSonioxTranscription({
@@ -150,7 +153,11 @@ async function getSonioxTranscript(input: {
     );
     const parsed = await parseSonioxJson(response, "Soniox transcript fetch");
     const text = stringProperty(parsed, "text")?.trim() ?? "";
-    if (!text) throw new Error("Soniox transcription returned empty text.");
+    if (!text)
+        throw new EmptyTranscriptError(
+            "Soniox transcription returned empty text.",
+            { durationMs: sonioxDurationMs(parsed) },
+        );
     const segments = sonioxSegments(parsed);
     const language = segments.find((segment) => segment.language)?.language;
     const durationMs = sonioxDurationMs(parsed);
@@ -179,6 +186,12 @@ function sonioxDurationMs(parsed: unknown): number | undefined {
     return end;
 }
 
+/**
+ * Soniox tokens are pieces of words: a token that starts a word carries its
+ * own leading space (" है,"), one inside a word has none ("लो"), and the
+ * transcript's text is the tokens joined as they are. Segments join them the
+ * same way, so a word is never split by an added space ("मु झ से").
+ */
 function sonioxSegments(parsed: unknown): ITranscriptSegment[] {
     if (!isRecord(parsed) || !Array.isArray(parsed.tokens)) return [];
     const segments: ITranscriptSegment[] = [];
@@ -187,13 +200,15 @@ function sonioxSegments(parsed: unknown): ITranscriptSegment[] {
         if (!segment) continue;
         const previous = segments[segments.length - 1];
         if (previous && canMergeSonioxSegments(previous, segment)) {
-            previous.text = `${previous.text}${tokenJoiner(previous.text, segment.text)}${segment.text}`;
+            previous.text = `${previous.text}${segment.text}`;
             previous.endMs = segment.endMs ?? previous.endMs;
             continue;
         }
         segments.push(segment);
     }
-    return segments;
+    return segments
+        .map((segment) => ({ ...segment, text: segment.text.trim() }))
+        .filter((segment) => segment.text.length > 0);
 }
 
 function segmentFromSonioxToken(
@@ -234,10 +249,6 @@ function canMergeSonioxSegments(
         next.startMs !== undefined &&
         next.startMs - previous.endMs <= 250
     );
-}
-
-function tokenJoiner(left: string, right: string): string {
-    return /^[.,!?;:)]/.test(right) || left.endsWith("(") ? "" : " ";
 }
 
 async function parseSonioxJson(

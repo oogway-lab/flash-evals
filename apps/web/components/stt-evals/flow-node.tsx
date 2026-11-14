@@ -13,7 +13,8 @@ export interface ISttFlowNodeDisplay {
 }
 
 export function SttFlowNode({ data, selected }: NodeProps) {
-    const node = data as ISttGraphNodeData & ISttFlowNodeDisplay;
+    const node = data as ISttGraphNodeData &
+        ISttFlowNodeDisplay & { runCondition?: unknown };
     return (
         <div
             data-slot="flow-node"
@@ -32,6 +33,11 @@ export function SttFlowNode({ data, selected }: NodeProps) {
                 <span className="text-label-12 text-muted-foreground">
                     {labelFor(NODE_TYPE_LABELS, node.nodeType)}
                 </span>
+                {node.runCondition && !node.needsRepair ? (
+                    <span className="text-label-12 text-muted-foreground">
+                        Conditional
+                    </span>
+                ) : null}
                 {node.needsRepair ? (
                     <span className="inline-flex items-center gap-1 text-label-12 text-eval-warning">
                         <TriangleAlert

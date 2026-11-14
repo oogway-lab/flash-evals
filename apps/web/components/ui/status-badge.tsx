@@ -2,7 +2,11 @@ import { AlertTriangle, Check, CircleAlert, CircleDashed } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ReviewVerdict } from "@/components/runs/types";
-import type { IModelComparison } from "@flash-evals/api-contract";
+import type {
+    BenchmarkModelVerdict,
+    BenchmarkTaskVerdict,
+    IModelComparison,
+} from "@flash-evals/api-contract";
 import { Hint } from "@/components/ui/hint";
 import { MISSING_VALUE } from "@/lib/format";
 import {
@@ -26,6 +30,7 @@ const runVariants: Record<RunStatus, BadgeVariant> = {
     completed: "success",
     partial: "warning",
     failed: "danger",
+    cancelled: "outline",
 };
 
 const cellVariants: Record<CellStatus, BadgeVariant> = {
@@ -34,6 +39,7 @@ const cellVariants: Record<CellStatus, BadgeVariant> = {
     succeeded: "success",
     failed: "danger",
     cached: "outline",
+    skipped: "outline",
 };
 
 /** Pending or running: the cell has no output, metrics or scores yet. */
@@ -76,11 +82,22 @@ export function StatusBadge({
     );
 }
 
-export function RunStatusBadge({ status }: { status: RunStatus }) {
+export function RunStatusBadge({
+    status,
+    stopReason,
+}: {
+    status: RunStatus;
+    /** A cancelled run that stopped at its spend limit says so. */
+    stopReason?: string;
+}) {
+    const label =
+        status === "cancelled" && stopReason === "spend_cap"
+            ? "Stopped at spend limit"
+            : runLabels[status];
     return (
         <StatusBadge
             kind="Run"
-            label={runLabels[status]}
+            label={label}
             variant={runVariants[status]}
             running={status === "running"}
         />
@@ -98,13 +115,29 @@ export function CellStatusBadge({ status }: { status: CellStatus }) {
     );
 }
 
-/** Whether a saved prompt version can be used in runs. */
-export function PromptStatusBadge({ status }: { status: PromptVersionStatus }) {
+/**
+ * Whether a saved prompt version can be used in runs. A runnable version
+ * saved without a model check says so instead of looking checked.
+ */
+export function PromptStatusBadge({
+    status,
+    modelCheck,
+}: {
+    status: PromptVersionStatus;
+    modelCheck?: "checked" | "not_checked";
+}) {
+    const unchecked = status === "runnable" && modelCheck === "not_checked";
     return (
         <StatusBadge
             kind="Prompt"
-            label={promptLabels[status]}
-            variant={status === "runnable" ? "success" : "warning"}
+            label={
+                unchecked
+                    ? "Runnable, not checked on a model"
+                    : promptLabels[status]
+            }
+            variant={
+                status === "runnable" && !unchecked ? "success" : "warning"
+            }
         />
     );
 }
@@ -127,7 +160,8 @@ export function TranscriptStatusBadge({ status }: { status: string }) {
     );
 }
 
-export type BranchStatus = "pending" | "running" | "completed" | "failed";
+export type BranchStatus =
+    "pending" | "running" | "completed" | "failed" | "stopped";
 
 const branchStatuses: Record<
     BranchStatus,
@@ -137,6 +171,8 @@ const branchStatuses: Record<
     running: { label: "Running branch", variant: "default" },
     completed: { label: "Completed branch", variant: "success" },
     failed: { label: "Failed branch", variant: "danger" },
+    // The run ended (cancelled or failed) before every step in the branch ran.
+    stopped: { label: "Stopped branch", variant: "outline" },
 };
 
 /** One STT workflow branch (a root STT node and everything downstream of it). */
@@ -346,4 +382,57 @@ export function RouteStateBadge({ state }: { state: "default" | "disabled" }) {
     ) : (
         <Badge variant="outline">Disabled</Badge>
     );
+}
+
+const benchmarkVerdicts: Record<
+    BenchmarkModelVerdict,
+    { label: string; variant: BadgeVariant }
+> = {
+    pass: { label: "Pass", variant: "success" },
+    conditional: { label: "Conditional", variant: "warning" },
+    fail: { label: "Fail", variant: "danger" },
+    inconclusive: { label: "Inconclusive", variant: "outline" },
+};
+
+/** Whether a candidate can replace the benchmark model. */
+export function BenchmarkVerdictBadge({
+    verdict,
+}: {
+    verdict: BenchmarkModelVerdict;
+}) {
+    const { label, variant } = benchmarkVerdicts[verdict];
+    return (
+        <StatusBadge kind="Benchmark verdict" label={label} variant={variant} />
+    );
+}
+
+/**
+ * The reference model's place in the verdict column: it is what the others
+ * are measured against, so it has no pass or fail of its own.
+ */
+export function BenchmarkReferenceBadge() {
+    return (
+        <StatusBadge kind="Benchmark verdict" label="Reference" variant="ref" />
+    );
+}
+
+const benchmarkTaskVerdicts: Record<
+    BenchmarkTaskVerdict,
+    { label: string; variant: BadgeVariant }
+> = {
+    pass: { label: "Pass", variant: "success" },
+    uncertain: { label: "Uncertain", variant: "warning" },
+    fail: { label: "Fail", variant: "danger" },
+    insufficient: { label: "Too few items", variant: "outline" },
+    reference: { label: "Reference", variant: "ref" },
+};
+
+/** One task's result against its target in a benchmark comparison. */
+export function BenchmarkTaskVerdictBadge({
+    verdict,
+}: {
+    verdict: BenchmarkTaskVerdict;
+}) {
+    const { label, variant } = benchmarkTaskVerdicts[verdict];
+    return <StatusBadge kind="Task verdict" label={label} variant={variant} />;
 }

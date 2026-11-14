@@ -11,6 +11,7 @@ import type { IApiConfig } from "./config.js";
 import {
     invalidSttConfigMessages,
     resolveSttModelDefinition,
+    sttModelCanProbe,
     sttModelOptions,
     unsupportedSttConfigKeys,
 } from "./sttModels.js";
@@ -85,6 +86,46 @@ describe("sttModelOptions", () => {
                 ]),
             }),
         );
+    });
+
+    it("lists ElevenLabs Scribe v2 as needing a key, then a route check", () => {
+        expect(sttModelOptions(config())).toContainEqual(
+            expect.objectContaining({
+                id: "elevenlabs:scribe_v2",
+                providerId: "elevenlabs",
+                providerLabel: "ElevenLabs",
+                availabilityStatus: "missing_key",
+                available: false,
+                unavailableReason:
+                    "Add ELEVENLABS_API_KEY to use ElevenLabs transcription.",
+            }),
+        );
+        const keyed = config({ elevenlabsApiKey: "el-test" });
+        expect(sttModelOptions(keyed)).toContainEqual(
+            expect.objectContaining({
+                id: "elevenlabs:scribe_v2",
+                routeId: "elevenlabs-speech-to-text",
+                availabilityStatus: "unverified_route",
+                available: false,
+                configFields: [
+                    expect.objectContaining({ key: "language" }),
+                    expect.objectContaining({ key: "keywords" }),
+                    expect.objectContaining({ key: "diarization" }),
+                ],
+            }),
+        );
+        expect(
+            sttModelOptions(keyed, {
+                "elevenlabs:scribe_v2": { status: "available" },
+            }),
+        ).toContainEqual(
+            expect.objectContaining({
+                id: "elevenlabs:scribe_v2",
+                availabilityStatus: "available",
+                available: true,
+            }),
+        );
+        expect(sttModelCanProbe("elevenlabs:scribe_v2")).toBe(true);
     });
 
     it("keeps configured-but-unverified OpenRouter and Bifrost routes disabled", () => {

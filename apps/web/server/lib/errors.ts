@@ -51,10 +51,48 @@ function isUserFacingError(err: unknown): err is Error {
  */
 export function errorMessage(err: unknown): string {
     if (!(err instanceof Error)) return String(err);
+    const databaseMessage = databaseQueryErrorMessage(err);
+    if (databaseMessage) return databaseMessage;
     const message = err.message.trim() || err.name;
     const cause = causeMessage((err as Error & { cause?: unknown }).cause);
     if (!cause || cause === message) return message;
     return `${message}: ${cause}`;
+}
+
+/**
+ * Drizzle wraps every failed query (a driver error, a connection that could
+ * not be had, a dropped connection) as "Failed query: <SQL>\nparams: <values>"
+ * with the real reason as its cause. Stored as is, the reason sat after the
+ * whole statement and its parameters (which can hold a full transcript), so it
+ * was cut off wherever the message was shown. Lead with the reason instead,
+ * keep the start of the statement, and leave the parameters out.
+ */
+function databaseQueryErrorMessage(err: Error): string | undefined {
+    const query = (err as Error & { query?: unknown }).query;
+    if (typeof query !== "string" || !err.message.startsWith("Failed query:"))
+        return undefined;
+    const cause = (err as Error & { cause?: unknown }).cause;
+    const reason =
+        cause instanceof Error
+            ? withCode(cause, errorMessage(cause))
+            : (causeMessage(cause) ?? "no reason reported by the driver");
+    return `Database query failed: ${reason} (query: ${shortQuery(query)})`;
+}
+
+function withCode(err: Error, message: string): string {
+    const code = (err as Error & { code?: unknown }).code;
+    return typeof code === "string" && code && !message.startsWith(code)
+        ? `${code} ${message}`
+        : message;
+}
+
+const QUERY_PREVIEW_CHARS = 120;
+
+function shortQuery(query: string): string {
+    const flat = query.replace(/\s+/g, " ").trim();
+    return flat.length > QUERY_PREVIEW_CHARS
+        ? `${flat.slice(0, QUERY_PREVIEW_CHARS)}…`
+        : flat;
 }
 
 function causeMessage(cause: unknown): string | undefined {

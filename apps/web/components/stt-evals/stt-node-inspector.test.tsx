@@ -539,6 +539,80 @@ describe("SttNodeInspector", () => {
         ).not.toBeInTheDocument();
     });
 
+    it("saves the exact Bifrost model id picked from Bifrost's list", async () => {
+        const onChange = vi.fn();
+        const candidate = (transportModelId: string) => ({
+            transport: "bifrost" as const,
+            modelId: "provider/model-a",
+            transportModelId,
+            label: "Model A",
+            modelProvider: "provider",
+            modelProviderLabel: "Provider",
+            source: "provider_model_listing" as const,
+            availability: "provider_listed_candidate" as const,
+            requiresMutationDiscovery: true as const,
+            support: {
+                upstreamRoutingModes: ["auto" as const],
+                supportedGenerationControls: ["maxOutputTokens" as const],
+                supportsStructuredOutput: true,
+            },
+        });
+        render(
+            <SttNodeInspector
+                node={
+                    {
+                        id: "simple-node",
+                        type: "llm_text",
+                        position: { x: 0, y: 0 },
+                        data: {
+                            nodeKey: "simple-node",
+                            label: "Simple node",
+                            nodeType: "llm_text",
+                            nodeConfig: { type: "llm_text", promptText: "Hi" },
+                            llmExecutionSelection: {
+                                mode: "simple",
+                                transport: "bifrost",
+                            },
+                            evalConfig: { type: "none" },
+                        },
+                    } as SttCanvasNode
+                }
+                setup={setup}
+                onClose={() => undefined}
+                onChange={onChange}
+                onRemove={() => undefined}
+                onDuplicate={() => undefined}
+                onLoadLlmModels={vi.fn().mockResolvedValue({
+                    candidates: [
+                        candidate("openrouter/provider/model-a"),
+                        candidate("direct/model-a"),
+                    ],
+                })}
+            />,
+        );
+        const trigger = document.getElementById("node-simple-model")!;
+        await waitFor(() =>
+            expect(trigger).not.toHaveTextContent("Loading models…"),
+        );
+        fireEvent.click(trigger);
+        expect(
+            await screen.findByRole("option", {
+                name: "Model A · direct/model-a",
+            }),
+        ).toBeInTheDocument();
+        pickOption(
+            screen.getByRole("option", {
+                name: "Model A · openrouter/provider/model-a",
+            }),
+        );
+        expect(onChange).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                modelId: "openrouter/provider/model-a",
+                llmExecutionSelection: { mode: "simple", transport: "bifrost" },
+            }),
+        );
+    });
+
     it("uses the provider-listed model directly in Simple mode", async () => {
         const onChange = vi.fn();
         render(
@@ -600,6 +674,105 @@ describe("SttNodeInspector", () => {
                 llmExecutionSelection: {
                     mode: "simple",
                     transport: "gateway",
+                },
+            }),
+        );
+    });
+
+    it("offers a maker's own API only when its key is saved in Settings", async () => {
+        const onChange = vi.fn();
+        const onLoadLlmModels = vi.fn().mockResolvedValue({
+            candidates: [
+                {
+                    transport: "anthropic",
+                    modelId: "anthropic/claude-sonnet-4.6",
+                    label: "Claude Sonnet 4.6",
+                    modelProvider: "anthropic",
+                    modelProviderLabel: "Anthropic",
+                    source: "provider_model_listing",
+                    availability: "provider_listed_candidate",
+                    requiresMutationDiscovery: true,
+                    support: {
+                        upstreamRoutingModes: ["none"],
+                        supportedGenerationControls: [
+                            "maxOutputTokens",
+                            "reasoningEffort",
+                        ],
+                        supportsStructuredOutput: true,
+                    },
+                },
+            ],
+        });
+        const node = {
+            id: "direct-node",
+            type: "llm_text",
+            position: { x: 0, y: 0 },
+            data: {
+                nodeKey: "direct-node",
+                label: "Direct node",
+                nodeType: "llm_text",
+                nodeConfig: { type: "llm_text", promptText: "Hi" },
+                llmExecutionSelection: {
+                    mode: "simple",
+                    transport: "gateway",
+                },
+                evalConfig: { type: "none" },
+            },
+        } as SttCanvasNode;
+        const view = render(
+            <SttNodeInspector
+                node={node}
+                setup={setup}
+                onClose={() => undefined}
+                onChange={onChange}
+                onRemove={() => undefined}
+                onDuplicate={() => undefined}
+                onLoadLlmModels={onLoadLlmModels}
+            />,
+        );
+        fireEvent.click(document.getElementById("node-simple-provider")!);
+        await screen.findByRole("option", { name: "OpenRouter" });
+        expect(
+            screen.queryByRole("option", { name: "Anthropic" }),
+        ).not.toBeInTheDocument();
+        expect(
+            screen.queryByRole("option", { name: "Gemini API" }),
+        ).not.toBeInTheDocument();
+        view.unmount();
+
+        render(
+            <SttNodeInspector
+                node={node}
+                setup={{ ...setup, savedKeyProviders: ["anthropic"] }}
+                onClose={() => undefined}
+                onChange={onChange}
+                onRemove={() => undefined}
+                onDuplicate={() => undefined}
+                onLoadLlmModels={onLoadLlmModels}
+            />,
+        );
+        fireEvent.click(document.getElementById("node-simple-provider")!);
+        const anthropic = await screen.findByRole("option", {
+            name: "Anthropic",
+        });
+        expect(
+            screen.queryByRole("option", { name: "Gemini API" }),
+        ).not.toBeInTheDocument();
+        pickOption(anthropic);
+        await waitFor(() =>
+            expect(onLoadLlmModels).toHaveBeenLastCalledWith("anthropic"),
+        );
+        fireEvent.click(document.getElementById("node-simple-model")!);
+        pickOption(
+            await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+        );
+
+        expect(onChange).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                modelId: "anthropic/claude-sonnet-4.6",
+                llmExecutionSelection: {
+                    mode: "simple",
+                    transport: "anthropic",
                 },
             }),
         );
@@ -762,6 +935,64 @@ describe("SttNodeInspector", () => {
             />,
         );
         expect(screen.getByLabelText("Diarization")).toBeChecked();
+    });
+
+    it("saves level volume first on the STT step and restores it on reload", () => {
+        const node = root("levelled", false);
+        let saved = node.data;
+        const { rerender } = render(
+            <SttNodeInspector
+                node={node}
+                setup={setup}
+                onClose={() => undefined}
+                onChange={(data) => {
+                    saved = data;
+                }}
+                onRemove={() => undefined}
+                onDuplicate={() => undefined}
+            />,
+        );
+        const toggle = screen.getByRole("checkbox", {
+            name: /Level volume first|Raises quiet recordings/,
+        });
+        expect(screen.getByText("Level volume first")).toBeInTheDocument();
+        expect(toggle).not.toBeChecked();
+        fireEvent.click(toggle);
+
+        expect(saved.nodeConfig).toEqual({
+            type: "stt",
+            sttConfig: {
+                modelId: "soniox:stt-async-v5",
+                config: { diarization: false },
+                levelVolume: true,
+            },
+        });
+
+        const reloaded = JSON.parse(JSON.stringify(saved)) as SttNodeData;
+        rerender(
+            <SttNodeInspector
+                node={{ ...node, data: reloaded }}
+                setup={setup}
+                onClose={() => undefined}
+                onChange={(data) => {
+                    saved = data;
+                }}
+                onRemove={() => undefined}
+                onDuplicate={() => undefined}
+            />,
+        );
+        const restored = screen.getByRole("checkbox", {
+            name: /Level volume first|Raises quiet recordings/,
+        });
+        expect(restored).toBeChecked();
+        fireEvent.click(restored);
+        expect(saved.nodeConfig).toEqual({
+            type: "stt",
+            sttConfig: {
+                modelId: "soniox:stt-async-v5",
+                config: { diarization: false },
+            },
+        });
     });
 
     it("does not persist values from disabled template fields", () => {

@@ -176,6 +176,12 @@ export function TranscriptMetricBreakdown({
                 <DiarizationMetricBoxes details={details.diarization} />
             </MetricList>
             <PerSpeakerWer values={details.diarization?.perSpeakerWer} />
+            {details.diarizationSkippedReason ? (
+                <p className="text-copy-14 text-muted-foreground">
+                    Speaker metrics not computed:{" "}
+                    {details.diarizationSkippedReason}
+                </p>
+            ) : null}
             <MissedEvidence
                 label="Missed domain terms"
                 values={details.domainTermRecall?.missed}

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireActiveProject as requirePrincipal } from "@/server/projects/activeProject";
 import { resolveReasoningEffort } from "@/server/llm/reasoningConfig";
 import { ensureModelCatalog } from "@/server/llm/catalog";
-import { registryEntryFor } from "@/server/llm/modelRegistry";
+import { registryModelFor } from "@/server/llm/modelRegistry";
 import { serverApiClient } from "@/server/api/client";
 import {
     ALLOWED_IMAGE_TYPES,
@@ -276,7 +276,7 @@ export async function testPromptDraftAction(
     // Catalog-only models must resolve before any registry lookup below.
     await ensureModelCatalog();
     if (image) {
-        const entry = registryEntryFor(targetModelId);
+        const entry = registryModelFor(targetModelId);
         if (entry && !entry.vision) {
             return jsonFieldError(
                 "imageFile",
@@ -615,6 +615,9 @@ export async function saveRunnablePromptAction(
         jsonSchema: schemaResult.value,
         fieldConfigs: fieldConfigsResult.value,
         validationEvidence: validation.evidence,
+        ...(validation.validationAttemptId
+            ? { validationAttemptId: validation.validationAttemptId }
+            : {}),
         ...(optimizerAttemptId ? { optimizerAttemptId } : {}),
         ...(reasoningConfig ? { reasoningConfig } : {}),
         fitTags: [...fitTags, targetModelId],

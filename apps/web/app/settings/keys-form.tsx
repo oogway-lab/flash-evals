@@ -58,9 +58,21 @@ const PROVIDERS: Array<{
         baseUrl: false,
     },
     {
+        id: "elevenlabs",
+        label: "ElevenLabs",
+        helper: "Used for ElevenLabs Scribe speech-to-text models.",
+        baseUrl: false,
+    },
+    {
+        id: "anthropic",
+        label: "Anthropic",
+        helper: "Used to run Claude models on the Anthropic API directly. Saved here only; never read from .env.",
+        baseUrl: false,
+    },
+    {
         id: "gemini",
         label: "Gemini",
-        helper: "Used for direct Gemini audio-understanding transcription.",
+        helper: "Used to run Gemini and Gemma models on the Gemini API directly, and for Gemini audio-understanding transcription. Model runs use the key saved here only.",
         baseUrl: false,
     },
     {
@@ -249,9 +261,8 @@ function ProviderKeyCard({
                     <div className="flex flex-col items-start gap-2">
                         <KeyStoredBadge stored={false} />
                         <p className="text-copy-14 text-muted-foreground">
-                            No team key stored. New explicit workflow routes are
-                            unavailable; legacy non-workflow calls may still use
-                            a deployment credential.
+                            No key saved here. A key in the repo&apos;s .env
+                            files is used instead when set.
                         </p>
                     </div>
                 )}

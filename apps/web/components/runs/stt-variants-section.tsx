@@ -1,6 +1,7 @@
 "use client";
 
 import {
+    STT_LEVEL_VOLUME_FIELD,
     sttModelSupportsLanguage,
     type ISttRunEvaluation,
 } from "@flash-evals/api-contract";
@@ -15,7 +16,7 @@ import {
     TransliterationSettings,
     sttRunConfig,
 } from "./audio-transcription-section";
-import { SttConfigFields } from "./stt-config-fields";
+import { ConfigField, SttConfigFields } from "./stt-config-fields";
 import type { useAudioTranscriptionController } from "./use-audio-transcription-controller";
 import type { useSttVariantsController } from "./use-stt-variants-controller";
 
@@ -44,6 +45,7 @@ export function SttVariantsSection({
                 ? variant.language
                 : "",
             config: variant.config,
+            levelVolume: variant.levelVolume,
             transliteration: {
                 enabled: false,
                 modelId: "",
@@ -185,6 +187,17 @@ export function SttVariantsSection({
                                     controller.updateConfig(
                                         variant.variantKey,
                                         config,
+                                    )
+                                }
+                            />
+                            <ConfigField
+                                idPrefix={idPrefix}
+                                field={STT_LEVEL_VOLUME_FIELD}
+                                value={variant.levelVolume}
+                                onChange={(value) =>
+                                    controller.updateLevelVolume(
+                                        variant.variantKey,
+                                        value === true,
                                     )
                                 }
                             />

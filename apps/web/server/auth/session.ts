@@ -77,7 +77,8 @@ export async function principalForClerkIdentity(
 
     const email = normalizeEmail(identity.email);
     if (
-        (flashEvalsTenancyMode() === "single-org" || allowedEmailDomain() !== "") &&
+        (flashEvalsTenancyMode() === "single-org" ||
+            allowedEmailDomain() !== "") &&
         !isAllowedEmail(email)
     ) {
         throw new ForbiddenError(accessDeniedMessage());
@@ -128,7 +129,9 @@ export function assertPageSameTeam(
 // this same check before ever calling the API, so a mismatch here would
 // reject (or wrongly admit) sign-ins the API would have handled differently.
 export function flashEvalsTenancyMode(): "single-org" | "isolated" {
-    const raw = (process.env.FLASH_EVALS_TENANCY_MODE ?? "").trim().toLowerCase();
+    const raw = (process.env.FLASH_EVALS_TENANCY_MODE ?? "")
+        .trim()
+        .toLowerCase();
     return raw === "isolated" ? "isolated" : "single-org";
 }
 
@@ -161,7 +164,7 @@ async function devPrincipal(): Promise<Principal> {
     const userId = process.env.FLASH_EVALS_DEFAULT_USER_ID?.trim();
     if (!teamId || !userId) {
         throw new AuthConfigurationError(
-            "AUTH_DEV requires FLASH_EVALS_DEFAULT_TEAM_ID and FLASH_EVALS_DEFAULT_USER_ID. `pnpm run dev` sets them to the seeded team and user.",
+            "AUTH_DEV requires FLASH_EVALS_DEFAULT_TEAM_ID and FLASH_EVALS_DEFAULT_USER_ID. `bun run dev` sets them to the seeded team and user.",
         );
     }
     return {

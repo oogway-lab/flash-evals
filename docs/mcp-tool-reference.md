@@ -2,7 +2,7 @@
 
 [MCP guide](mcp-eval-server.md) · [Documentation home](../README.md#documentation)
 
-The server exposes 84 tools. This page is a navigation index; call `tools/list`
+The server exposes 97 tools. This page is a navigation index; call `tools/list`
 for the exact argument schemas and annotations on your running revision. The
 [MCP guide](mcp-eval-server.md#a-first-evaluation-through-tools) shows a complete
 small evaluation, including IDs, validation, and result handling.
@@ -62,11 +62,12 @@ Use `golden` datasets for reference answers and `evaluation` datasets for inputs
 - `optimize_prompt`
 - `test_judge_draft`
 - `generate_judge_for_run`
+- `propose_benchmark_task_map`
 - `create_judge_prompt`
 - `duplicate_prompt_version`
 - `delete_prompt`
 
-### Runs and review (10)
+### Runs and review (11)
 
 Keep the run ID returned by creation, poll progress, and inspect individual cells before relying on aggregate scores. Notes describe a whole run; annotations attach a review verdict or comment to a cell.
 
@@ -79,6 +80,7 @@ Keep the run ID returned by creation, poll progress, and inspect individual cell
 - `save_run_note`
 - `annotate_run_cell`
 - `retry_run`
+- `cancel_run`
 - `delete_run`
 
 ### Provider settings and model routing (15)
@@ -120,3 +122,13 @@ Read the saved graph before editing it. `update_workflow` replaces the graph; `s
 - `save_workflow_run_note`
 - `annotate_workflow_run_cell`
 - `get_workflow_run_progress`
+
+### Setup comparisons (5)
+
+One launch for an eval run and pipeline runs scored against its reference, with one shared spend limit. `create_setup_comparison` takes the fields of `create_eval_run` plus `pipelineIds`; `list_pipeline_comparison_runs` lists the eval runs `create_workflow_run` can compare a pipeline with.
+
+- `create_setup_comparison`
+- `get_setup_comparison`
+- `cancel_setup_comparison`
+- `list_setup_comparison_pipelines`
+- `list_pipeline_comparison_runs`

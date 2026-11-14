@@ -5,10 +5,14 @@ import {
     render,
     screen,
     waitFor,
+    within,
 } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { IPromptWorkflow, IRunSetupResponse } from "@flash-evals/api-contract";
+import type {
+    IPromptWorkflow,
+    IRunSetupResponse,
+} from "@flash-evals/api-contract";
 const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
@@ -184,6 +188,26 @@ describe("SttCanvas", () => {
             container.querySelector<HTMLInputElement>('input[name="kind"]')
                 ?.value,
         ).toBe("stt");
+    });
+
+    it("offers only prompt steps on a prompt pipeline and keeps its kind", () => {
+        const { container } = render(
+            <SttCanvas
+                workflow={{ ...workflow, kind: "prompt", nodes: [], edges: [] }}
+                setup={setup}
+                saveAction={vi.fn(async () => ({}))}
+            />,
+        );
+        const group = screen.getByRole("group", { name: "Add block" });
+        expect(
+            within(group)
+                .getAllByRole("button")
+                .map((button) => button.textContent),
+        ).toEqual(["Prompt"]);
+        expect(
+            container.querySelector<HTMLInputElement>('input[name="kind"]')
+                ?.value,
+        ).toBe("prompt");
     });
 
     it("stays dirty after a failed save and clears only after a successful save", async () => {

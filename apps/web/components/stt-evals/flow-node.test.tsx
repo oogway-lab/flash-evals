@@ -13,7 +13,12 @@ afterEach(cleanup);
 
 function renderNode(
     nodeType: "input" | "stt" | "judge" | "llm_text",
-    extra: { label?: string; needsRepair?: boolean; selected?: boolean } = {},
+    extra: {
+        label?: string;
+        needsRepair?: boolean;
+        selected?: boolean;
+        runCondition?: unknown;
+    } = {},
 ) {
     const props = {
         data: {
@@ -21,6 +26,7 @@ function renderNode(
             label: extra.label ?? nodeType,
             nodeType,
             needsRepair: extra.needsRepair,
+            runCondition: extra.runCondition,
         },
         selected: extra.selected ?? false,
     } as unknown as Parameters<typeof SttFlowNode>[0];
@@ -76,5 +82,10 @@ describe("SttFlowNode", () => {
         const label = screen.getByText(/A very long block label/);
         expect(label).not.toHaveClass("truncate");
         expect(label).toHaveClass("wrap-break-word");
+    });
+
+    it("marks a step that runs only when a condition holds", () => {
+        renderNode("llm_text", { runCondition: { stepKey: "a" } });
+        expect(screen.getByText("Conditional")).toBeInTheDocument();
     });
 });

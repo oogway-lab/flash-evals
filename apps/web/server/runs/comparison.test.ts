@@ -17,6 +17,7 @@ function row(overrides: Partial<LeaderboardRow>): LeaderboardRow {
         modelId: "gpt-4o",
         isReference: false,
         n: 10,
+        failedCells: 0,
         avgFieldScore: undefined,
         avgJudgeScore: undefined,
         avgTranscriptScore: undefined,

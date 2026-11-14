@@ -18,6 +18,18 @@
             "import": "./dist/providers/transcriptIdentity.js",
             "require": "./dist/providers/transcriptIdentity.js",
             "default": "./dist/providers/transcriptIdentity.js"
+        },
+        "./public-base-url": {
+            "types": "./src/providers/publicBaseUrl.ts",
+            "import": "./dist/providers/publicBaseUrl.js",
+            "require": "./dist/providers/publicBaseUrl.js",
+            "default": "./dist/providers/publicBaseUrl.js"
+        },
+        "./judge-order": {
+            "types": "./src/judgeOrder.ts",
+            "import": "./dist/judgeOrder.js",
+            "require": "./dist/judgeOrder.js",
+            "default": "./dist/judgeOrder.js"
         }
     },
     "scripts": {
@@ -27,7 +39,9 @@
         "test:coverage": "vitest run --coverage"
     },
     "dependencies": {
+        "@ai-sdk/anthropic": "^4.0.86",
         "@ai-sdk/gateway": "^4.0.136",
+        "@ai-sdk/google": "^4.0.103",
         "@ai-sdk/openai": "^4.0.109",
         "ai": "^7.0.163",
         "openai": "^7.53.0",

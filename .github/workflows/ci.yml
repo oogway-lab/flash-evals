@@ -33,10 +33,10 @@ jobs:
         uses: ./.github/actions/setup-workspace
 
       - name: Typecheck
-        run: pnpm run typecheck
+        run: bun run typecheck
 
       - name: Build
-        run: pnpm run build
+        run: bun run build
 
   web-tests:
     name: Web unit tests
@@ -52,7 +52,7 @@ jobs:
         uses: ./.github/actions/setup-workspace
 
       - name: Web unit tests
-        run: pnpm --filter @flash-evals/web test
+        run: bun run --filter @flash-evals/web test
 
       - name: Upload web unit test timing report
         if: always()
@@ -84,7 +84,7 @@ jobs:
           FLASH_EVALS_CSP_STORAGE_ORIGIN: https://storage.example.test
         run: |
           export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$(node -e 'process.stdout.write("pk_" + ["te", "st"].join("") + "_" + Buffer.from("clerk.example.test$").toString("base64"))')"
-          pnpm run web:build:cloudflare
+          bun run web:build:cloudflare
 
       - name: Verify Cloudflare build output
         run: |
@@ -94,7 +94,7 @@ jobs:
           test -d apps/web/.open-next/assets
 
       - name: Smoke test the local Cloudflare Worker runtime
-        run: pnpm run web:smoke:cloudflare
+        run: bun run web:smoke:cloudflare
 
   package-tests:
     name: Package and API tests
@@ -110,23 +110,22 @@ jobs:
         uses: ./.github/actions/setup-workspace
 
       - name: Development setup and launcher regression tests
-        run: pnpm run test:dev
+        run: bun run test:dev
 
-      # Runs the `test` script of every package under apps/ and packages/
-      # except web (its own job), API, and site, whose tests run with coverage
-      # in the two steps below.
+      # Runs the `test` script of the shared packages. Web has its own job, and
+      # API and site run with coverage in the two steps below. Bun's --filter
+      # has no exclusions, so packages are listed: add new ones that gain tests.
       - name: Unit tests
         run: >-
-          pnpm -r --workspace-concurrency=1
-          --filter './apps/**' --filter './packages/**'
-          --filter '!@flash-evals/api' --filter '!@flash-evals/web' --filter '!@flash-evals/site'
-          run test
+          bun run --filter @flash-evals/api-contract test &&
+          bun run --filter @flash-evals/llm-core test &&
+          bun run --filter @flash-evals/secrets test
 
       - name: API unit tests and coverage thresholds
-        run: pnpm --filter @flash-evals/api test:coverage
+        run: bun run --filter @flash-evals/api test:coverage
 
       - name: Marketing site unit tests and coverage thresholds
-        run: pnpm --filter @flash-evals/site test:coverage
+        run: bun run --filter @flash-evals/site test:coverage
 
       - name: Upload coverage and reports
         if: always()
@@ -168,7 +167,7 @@ jobs:
 
       - name: Verify generated database migrations are current
         run: |
-          pnpm --filter @flash-evals/web db:generate
+          bun run --filter @flash-evals/web db:generate
           if [ -n "$(git status --porcelain apps/web/server/db/migrations)" ]; then
             git status --short apps/web/server/db/migrations
             echo "Database schema or migration snapshots are out of sync."
@@ -181,7 +180,7 @@ jobs:
       - name: Apply all migrations to an empty database
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/flash_evals_ci
-        run: pnpm run db:migrate
+        run: bun run db:migrate
 
   static-checks:
     name: Lint and static checks
@@ -201,52 +200,51 @@ jobs:
       - name: Build shared packages
         run: |
           node scripts/build-packages.mjs
-          pnpm run marketing:build
+          bun run marketing:build
 
-      # A newly published high advisory fails every PR until it is handled.
-      # Upgrade the dependency, or if no fix applies yet, record the advisory
-      # with `pnpm audit --ignore GHSA-xxxx-xxxx-xxxx` (it lands under
-      # `auditConfig.ignoreGhsas` in pnpm-workspace.yaml). The weekly Security
-      # workflow runs the same audit, so new advisories often surface there
-      # first.
+      # A newly published high advisory in a production dependency fails every
+      # PR until it is handled. Upgrade the dependency, or if no fix applies
+      # yet, add `--ignore=<CVE>` to the `security` audit arguments in
+      # scripts/run-security-scans.mjs and here. The weekly Security workflow
+      # runs the same audit, so new advisories often surface there first.
       - name: Dependency audit
-        run: pnpm audit --prod --audit-level=high
+        run: bun scripts/audit-production.mjs --audit-level=high
 
       - name: Lint
-        run: pnpm run lint
+        run: bun run lint
 
       - name: Architecture boundaries
-        run: pnpm run lint:boundaries
+        run: bun run lint:boundaries
 
       - name: Client/server import boundary
-        run: pnpm run check:client-imports
+        run: bun run check:client-imports
 
       - name: Design drift
         run: node scripts/check-design-drift.mjs
 
       - name: Dead code and dependency hygiene
-        run: pnpm run quality:dead-code
+        run: bun run quality:dead-code
 
       - name: Duplicate code
-        run: pnpm run quality:duplicates
+        run: bun run quality:duplicates
 
       - name: Workspace version drift
-        run: pnpm run quality:versions
+        run: bun run quality:versions
 
       - name: Technical debt markers
-        run: pnpm run quality:debt
+        run: bun run quality:debt
 
       - name: Feature flag lifecycle
-        run: pnpm run quality:flags
+        run: bun run quality:flags
 
       - name: Documentation commands
-        run: pnpm run docs:check
+        run: bun run docs:check
 
       - name: Env var docs check
-        run: pnpm run docs:env
+        run: bun run docs:env
 
       - name: Generate API docs
-        run: pnpm run docs:api
+        run: bun run docs:api
 
       - name: Split deployment readiness
         run: node --test scripts/check-split-deployment-readiness.test.mjs
@@ -353,17 +351,18 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
 
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.21.0
-          cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Resolve Playwright version
         id: playwright
@@ -378,17 +377,17 @@ jobs:
 
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
+        run: bunx playwright install --with-deps chromium
 
       - name: Install Playwright OS dependencies
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium
+        run: bunx playwright install-deps chromium
 
       - name: Run web smoke tests
-        run: pnpm exec playwright test tests/e2e/health.spec.ts
+        run: bunx playwright test tests/e2e/health.spec.ts
 
       - name: Run anonymous marketing and login routing checks
-        run: pnpm exec playwright test --config playwright.marketing.config.ts
+        run: bunx playwright test --config playwright.marketing.config.ts
 
       - name: Upload Playwright report
         if: always()

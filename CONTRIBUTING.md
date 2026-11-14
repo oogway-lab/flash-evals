@@ -25,7 +25,7 @@ and app run on different machines. The [development guide](docs/development.md)
 covers fast refresh/restarts, test levels, optional audio/MCP, and data-preserving
 updates. It is the day-to-day command reference.
 
-Node/pnpm pins live in `.nvmrc` and `package.json`. No Clerk, Supabase, or provider
+Node/Bun pins live in `.nvmrc` and `package.json`. No Clerk, Supabase, or provider
 account is needed for synthetic examples. Only initialize a confirmed new,
 disposable database; seed resets application tables. Real provider requests,
 including prompt validation, may incur charges.
@@ -55,19 +55,19 @@ existing large modules should not grow further.
 Run the checks relevant to your change:
 
 ```bash
-pnpm run test:dev
-pnpm run typecheck
-pnpm run build
-pnpm run test
-pnpm run test:e2e
-pnpm run lint
-pnpm run docs:check
-pnpm run docs:env
-pnpm run quality
-pnpm run security
+bun run test:dev
+bun run typecheck
+bun run build
+bun run test
+bun run test:e2e
+bun run lint
+bun run docs:check
+bun run docs:env
+bun run quality
+bun run security
 ```
 
-Install Chromium for Playwright with `pnpm exec playwright install chromium`
+Install Chromium for Playwright with `bunx playwright install chromium`
 before running browser tests locally. Linux may also need Playwright system
 libraries; see [optional tools](docs/development.md#optional-tools). Browser suites
 use separate private ports/caches and can run alongside development. The current
@@ -77,15 +77,15 @@ click-through coverage of datasets, prompts, runs, or workflows. The optional AP
 health check is skipped unless `PLAYWRIGHT_API_BASE_URL` is set. Production Clerk
 sign-in and paid-provider behavior require separate integration testing.
 
-`pnpm run quality` combines type checks, builds, unit tests, lint, architecture,
+`bun run quality` combines type checks, builds, unit tests, lint, architecture,
 and documentation checks; it does not run Playwright or replace the security
-scans. `pnpm run security` reports if a local scanner is unavailable. GitHub
+scans. `bun run security` reports if a local scanner is unavailable. GitHub
 Actions runs quality and security jobs plus a browser smoke job; none deploy the
 application.
 
 For a documentation-only change, run `docs:check`, `docs:env`, and Prettier on the
 changed files, and check local links and examples. The command checker verifies
-that named pnpm scripts exist; it does not prove the commands ran successfully.
+that named Bun scripts exist; it does not prove the commands ran successfully.
 
 ### Real-database workflow concurrency tests
 
@@ -95,7 +95,7 @@ Create a dedicated test database, apply the migrations, then run:
 
 ```bash
 FLASH_EVALS_TEST_DATABASE_URL=postgres://user:password@localhost:5432/flash_evals_test \
-  pnpm --filter @flash-evals/api exec vitest run src/routes/workflowEditing.integration.test.ts
+  bun run --cwd apps/api vitest run src/routes/workflowEditing.integration.test.ts
 ```
 
 Replace the URL with your test database. The test is skipped when the variable is

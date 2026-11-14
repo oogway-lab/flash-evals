@@ -1,8 +1,9 @@
 import { createGateway } from "@ai-sdk/gateway";
 import { gatewayAttributionHeaders } from "@flash-evals/llm-core";
-import type {
-    ITranscriptArtifact,
-    ITranscriptionProviderInput,
+import {
+    EmptyTranscriptError,
+    type ITranscriptArtifact,
+    type ITranscriptionProviderInput,
 } from "../types";
 import {
     bufferToUint8Array,
@@ -20,7 +21,7 @@ export async function transcribeWithVercelGateway(
 ): Promise<ITranscriptArtifact> {
     if (!input.aiGatewayApiKey) {
         throw new Error(
-            "Add AI_GATEWAY_API_KEY to run Vercel Gateway transcription.",
+            "Add your AI Gateway API key in Settings (or AI_GATEWAY_API_KEY in the app's .env) to run Vercel Gateway transcription.",
         );
     }
 
@@ -37,7 +38,12 @@ export async function transcribeWithVercelGateway(
         });
     const text = result.text.trim();
     if (!text)
-        throw new Error("Vercel Gateway transcription returned empty text.");
+        throw new EmptyTranscriptError(
+            "Vercel Gateway transcription returned empty text.",
+            typeof result.durationInSeconds === "number"
+                ? { durationMs: Math.round(result.durationInSeconds * 1000) }
+                : {},
+        );
     const segments = transcriptSegments(result.segments);
     const detectedLanguage = result.language?.trim() ?? "";
     return {

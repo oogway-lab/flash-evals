@@ -207,7 +207,10 @@ export function RunsList({ runs }: { runs: IRunListRow[] }) {
                                     <ModelsCell models={r.models} />
                                 </TableCell>
                                 <TableCell>
-                                    <RunStatusBadge status={r.status} />
+                                    <RunStatusBadge
+                                        status={r.status}
+                                        stopReason={r.stopReason}
+                                    />
                                 </TableCell>
                                 <TableCell>
                                     <BestModelCell run={r} />

@@ -60,7 +60,9 @@ for (const host of ["127.0.0.1", "100.64.0.10"]) {
         assert.equal(web.FLASH_EVALS_TENANCY_MODE, "isolated");
         assert.equal(api.FLASH_EVALS_MAX_RUN_CELLS, "50");
         assert.equal(api.FLASH_EVALS_TEAM_DAILY_SPEND_CAP_USD, "2");
-        assert.equal(api.OPENROUTER_API_KEY, "");
+        assert.equal(api.FLASH_EVALS_LLM_PROVIDER, "vercel-ai-gateway");
+        assert.equal(api.AI_GATEWAY_API_KEY, "");
+        assert.equal(api.OPENROUTER_API_KEY, undefined);
         assert.equal(statSync(apiFile).mode & 0o777, 0o600);
         assert.equal(statSync(webFile).mode & 0o777, 0o600);
         assert(!result.stdout.includes(api.INTERNAL_API_TOKEN));

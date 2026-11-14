@@ -3,10 +3,14 @@ import type {
     ICreateWorkflowRunRequest,
     ISttRunConfig,
 } from "@flash-evals/api-contract";
-import { createMultiWorkflowSeed } from "@flash-evals/api-contract";
+import {
+    MAX_RUN_COST_LIMIT_USD,
+    createMultiWorkflowSeed,
+} from "@flash-evals/api-contract";
 import { z } from "zod";
 import { publishWorkflowRunEnqueue } from "../../workflowRunEnqueue.js";
 import {
+    cancelWorkflowRunPayload,
     createWorkflowPayload,
     createWorkflowRunPayload,
     deleteWorkflowPayload,
@@ -15,6 +19,7 @@ import {
     listWorkflowRunsPayload,
     listWorkflowSummariesPagePayload,
     listWorkflowsPayload,
+    retryWorkflowRunPayload,
     saveWorkflowRunCellAnnotationPayload,
     saveWorkflowRunNotePayload,
     selectWorkflowLlmModelPayload,
@@ -29,6 +34,7 @@ import { ok } from "../responses.js";
 import {
     ProjectId,
     ReviewVerdict,
+    RunDataPolicy,
     SttRunConfig,
     WorkflowEdgeInput,
     WorkflowNodeInput,
@@ -330,6 +336,24 @@ export function registerWorkflowTools(
                     itemId: z.string().uuid().optional(),
                     sttConfig: SttRunConfig.optional(),
                     idempotencyKey: z.string().trim().min(1).max(200),
+                    maxCostUsd: z
+                        .number()
+                        .positive()
+                        .max(MAX_RUN_COST_LIMIT_USD)
+                        .optional()
+                        .describe(
+                            "Spend limit in USD for this run (step, judge and transcription calls). The worker stops starting steps once recorded spend reaches it; calls already sent finish, so spend can go slightly over. Omit for no per-run limit.",
+                        ),
+                    dataPolicy: RunDataPolicy.optional().describe(
+                        "Who may serve every step and judge call, and what they may keep. Every model-backed step must use a Vercel AI Gateway or OpenRouter route.",
+                    ),
+                    compareWithRunId: z
+                        .string()
+                        .uuid()
+                        .optional()
+                        .describe(
+                            "A completed (or partial) eval run on the same dataset with a benchmark Task Map. Each item's final answer is scored against that run's reference model with its Task Map, policy, judge and data rules (combined with this run's dataPolicy), and get_workflow_run returns the comparison. The pipeline needs a final answer.",
+                        ),
                 })
                 .strict()
                 .superRefine((input, ctx) => {
@@ -358,6 +382,15 @@ export function registerWorkflowTools(
                         : {}),
                     idempotencyKey: input.idempotencyKey,
                     createdBy: principal.userId,
+                    ...(input.maxCostUsd !== undefined
+                        ? { maxCostUsd: input.maxCostUsd }
+                        : {}),
+                    ...(input.dataPolicy
+                        ? { dataPolicy: input.dataPolicy }
+                        : {}),
+                    ...(input.compareWithRunId
+                        ? { compareWithRunId: input.compareWithRunId }
+                        : {}),
                 } satisfies ICreateWorkflowRunRequest,
                 runtime.config,
             );
@@ -684,6 +717,65 @@ export function registerWorkflowTools(
                     updatedBy: principal.userId,
                 }),
             ),
+    );
+
+    server.registerTool(
+        "cancel_workflow_run",
+        {
+            title: "Cancel workflow run",
+            description:
+                "Stop a pending or running workflow (pipeline) run. Calls already sent finish; steps not started are not run, and the run ends cancelled. A pending run is cancelled at once. retry_workflow_run resumes a cancelled run.",
+            inputSchema: workflowRunInput,
+        },
+        async (input) => {
+            const result = await cancelWorkflowRunPayload(runtime.db, {
+                teamId: principal.teamId,
+                projectId: await resolveProjectId(context, input.projectId),
+                workflowId: input.workflowId,
+                workflowRunId: input.workflowRunId,
+            });
+            return ok(
+                result.status === "cancelled"
+                    ? "Workflow run cancelled."
+                    : result.status === "pending" || result.status === "running"
+                      ? "Cancel requested; the worker stops before its next step."
+                      : `Workflow run already ended (${result.status}); nothing to cancel.`,
+                result,
+            );
+        },
+    );
+
+    server.registerTool(
+        "retry_workflow_run",
+        {
+            title: "Retry workflow run",
+            description:
+                "Run a workflow (pipeline) run's failed steps again, resume a cancelled run, or queue again a pending run whose job is gone. Successful steps are kept.",
+            inputSchema: workflowRunInput,
+        },
+        async (input) => {
+            const request = {
+                teamId: principal.teamId,
+                projectId: await resolveProjectId(context, input.projectId),
+                workflowId: input.workflowId,
+                workflowRunId: input.workflowRunId,
+            };
+            const { retriedCellCount, requeued } =
+                await retryWorkflowRunPayload(runtime.db, request);
+            const published = await publishWorkflowRunEnqueue(
+                runtime.db,
+                runtime.config,
+                input.workflowRunId,
+            );
+            return ok(
+                !requeued
+                    ? "Nothing to retry: the run is still waiting in the queue for a worker."
+                    : published.enqueueStatus === "queued"
+                      ? "Retried and queued workflow run."
+                      : "Retry saved; queue publication will be retried automatically.",
+                { ...published, retriedCellCount, requeued },
+            );
+        },
     );
 
     server.registerTool(

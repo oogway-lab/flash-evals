@@ -8,9 +8,11 @@ import type {
     IRunSetupDatasetOption,
     IRunSetupModelOption,
     IRunSetupVersionOption,
+    ITemperatureAssignment,
     ReasoningEffort,
     ProviderTransport,
 } from "@flash-evals/api-contract";
+import { transportAssignmentFor } from "./provider-select";
 
 interface IProviderModelGroup {
     label: string;
@@ -89,6 +91,7 @@ function selectedModelConfiguration(input: {
     promptByModel: Record<string, string>;
     reasoningByModel: Record<string, ReasoningEffort>;
     transportByModel: Record<string, ProviderTransport>;
+    temperatureByModel: Record<string, string>;
     promptVersionId: string;
     referenceModel: string;
 }) {
@@ -114,12 +117,26 @@ function selectedModelConfiguration(input: {
                 input.reasoningByModel[modelId],
             ),
         })),
+        temperatureAssignments: temperatureAssignmentsFor(
+            input.selectedModels,
+            input.temperatureByModel,
+        ),
         transportAssignments: input.selectedModels.flatMap((modelId) => {
-            const transport =
-                input.transportByModel[modelId] ??
-                input.availableModels.find((model) => model.id === modelId)
-                    ?.transports[0];
-            return transport ? [{ modelId, transport }] : [];
+            const model = input.availableModels.find(
+                (candidate) => candidate.id === modelId,
+            );
+            return transportAssignmentFor(
+                model,
+                modelId,
+                usableTransport(model, input.transportByModel[modelId]),
+            );
+        }),
+        /** Selected models no provider with a saved key can run. */
+        modelsWithoutKey: input.selectedModels.filter((modelId) => {
+            const model = input.availableModels.find(
+                (option) => option.id === modelId,
+            );
+            return model !== undefined && model.transports.length === 0;
         }),
     };
 }
@@ -156,6 +173,10 @@ export function usePromptEvalRunController({
     >({});
     const [transportByModel, setTransportByModel] = useState<
         Record<string, ProviderTransport>
+    >({});
+    // As typed; an empty field leaves the provider's default.
+    const [temperatureByModel, setTemperatureByModel] = useState<
+        Record<string, string>
     >({});
     const [fieldConfigs, setFieldConfigs] = useState<IPipelineFieldConfig[]>(
         initial.fieldConfigs,
@@ -203,6 +224,7 @@ export function usePromptEvalRunController({
         promptByModel,
         reasoningByModel,
         transportByModel,
+        temperatureByModel,
         promptVersionId,
         referenceModel,
     });
@@ -280,6 +302,8 @@ export function usePromptEvalRunController({
         setReasoningByModel,
         transportByModel,
         setTransportByModel,
+        temperatureByModel,
+        setTemperatureByModel,
         fieldConfigs,
         selectedModels,
         providerGroups,
@@ -293,7 +317,14 @@ export function usePromptEvalRunController({
         setReferenceModel,
         promptAssignments: modelConfiguration.promptAssignments,
         reasoningConfigs: modelConfiguration.reasoningConfigs,
+        temperatureAssignments: modelConfiguration.temperatureAssignments,
         transportAssignments: modelConfiguration.transportAssignments,
+        modelsWithoutKey: modelConfiguration.modelsWithoutKey,
+        /** Selected models, or 0 when any has no provider key: the run can't start. */
+        readyModelCount:
+            modelConfiguration.modelsWithoutKey.length > 0
+                ? 0
+                : selectedModels.length,
         selectPromptVersion,
         toggleModel,
         removeModel,
@@ -304,10 +335,10 @@ export function usePromptEvalRunController({
         setJudgePromptVersionId,
         judgeModelId,
         setJudgeModelId,
-        judgeTransport:
-            judgeTransport ??
-            availableModels.find((model) => model.id === judgeModelId)
-                ?.transports[0],
+        judgeTransport: usableTransport(
+            availableModels.find((model) => model.id === judgeModelId),
+            judgeTransport,
+        ),
         setJudgeTransport,
         judgeReasoningEffort,
         setJudgeReasoningEffort,
@@ -320,6 +351,46 @@ export function usePromptEvalRunController({
         canGenerateJudge: Boolean(datasetId) && Boolean(promptVersionId),
         handleGenerateJudge,
     };
+}
+
+/**
+ * A temperature for each selected model whose field isn't empty. A value
+ * that isn't a number is sent as it is, so the run is refused in plain
+ * words rather than run at the default.
+ */
+export function temperatureAssignmentsFor(
+    selectedModels: readonly string[],
+    temperatureByModel: Readonly<Record<string, string>>,
+): ITemperatureAssignment[] {
+    return selectedModels.flatMap((modelId) => {
+        const typed = temperatureByModel[modelId]?.trim();
+        return typed ? [{ modelId, temperature: Number(typed) }] : [];
+    });
+}
+
+/**
+ * Why a model takes no temperature at all (OpenAI reasoning models), for
+ * the form; undefined when it can take one. Claude with thinking on takes
+ * only 1, which the run checks when it starts.
+ */
+export function temperatureUnsupportedReason(
+    model: IRunSetupModelOption | undefined,
+): string | undefined {
+    return model?.provider === "openai" && model.reasoning
+        ? "OpenAI reasoning models take no temperature."
+        : undefined;
+}
+
+/**
+ * The chosen provider while it still has a key for this model, otherwise the
+ * model's default (the preferred provider first, from the API).
+ */
+export function usableTransport(
+    model: IRunSetupModelOption | undefined,
+    chosen: ProviderTransport | undefined,
+): ProviderTransport | undefined {
+    const transports = model?.transports ?? [];
+    return chosen && transports.includes(chosen) ? chosen : transports[0];
 }
 
 export function modelCanRunOnDataset(

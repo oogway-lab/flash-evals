@@ -1,22 +1,49 @@
 import { createHash } from "node:crypto";
 import { createRunWithIdempotency } from "../../runIdempotency.js";
 import type {
+    EvalProviderMode,
     ICreateRunRequest,
     ICreateRunResponse,
     ICreateRunFromSelectionRequest,
+    IJsonSchemaObject,
     IPipelineFieldConfig,
     IReasoningConfig,
     IRunSetupResponse,
     ISttRunEvaluation,
     ISttRunConfig,
     ISttRunVariant,
+    ISttTransliterationConfig,
+    ProviderTransport,
 } from "@flash-evals/api-contract";
+import { isRunTemperature } from "@flash-evals/api-contract";
 import {
+    DIRECT_MAKER_HOSTS,
+    bifrostModelIdFor,
+    bifrostModelListKeyFor,
+    bifrostRoutesViaOpenRouter,
+    bifrostUpstream,
+    isDirectMakerTransport,
+    makerOfModel,
+    registryEntryForBifrostModel,
+    rejectsSamplingSettings,
+    thinkingPlanFor,
+    transportModelIdFor,
+} from "@flash-evals/llm-core";
+import {
+    MAX_RUN_COST_LIMIT_USD,
     MAX_STT_VARIANTS,
     sttMetricsModelId,
     sttModelIdentityForId,
 } from "@flash-evals/api-contract";
-import type { IApiConfig } from "../../config.js";
+import { normalizeProviderMode, type IApiConfig } from "../../config.js";
+import { validateRunBenchmark } from "./benchmark.js";
+import { filterItemsByLabel, resolveItemFilter } from "./itemFilter.js";
+import { assertModelMapsToTransport } from "./modelTransport.js";
+import { defaultProvider, savedKeyProviders } from "../modelProviders.js";
+import {
+    keyPhrase,
+    TRANSPORT_LABELS_FOR_MESSAGES,
+} from "../../transportLabels.js";
 import type { IDb } from "../../db.js";
 import {
     ApiBadRequestError,
@@ -27,6 +54,7 @@ import {
     availableModelOptions,
     modelAllowedForProvider,
     registryEntryFor,
+    registryModelFor,
 } from "../../modelRegistry.js";
 import {
     invalidSttConfigMessages,
@@ -117,6 +145,7 @@ interface IDatasetOptionRow {
     modality: "audio" | "image" | "text";
     item_count: number | string;
     labeled_item_count: number | string;
+    avg_input_chars: number | string | null;
 }
 
 interface IBundleOptionRow {
@@ -133,6 +162,7 @@ interface IVersionOptionRow {
     field_configs: IPipelineFieldConfig[];
     reasoning_config:
         IRunSetupResponse["versionOptions"][number]["reasoningConfig"] | null;
+    prompt_chars: number | string | null;
 }
 
 interface IJudgePromptOptionRow {
@@ -149,9 +179,11 @@ export async function runSetupPayload(
     projectId: string,
 ): Promise<IRunSetupResponse> {
     const keysPromise = resolveApiKeys(db, config, teamId);
+    const preferredProvider = defaultProvider(config);
     const modelsPromise = keysPromise.then((resolved) =>
         availableModelOptions(resolved.apiKeys, {
             beforeListing: teamBaseUrlListingGuard(resolved),
+            preferredProvider,
         }),
     );
     const [
@@ -175,29 +207,122 @@ export async function runSetupPayload(
         versionOptions,
         availableModels: models.models,
         modelsDegraded: models.degraded,
+        ...(models.bifrostModelListError
+            ? { bifrostModelListError: models.bifrostModelListError }
+            : {}),
         hasPrompt: versionOptions.length > 0,
         judgePrompts,
         sttModels: sttModelOptions(
             configWithResolvedKeys(config, resolvedKeys),
             config.sttCapabilityProbes,
         ),
+        savedKeyProviders: savedKeyProviders(resolvedKeys.apiKeys),
+        ...(preferredProvider ? { preferredProvider } : {}),
     };
+}
+
+/**
+ * How a run is created. A setup comparison's eval run may hold only the
+ * reference model when the comparison's candidates are all pipelines.
+ */
+export interface IRunCreateOptions {
+    allowReferenceOnly?: boolean;
 }
 
 export async function createRunPayload(
     db: IDb,
     input: ICreateRunRequest,
     config?: IApiConfig,
+    options: IRunCreateOptions = {},
 ): Promise<ICreateRunResponse> {
     return createRunWithIdempotency(db, input, "models", async (tx) => {
-        const preparedInput = inputWithSttVariantModels(input);
-        validateRunModelTransports(preparedInput.models);
+        const preparedInput = judgesOnBifrostRun(
+            inputWithSttVariantModels(input),
+        );
+        validateRunModelTransports(preparedInput);
+        validateRunTemperatures(preparedInput.models);
         validateUniqueModelIds(
             preparedInput.models.map(({ modelId }) => modelId),
         );
+        validateRunBenchmark(preparedInput, undefined, options);
+        validateRunMaxCost(preparedInput);
+        validateRunDataPolicy(preparedInput, config);
         await validateTransportKeysWithResolvedKeys(tx, preparedInput, config);
+        await validateTransliterationKeysWithResolvedKeys(
+            tx,
+            preparedInput,
+            config,
+        );
         return createRunPayloadInTransaction(tx, preparedInput, config);
     });
+}
+
+/**
+ * A run whose models all go through Bifrost sends its judges there too,
+ * unless a judge's provider was chosen: a team on Bifrost may have no other
+ * gateway key.
+ */
+export function judgesOnBifrostRun(
+    input: ICreateRunRequest,
+): ICreateRunRequest {
+    const allBifrost =
+        input.models.length > 0 &&
+        input.models.every((model) => model.transport === "bifrost");
+    if (!allBifrost) return input;
+    return {
+        ...input,
+        ...(input.runJudge && !input.runJudge.transport
+            ? { runJudge: { ...input.runJudge, transport: "bifrost" } }
+            : {}),
+        ...(input.benchmark?.judge && !input.benchmark.judge.transport
+            ? {
+                  benchmark: {
+                      ...input.benchmark,
+                      judge: { ...input.benchmark.judge, transport: "bifrost" },
+                  },
+              }
+            : {}),
+    };
+}
+
+function onBifrost(
+    transport: ProviderTransport | undefined,
+    config: Pick<IApiConfig, "flashEvalsLlmProvider"> | undefined,
+): boolean {
+    return (
+        transport === "bifrost" ||
+        (transport === undefined && config?.flashEvalsLlmProvider === "bifrost")
+    );
+}
+
+/**
+ * Bifrost passes OpenRouter's provider settings on for an openrouter/ id,
+ * as pipeline steps do; other upstreams can't follow data rules.
+ */
+function assertBifrostCanFollowRules(call: {
+    name: string;
+    transportModelId?: string;
+}): void {
+    const bifrostId = call.transportModelId ?? bifrostModelIdFor(call.name);
+    if (bifrostRoutesViaOpenRouter(bifrostId)) return;
+    throw new ApiBadRequestError(
+        `dataPolicy: Bifrost sends ${call.name} as "${bifrostId}" to ${bifrostUpstream(bifrostId) ?? "its default provider"}, not OpenRouter, so it can't follow the data rules. Choose a Bifrost model ID that starts with openrouter/.`,
+    );
+}
+
+/** A spend limit must be a positive number of USD within the API's bound. */
+export function validateRunMaxCost(input: { maxCostUsd?: number }): void {
+    const value = input.maxCostUsd;
+    if (value === undefined) return;
+    if (
+        typeof value !== "number" ||
+        !Number.isFinite(value) ||
+        value <= 0 ||
+        value > MAX_RUN_COST_LIMIT_USD
+    )
+        throw new ApiBadRequestError(
+            `The spend limit must be more than $0 and at most $${MAX_RUN_COST_LIMIT_USD.toLocaleString("en-US")}.`,
+        );
 }
 
 function inputWithSttVariantModels(
@@ -226,7 +351,8 @@ async function validateTransportKeysWithResolvedKeys(
 ): Promise<void> {
     const hasExplicitTransport =
         input.models.some((model) => model.transport) ||
-        Boolean(input.runJudge?.transport);
+        Boolean(input.runJudge?.transport) ||
+        Boolean(input.benchmark?.judge?.transport);
     if (!hasExplicitTransport) return;
     const effectiveConfig = config
         ? configWithResolvedKeys(
@@ -246,11 +372,14 @@ function configWithResolvedKeys(
         openaiApiKey: resolved.apiKeys.openai,
         aiGatewayApiKey: resolved.apiKeys.gateway,
         sonioxApiKey: resolved.sttProviderKeys.soniox,
+        elevenlabsApiKey: resolved.sttProviderKeys.elevenlabs,
         geminiApiKey: resolved.sttProviderKeys.gemini,
         openrouterApiKey: resolved.apiKeys.openrouter,
         openrouterBaseUrl: resolved.apiKeys.openrouterBaseUrl,
         bifrostApiKey: resolved.apiKeys.bifrost,
         bifrostBaseUrl: resolved.apiKeys.bifrostBaseUrl,
+        anthropicApiKey: resolved.apiKeys.anthropic,
+        googleApiKey: resolved.apiKeys.google,
     };
 }
 
@@ -264,6 +393,9 @@ async function validateTransportKeys(
                 model.transport ? [model.transport] : [],
             ),
             ...(input.runJudge?.transport ? [input.runJudge.transport] : []),
+            ...(input.benchmark?.judge?.transport
+                ? [input.benchmark.judge.transport]
+                : []),
         ]),
     ];
     if (transports.length === 0) return;
@@ -272,28 +404,207 @@ async function validateTransportKeys(
             "Provider configuration is required for explicit transport selections.",
         );
     }
-    const apiKeys = {
-        openai: config.openaiApiKey,
-        gateway: config.aiGatewayApiKey,
-        openrouter: config.openrouterApiKey,
-        bifrost: config.bifrostApiKey,
-    };
     for (const transport of transports) {
-        if (!apiKeys[transport]) {
+        if (!transportApiKey(config, transport)) {
             throw new ApiBadRequestError(
-                `transportAssignments: Add a ${transportLabel(transport)} API key before selecting the "${transport}" transport.`,
+                `transportAssignments: Add ${keyPhrase(transport)} in Settings before running models through ${TRANSPORT_LABELS_FOR_MESSAGES[transport]}.`,
             );
         }
     }
 }
 
-function transportLabel(
-    transport: "openai" | "gateway" | "openrouter" | "bifrost",
-): string {
-    if (transport === "gateway") return "Vercel AI Gateway";
-    if (transport === "openrouter") return "OpenRouter";
-    if (transport === "bifrost") return "Bifrost";
-    return "OpenAI";
+function transportApiKey(
+    config: IApiConfig,
+    transport: ProviderTransport,
+): string | undefined {
+    const apiKeys: Record<ProviderTransport, string | undefined> = {
+        openai: config.openaiApiKey,
+        gateway: config.aiGatewayApiKey,
+        openrouter: config.openrouterApiKey,
+        bifrost: config.bifrostApiKey,
+        anthropic: config.anthropicApiKey,
+        google: config.googleApiKey,
+    };
+    return apiKeys[transport];
+}
+
+/** Checks transliteration providers against the team's saved keys too. */
+async function validateTransliterationKeysWithResolvedKeys(
+    db: IDb,
+    input: ICreateRunRequest,
+    config: IApiConfig | undefined,
+): Promise<void> {
+    const sttConfigs = [
+        input.sttConfig,
+        ...(input.sttVariants ?? []).map((variant) => variant?.config),
+        ...(input.sttEvaluation?.transliteration
+            ? [{ transliteration: input.sttEvaluation.transliteration }]
+            : []),
+    ] as (ISttRunConfig | undefined)[];
+    const asksForProvider = sttConfigs.some(
+        (sttConfig) =>
+            sttConfig?.transliteration?.enabled &&
+            requestedTransliterationProviderMode(sttConfig.transliteration) !==
+                undefined,
+    );
+    if (!asksForProvider) return;
+    const effectiveConfig = config
+        ? configWithResolvedKeys(
+              config,
+              await resolveApiKeys(db, config, input.teamId),
+          )
+        : undefined;
+    validateTransliterationProviderKeys(sttConfigs, effectiveConfig);
+}
+
+// Gateway host names, e.g. "vertex", "vertexAnthropic", "google-vertex".
+const HOST_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
+
+/** Checks a data policy's allowed-host list and returns it (empty when unset). */
+export function validateDataPolicyHosts(
+    policy: NonNullable<ICreateRunRequest["dataPolicy"]>,
+): string[] {
+    const hosts = policy.onlyHosts ?? [];
+    if (!Array.isArray(hosts) || hosts.length > 30)
+        throw new ApiBadRequestError(
+            "dataPolicy: onlyHosts must be a list of at most 30 host names.",
+        );
+    for (const host of hosts)
+        if (typeof host !== "string" || !HOST_NAME.test(host))
+            throw new ApiBadRequestError(
+                `dataPolicy: "${String(host)}" is not a host name (letters, digits, ".", "_" or "-").`,
+            );
+    return hosts;
+}
+
+/**
+ * Data rules need a gateway that routes between hosting companies: every
+ * model and judge must run through Vercel AI Gateway or OpenRouter. A direct
+ * Anthropic or Google call is served by the maker itself, so it may run when
+ * the only rule is an allowed-host list that names the maker.
+ */
+export function validateRunDataPolicy(
+    input: Pick<
+        ICreateRunRequest,
+        "dataPolicy" | "models" | "runJudge" | "benchmark"
+    > &
+        Partial<
+            Pick<
+                ICreateRunRequest,
+                "sttConfig" | "sttVariants" | "sttEvaluation"
+            >
+        >,
+    config?: Pick<IApiConfig, "flashEvalsLlmProvider">,
+): void {
+    const policy = input.dataPolicy;
+    if (!policy) return;
+    const hosts = validateDataPolicyHosts(policy);
+    const routes = (transport: string | undefined) =>
+        transport === "gateway" ||
+        transport === "openrouter" ||
+        (transport === undefined &&
+            (config?.flashEvalsLlmProvider === "gateway" ||
+                config?.flashEvalsLlmProvider === "vercel-ai" ||
+                config?.flashEvalsLlmProvider === "openrouter"));
+    const calls = [
+        ...input.models.map((model) => ({
+            name: model.modelId,
+            transport: model.transport,
+            transportModelId: model.transportModelId,
+        })),
+        ...(input.runJudge
+            ? [
+                  {
+                      name: input.runJudge.modelId,
+                      transport: input.runJudge.transport,
+                  },
+              ]
+            : []),
+        ...(input.benchmark?.judge
+            ? [
+                  {
+                      name: input.benchmark.judge.modelId,
+                      transport: input.benchmark.judge.transport,
+                  },
+              ]
+            : []),
+        ...sttCallsUnderDataPolicy(input, config),
+    ];
+    for (const call of calls) {
+        if (routes(call.transport)) continue;
+        if (onBifrost(call.transport, config)) {
+            assertBifrostCanFollowRules(call);
+            continue;
+        }
+        if (isDirectMakerTransport(call.transport)) {
+            const makerHosts = DIRECT_MAKER_HOSTS[call.transport];
+            if (
+                !policy.zeroDataRetention &&
+                !policy.disallowPromptTraining &&
+                hosts.some((host) => makerHosts.includes(host))
+            )
+                continue;
+            throw new ApiBadRequestError(
+                `dataPolicy: ${call.name} runs on ${TRANSPORT_LABELS_FOR_MESSAGES[call.transport]} directly, which can only follow an allowed-host list that includes "${makerHosts[0]}". Run it through Vercel AI Gateway or OpenRouter to use the other rules.`,
+            );
+        }
+        throw new ApiBadRequestError(
+            `dataPolicy: ${call.name} must run through Vercel AI Gateway, OpenRouter, or Bifrost with an openrouter/ model ID to follow the data rules.`,
+        );
+    }
+}
+
+/**
+ * Transliteration and the custom transcript judge call a model too, so they
+ * follow the run's data rules. The judge uses the .env default provider.
+ * Transliteration is checked on the provider the run records (an unset one
+ * becomes the .env default, else "auto"); "auto" picks its provider by key
+ * at run time, so it can't promise to follow the rules.
+ */
+function sttCallsUnderDataPolicy(
+    input: Partial<
+        Pick<ICreateRunRequest, "sttConfig" | "sttVariants" | "sttEvaluation">
+    >,
+    config: Pick<IApiConfig, "flashEvalsLlmProvider"> | undefined,
+): Array<{
+    name: string;
+    transport?: ProviderTransport;
+    transportModelId: string;
+}> {
+    const configs = [
+        input.sttConfig,
+        ...(input.sttVariants ?? []).map((variant) => variant?.config),
+        input.sttEvaluation,
+    ];
+    const calls: ReturnType<typeof sttCallsUnderDataPolicy> = [];
+    for (const sttConfig of configs) {
+        const transliteration = sttConfig?.transliteration;
+        if (transliteration?.enabled) {
+            // The provider the snapshot records and the worker then uses.
+            const mode = snapshotTransliterationProviderMode(
+                transliteration,
+                config,
+            );
+            const transport = TRANSLITERATION_MODE_TRANSPORTS[mode];
+            if (!transport)
+                throw new ApiBadRequestError(
+                    `dataPolicy: transliteration with ${transliteration.modelId} picks its provider automatically, so it can't follow the data rules. Choose Vercel AI Gateway or OpenRouter for transliteration.`,
+                );
+            calls.push({
+                name: `transliteration model ${transliteration.modelId}`,
+                transportModelId: bifrostModelIdFor(transliteration.modelId),
+                transport,
+            });
+        }
+        if (sttConfig?.evaluator?.enabled)
+            calls.push({
+                name: `transcript judge ${sttConfig.evaluator.modelId}`,
+                transportModelId: bifrostModelIdFor(
+                    sttConfig.evaluator.modelId,
+                ),
+            });
+    }
+    return calls;
 }
 
 function validateUniqueModelIds(modelIds: string[]): void {
@@ -308,18 +619,49 @@ function validateUniqueModelIds(modelIds: string[]): void {
     }
 }
 
-function validateRunModelTransports(models: ICreateRunRequest["models"]): void {
-    for (const model of models) {
-        if (
-            model.transport &&
-            !registryEntryFor(model.modelId)?.transports[model.transport] &&
-            model.transport !== "gateway"
-        ) {
-            throw new ApiBadRequestError(
-                `Model "${model.modelId}" does not support the "${model.transport}" transport.`,
-            );
-        }
+function validateRunModelTransports(
+    input: Pick<ICreateRunRequest, "models" | "runJudge">,
+): void {
+    for (const model of input.models) {
+        if (model.transport)
+            assertModelMapsToTransport(model.modelId, model.transport, {
+                allowUnlistedGateway: true,
+                ...(model.transportModelId
+                    ? { transportModelId: model.transportModelId }
+                    : {}),
+            });
+        if (model.transportModelId !== undefined) assertBifrostIdIsModel(model);
     }
+    if (input.runJudge?.transport)
+        assertModelMapsToTransport(
+            input.runJudge.modelId,
+            input.runJudge.transport,
+            { prefix: "runJudge: " },
+        );
+}
+
+/**
+ * A Bifrost id picked from Bifrost's list must be the run model's: the
+ * registry model behind it is that model.
+ */
+export function assertBifrostIdIsModel(
+    model: Pick<
+        ICreateRunRequest["models"][number],
+        "modelId" | "transport" | "transportModelId"
+    >,
+    prefix = "models: ",
+): void {
+    const id = model.transportModelId;
+    if (model.transport !== "bifrost" || typeof id !== "string" || !id)
+        throw new ApiBadRequestError(
+            `${prefix}${model.modelId} can only name its own provider id on Bifrost.`,
+        );
+    const behind = registryEntryForBifrostModel(id)?.id;
+    const own = registryModelFor(model.modelId)?.id ?? model.modelId;
+    if (behind !== own)
+        throw new ApiBadRequestError(
+            `${prefix}Bifrost id "${id}" is not ${model.modelId}. Choose the model again from Bifrost's list.`,
+        );
 }
 
 export async function createRunFromSelectionPayload(
@@ -332,11 +674,17 @@ export async function createRunFromSelectionPayload(
     );
 }
 
-async function createRunFromSelectionInTransaction(
+/**
+ * Creates an eval run from a selection inside the caller's transaction; a
+ * setup comparison creates its eval run this way.
+ */
+export async function createRunFromSelectionInTransaction(
     db: IDb,
     input: ICreateRunFromSelectionRequest,
     config?: IApiConfig,
+    options: IRunCreateOptions = {},
 ): Promise<ICreateRunResponse> {
+    validateRunMaxCost(input);
     const dataset = await getSelectionDataset(
         db,
         input.teamId,
@@ -395,6 +743,7 @@ async function createRunFromSelectionInTransaction(
         providerMode,
         new Set(input.transportAssignments?.map(({ modelId }) => modelId)),
     );
+    validateTemperatureAssignments(input);
     const pipeline = input.pipelineId
         ? await getCreateRunPipeline(
               db,
@@ -404,25 +753,31 @@ async function createRunFromSelectionInTransaction(
           )
         : undefined;
     const promptRows = await resolvePromptRows(db, input);
-    const fieldConfigs = resolveAndValidateFieldConfigs({
-        input,
-        dataset,
-        pipeline,
-        promptRows,
-        providerMode,
+    validateRequestedThinking(input, {
+        bifrostModelList: await bifrostModelListForThinking(db, input, config),
     });
-
-    return createRunPayload(
-        db,
-        buildCreateRunRequest(
+    const fieldConfigs = resolveAndValidateFieldConfigs(
+        {
             input,
+            dataset,
+            pipeline,
             promptRows,
-            fieldConfigs,
-            sttConfig,
-            audioRunMode,
-        ),
-        selectionConfig,
+            providerMode,
+        },
+        options,
     );
+
+    const request = buildCreateRunRequest(
+        input,
+        promptRows,
+        fieldConfigs,
+        sttConfig,
+        audioRunMode,
+    );
+    // Checked after the thinking level is settled: a Claude model's default
+    // level turns thinking on.
+    validateRunTemperatures(request.models, "temperatureAssignments");
+    return createRunPayload(db, request, selectionConfig, options);
 }
 
 async function getSelectionDataset(
@@ -545,13 +900,16 @@ async function resolvePromptRow(
     };
 }
 
-function resolveAndValidateFieldConfigs(input: {
-    input: ICreateRunFromSelectionRequest;
-    dataset: ISelectionDatasetRow;
-    pipeline?: ICreateRunPipelineRow;
-    promptRows: IResolvedPromptRow[];
-    providerMode: IApiConfig["flashEvalsLlmProvider"];
-}): IPipelineFieldConfig[] {
+function resolveAndValidateFieldConfigs(
+    input: {
+        input: ICreateRunFromSelectionRequest;
+        dataset: ISelectionDatasetRow;
+        pipeline?: ICreateRunPipelineRow;
+        promptRows: IResolvedPromptRow[];
+        providerMode: IApiConfig["flashEvalsLlmProvider"];
+    },
+    options: IRunCreateOptions = {},
+): IPipelineFieldConfig[] {
     const canonicalConfigs =
         input.pipeline?.field_configs ??
         input.promptRows[0]?.schemaVersion.field_configs ??
@@ -570,7 +928,7 @@ function resolveAndValidateFieldConfigs(input: {
           };
     if (!merged.ok) throw new ApiBadRequestError(merged.error);
 
-    validateScoringConfiguration(input, merged.fieldConfigs);
+    validateScoringConfiguration(input, merged.fieldConfigs, options);
     return input.pipeline?.field_configs ?? merged.fieldConfigs;
 }
 
@@ -583,12 +941,41 @@ function validateScoringConfiguration(
         providerMode: IApiConfig["flashEvalsLlmProvider"];
     },
     fieldConfigs: IPipelineFieldConfig[],
+    options: IRunCreateOptions = {},
 ): void {
     const outputSchema =
         input.pipeline?.output_schema ??
         input.promptRows[0]?.schemaVersion.json_schema;
     if (!outputSchema)
         throw new ApiBadRequestError("Choose a runnable prompt version.");
+    if (
+        input.input.benchmark &&
+        input.input.benchmark.source !== "labels" &&
+        !input.input.referenceModel
+    )
+        throw new ApiBadRequestError(
+            "benchmark: Choose a reference model to act as the benchmark.",
+        );
+    if (
+        input.input.benchmark?.source === "labels" &&
+        input.dataset.purpose !== "golden"
+    )
+        throw new ApiBadRequestError(
+            "benchmark: Using stored answers as the benchmark needs a dataset with answers.",
+        );
+    if (input.input.benchmark)
+        validateRunBenchmark(
+            {
+                models: input.input.modelIds.map((modelId) => ({
+                    modelId,
+                    promptVersionId: null,
+                    isReference: modelId === input.input.referenceModel,
+                })),
+                benchmark: input.input.benchmark,
+            },
+            outputSchema as IJsonSchemaObject,
+            options,
+        );
     const validation = validatePipelineFields(outputSchema, fieldConfigs);
     if (!validation.ok) throw new ApiBadRequestError(validation.error);
 
@@ -656,10 +1043,14 @@ function buildCreateRunRequest(
             promptRows,
             input.referenceModel,
             input.transportAssignments ?? [],
+            input.temperatureAssignments ?? [],
         ),
         maxTokens: input.maxTokens,
         fieldConfigs,
         createdBy: input.createdBy,
+        ...(input.maxCostUsd !== undefined
+            ? { maxCostUsd: input.maxCostUsd }
+            : {}),
         ...(input.pipelineId ? { pipelineId: input.pipelineId } : {}),
         ...(input.judgeConfigId ? { judgeConfigId: input.judgeConfigId } : {}),
         ...(judgeRubric
@@ -682,6 +1073,21 @@ function buildCreateRunRequest(
         ...(input.sourceRunId ? { sourceRunId: input.sourceRunId } : {}),
         ...(sttConfig ? { sttConfig } : {}),
         ...(audioRunMode ? { audioRunMode } : {}),
+        ...(input.benchmark ? { benchmark: input.benchmark } : {}),
+        ...(input.dataPolicy ? { dataPolicy: input.dataPolicy } : {}),
+        ...itemSelection(input),
+    };
+}
+
+/** The pilot size and label filter a run request carries, when set. */
+function itemSelection(
+    input: Pick<ICreateRunFromSelectionRequest, "itemLimit" | "itemFilter">,
+): Pick<ICreateRunRequest, "itemLimit" | "itemFilter"> {
+    return {
+        ...(input.itemLimit !== undefined
+            ? { itemLimit: input.itemLimit }
+            : {}),
+        ...(input.itemFilter ? { itemFilter: input.itemFilter } : {}),
     };
 }
 
@@ -691,17 +1097,32 @@ function buildRunModels(
     transportAssignments: NonNullable<
         ICreateRunFromSelectionRequest["transportAssignments"]
     >,
+    temperatureAssignments: NonNullable<
+        ICreateRunFromSelectionRequest["temperatureAssignments"]
+    >,
 ): ICreateRunRequest["models"] {
-    const transportByModel = new Map(
-        transportAssignments.map(({ modelId, transport }) => [
+    const assignmentByModel = new Map(
+        transportAssignments.map((assignment) => [
+            assignment.modelId,
+            assignment,
+        ]),
+    );
+    const temperatureByModel = new Map(
+        temperatureAssignments.map(({ modelId, temperature }) => [
             modelId,
-            transport,
+            temperature,
         ]),
     );
     return promptRows.map((row) => ({
         modelId: row.modelId,
-        ...(transportByModel.has(row.modelId)
-            ? { transport: transportByModel.get(row.modelId) }
+        ...(assignmentByModel.has(row.modelId)
+            ? { transport: assignmentByModel.get(row.modelId)!.transport }
+            : {}),
+        ...(assignmentByModel.get(row.modelId)?.transportModelId
+            ? {
+                  transportModelId: assignmentByModel.get(row.modelId)!
+                      .transportModelId,
+              }
             : {}),
         promptVersionId: row.version.id,
         schemaVersionId: row.schemaVersion.id,
@@ -717,6 +1138,9 @@ function buildRunModels(
         },
         ...(row.reasoningConfig
             ? { reasoningConfig: row.reasoningConfig }
+            : {}),
+        ...(temperatureByModel.has(row.modelId)
+            ? { temperature: temperatureByModel.get(row.modelId)! }
             : {}),
         isReference: row.modelId === referenceModel,
     }));
@@ -747,12 +1171,16 @@ function createSttMetricsRunFromSelection(
             maxTokens: input.maxTokens,
             fieldConfigs: [],
             createdBy: input.createdBy,
+            ...(input.maxCostUsd !== undefined
+                ? { maxCostUsd: input.maxCostUsd }
+                : {}),
             ...(input.sourceRunId ? { sourceRunId: input.sourceRunId } : {}),
             ...(legacyConfig ? { sttConfig: legacyConfig } : {}),
             ...(explicitVariants ? { sttVariants: variants } : {}),
             ...(input.sttEvaluation
                 ? { sttEvaluation: input.sttEvaluation }
                 : {}),
+            ...itemSelection(input),
             audioRunMode: "stt_metrics",
         },
         config,
@@ -1044,11 +1472,202 @@ function isScorableSchemaType(type: string): boolean {
     ]).has(type);
 }
 
+/**
+ * A thinking level chosen for this run must reach the model. A level the
+ * model doesn't take, or a non-default level its chosen provider has no way
+ * to send, refuses the run in plain words instead of being dropped. Other
+ * calls (the model's default level, or a provider picked automatically) are
+ * checked per call: a level that can't be sent is recorded with the answer
+ * and shown on the run page.
+ */
+export function validateRequestedThinking(
+    input: Pick<
+        ICreateRunFromSelectionRequest,
+        "reasoningConfigs" | "transportAssignments"
+    >,
+    options: {
+        /** The team's Bifrost list (`bifrostModelListKeyFor`), if any. */
+        bifrostModelList?: string;
+    } = {},
+): void {
+    const assignments = new Map(
+        (input.transportAssignments ?? []).map((assignment) => [
+            assignment.modelId,
+            assignment,
+        ]),
+    );
+    for (const { modelId, reasoningConfig } of input.reasoningConfigs) {
+        const effort = reasoningConfig?.effort;
+        if (!effort) continue;
+        const capability = registryModelFor(modelId)?.reasoningEffort;
+        const levels = capability?.supportedLevels;
+        if (levels && !levels.includes(effort))
+            throw new ApiBadRequestError(
+                `reasoningConfigs: ${modelId} takes thinking levels ${levels.join(", ")}, not "${effort}".`,
+            );
+        const transport = assignments.get(modelId)?.transport;
+        // The form fills in each model's default level; a default the route
+        // can't send is recorded per call and shown on the run page instead.
+        if (!transport || !levels || effort === capability.defaultLevel)
+            continue;
+        const plan = thinkingPlanFor(
+            providerModelId(
+                modelId,
+                transport,
+                assignments.get(modelId)?.transportModelId,
+            ),
+            transport,
+            effort,
+            transport === "bifrost" && options.bifrostModelList
+                ? { bifrostModelList: options.bifrostModelList }
+                : {},
+        );
+        if (plan && !plan.outcome.sent)
+            throw new ApiBadRequestError(
+                `reasoningConfigs: "${effort}" thinking for ${modelId} can't be sent through ${TRANSPORT_LABELS_FOR_MESSAGES[transport]}. ${plan.outcome.reason ?? ""} Choose another provider, or leave thinking at the model's default.`.trim(),
+            );
+    }
+}
+
+/**
+ * The team's Bifrost list key, so a chosen Bifrost thinking level is checked
+ * against what that Bifrost's model list says. Keys are resolved only when a
+ * model runs on Bifrost.
+ */
+async function bifrostModelListForThinking(
+    db: IDb,
+    input: Pick<
+        ICreateRunFromSelectionRequest,
+        "teamId" | "transportAssignments"
+    >,
+    config: IApiConfig | undefined,
+): Promise<string | undefined> {
+    if (
+        !config ||
+        !input.transportAssignments?.some(
+            (assignment) => assignment.transport === "bifrost",
+        )
+    )
+        return undefined;
+    const { apiKeys } = await resolveApiKeys(db, config, input.teamId);
+    return bifrostModelListKeyFor(apiKeys);
+}
+
+/**
+ * Each temperature names a selected model once, as a number from 0 to 2.
+ * Whether the model can take it is checked once its thinking is settled.
+ */
+function validateTemperatureAssignments(
+    input: Pick<
+        ICreateRunFromSelectionRequest,
+        "modelIds" | "temperatureAssignments"
+    >,
+): void {
+    const selected = new Set(input.modelIds);
+    const seen = new Set<string>();
+    for (const { modelId, temperature } of input.temperatureAssignments ?? []) {
+        if (!selected.has(modelId))
+            throw new ApiBadRequestError(
+                `temperatureAssignments: ${modelId} is not one of the run's models.`,
+            );
+        if (seen.has(modelId))
+            throw new ApiBadRequestError(
+                `temperatureAssignments: ${modelId} is listed twice.`,
+            );
+        seen.add(modelId);
+        if (!isRunTemperature(temperature))
+            throw new ApiBadRequestError(
+                `temperatureAssignments: the temperature for ${modelId} must be a number from 0 to 2.`,
+            );
+    }
+}
+
+/**
+ * A temperature chosen for a model must reach it. Providers send no
+ * temperature to a model that refuses one, so a run that asks for one there
+ * is refused in plain words, naming the model and why, instead of running
+ * at a temperature it didn't get.
+ */
+export function validateRunTemperatures(
+    models: ReadonlyArray<
+        Pick<
+            ICreateRunRequest["models"][number],
+            | "modelId"
+            | "transport"
+            | "transportModelId"
+            | "reasoningConfig"
+            | "temperature"
+        >
+    >,
+    field = "models",
+): void {
+    for (const model of models) {
+        if (model.temperature === undefined) continue;
+        if (!isRunTemperature(model.temperature))
+            throw new ApiBadRequestError(
+                `${field}: the temperature for ${model.modelId} must be a number from 0 to 2.`,
+            );
+        const refusal = temperatureRefusal(model);
+        if (refusal) throw new ApiBadRequestError(`${field}: ${refusal}`);
+    }
+}
+
+/** Why `model` can't take its temperature, in plain words; undefined when it can. */
+export function temperatureRefusal(
+    model: Pick<
+        ICreateRunRequest["models"][number],
+        | "modelId"
+        | "transport"
+        | "transportModelId"
+        | "reasoningConfig"
+        | "temperature"
+    >,
+): string | undefined {
+    const { modelId, temperature } = model;
+    if (temperature === undefined) return undefined;
+    const sentAs = model.transport
+        ? providerModelId(modelId, model.transport, model.transportModelId)
+        : modelId;
+    if (rejectsSamplingSettings(modelId) || rejectsSamplingSettings(sentAs))
+        return isClaudeModel(modelId)
+            ? `${modelId} takes no temperature (Claude 5 models and Opus 4.7 and later refuse it). Remove the temperature for ${modelId}.`
+            : `${modelId} is an OpenAI reasoning model, which takes no temperature. Remove the temperature for ${modelId}.`;
+    const effort = model.reasoningConfig?.effort;
+    if (
+        isClaudeModel(modelId) &&
+        effort !== undefined &&
+        effort !== "none" &&
+        temperature !== 1
+    )
+        return `${modelId} runs with thinking on ("${effort}"), and Claude takes only temperature 1 while thinking. Remove the temperature for ${modelId}, set it to 1, or turn thinking off.`;
+    return undefined;
+}
+
+function isClaudeModel(modelId: string): boolean {
+    const entry = registryModelFor(modelId);
+    if (entry) return entry.provider === "anthropic";
+    return (
+        makerOfModel(modelId) === "anthropic" ||
+        /(^|\/)anthropic\//.test(modelId)
+    );
+}
+
+/** The id `transport` is sent for `modelId`. */
+function providerModelId(
+    modelId: string,
+    transport: ProviderTransport,
+    transportModelId: string | undefined,
+): string {
+    if (transport === "bifrost")
+        return transportModelId ?? bifrostModelIdFor(modelId);
+    return transportModelIdFor(modelId, transport) ?? modelId;
+}
+
 export function resolveReasoningEffort(
     modelId: string,
     requested?: IReasoningConfig["effort"],
 ): IReasoningConfig["effort"] | undefined {
-    const capability = registryEntryFor(modelId)?.reasoningEffort;
+    const capability = registryModelFor(modelId)?.reasoningEffort;
     if (!capability) return undefined;
     if (requested && capability.supportedLevels.includes(requested))
         return requested;
@@ -1086,16 +1705,16 @@ function validateTransportAssignments(
                 `Transport selection references unselected model "${assignment.modelId}".`,
             );
         }
-        if (
-            !registryEntryFor(assignment.modelId)?.transports[
-                assignment.transport
-            ] &&
-            assignment.transport !== "gateway"
-        ) {
-            throw new ApiBadRequestError(
-                `Model "${assignment.modelId}" does not support the "${assignment.transport}" transport.`,
-            );
-        }
+        assertModelMapsToTransport(assignment.modelId, assignment.transport, {
+            allowUnlistedGateway: true,
+            ...(assignment.transportModelId
+                ? { transportModelId: assignment.transportModelId }
+                : {}),
+        });
+        // A registry id with the Bifrost id picked from Bifrost's list: the
+        // pair must name the same model, as on the /api/runs path.
+        if (assignment.transportModelId !== undefined)
+            assertBifrostIdIsModel(assignment, "transportAssignments: ");
     }
 }
 
@@ -1105,7 +1724,7 @@ function validateKnownModelCapabilities(input: {
 }): void {
     if (input.datasetModality !== "image") return;
     for (const modelId of input.modelIds) {
-        if (!registryEntryFor(modelId)?.vision) {
+        if (!registryModelFor(modelId)?.vision) {
             throw new ApiBadRequestError(
                 `${modelId} cannot run on image datasets because vision support is not available.`,
             );
@@ -1115,7 +1734,7 @@ function validateKnownModelCapabilities(input: {
 
 function validateStructuredOutputModels(modelIds: string[]): void {
     for (const modelId of modelIds) {
-        const entry = registryEntryFor(modelId);
+        const entry = registryModelFor(modelId);
         if (entry && !entry.structuredOutput) {
             throw new ApiBadRequestError(
                 `${entry.label} does not support structured-output evals.`,
@@ -1138,11 +1757,7 @@ function validateJudgeModels(input: {
     ];
     for (const modelId of modelIds) {
         if (modelId === input.judgeModelId && input.judgeTransport) {
-            if (!registryEntryFor(modelId)?.transports[input.judgeTransport]) {
-                throw new ApiBadRequestError(
-                    `Model "${modelId}" does not support the "${input.judgeTransport}" transport.`,
-                );
-            }
+            assertModelMapsToTransport(modelId, input.judgeTransport);
             continue;
         }
         validateJudgeModel(modelId, input.providerMode);
@@ -1159,9 +1774,10 @@ function validateJudgeModel(
             `${entry.label} is not available for the configured provider mode.`,
         );
     }
-    if (entry && (!entry.judgeSuitable || !entry.structuredOutput)) {
+    const model = registryModelFor(modelId);
+    if (model && (!model.judgeSuitable || !model.structuredOutput)) {
         throw new ApiBadRequestError(
-            `${entry.label} cannot be used as a judge model.`,
+            `${model.label} cannot be used as a judge model.`,
         );
     }
     if (!entry && providerMode !== "gateway" && modelId.includes("/")) {
@@ -1193,16 +1809,21 @@ async function createRunPayloadInTransaction(
             "Cannot start a run with no candidate models.",
         );
     }
+    const snapshotConfig = await configForTransliterationSnapshot(
+        db,
+        input,
+        effectiveConfig,
+    );
     const sttVariants = input.sttVariants
         ? normalizedSnapshotVariants(
               rawVariants,
               input.sttEvaluation,
-              effectiveConfig,
+              snapshotConfig,
           )
         : undefined;
     const sttConfig = input.sttVariants
         ? undefined
-        : sttConfigForSnapshot(input.sttConfig, effectiveConfig);
+        : sttConfigForSnapshot(input.sttConfig, snapshotConfig);
     if (sttVariants) {
         for (const variant of Object.values(sttVariants)) {
             validateVariantForRun(
@@ -1218,7 +1839,17 @@ async function createRunPayloadInTransaction(
             config: effectiveConfig,
         });
     }
-    const items = await listRunCreateItems(db, input.datasetId);
+    // The label filter applies before the pilot limit: the first N items
+    // with that label.
+    const itemFilter = resolveItemFilter(input);
+    const items = pilotItems(
+        await filterItemsByLabel(
+            db,
+            await listRunCreateItems(db, input.datasetId),
+            itemFilter,
+        ),
+        input.itemLimit,
+    );
     assertRunCellLimit({
         itemCount: items.length,
         perItemCount: input.models.length,
@@ -1234,7 +1865,7 @@ async function createRunPayloadInTransaction(
     const judgeConfigId = await resolveJudgeConfigId(db, input);
     const runId = await insertRun(
         db,
-        input,
+        itemFilter ? { ...input, itemFilter } : input,
         sttConfig,
         sttVariants,
         judgeConfigId,
@@ -1263,6 +1894,41 @@ async function configForSttValidation(
     return configWithResolvedKeys(
         config,
         await resolveApiKeys(db, config, teamId),
+    );
+}
+
+/**
+ * The config a run's transliteration is recorded with. An OpenRouter or
+ * Bifrost transliteration records the base URL that goes with the key the
+ * worker will use (a team's saved one, else .env), so a Settings key is
+ * never sent to the .env address.
+ */
+async function configForTransliterationSnapshot(
+    db: IDb,
+    input: Pick<
+        ICreateRunRequest,
+        "teamId" | "sttConfig" | "sttVariants" | "sttEvaluation"
+    >,
+    config: IApiConfig | undefined,
+): Promise<IApiConfig | undefined> {
+    if (!config) return config;
+    const usesBaseUrl = [
+        input.sttConfig,
+        ...(input.sttVariants ?? []).map((variant) => variant?.config),
+        input.sttEvaluation,
+    ].some((sttConfig) => {
+        const transliteration = sttConfig?.transliteration;
+        if (!transliteration?.enabled) return false;
+        const mode = snapshotTransliterationProviderMode(
+            transliteration,
+            config,
+        );
+        return mode === "openrouter" || mode === "bifrost";
+    });
+    if (!usesBaseUrl) return config;
+    return configWithResolvedKeys(
+        config,
+        await resolveApiKeys(db, config, input.teamId),
     );
 }
 
@@ -1317,6 +1983,19 @@ async function getRunCreateDataset(
     return dataset;
 }
 
+/**
+ * A pilot runs on the dataset's first N items, in the order they were added,
+ * so a later full run starts from the same items.
+ */
+export function pilotItems<T>(items: T[], itemLimit: number | undefined): T[] {
+    if (itemLimit === undefined) return items;
+    if (!Number.isInteger(itemLimit) || itemLimit < 1)
+        throw new ApiBadRequestError(
+            "itemLimit must be a whole number of at least 1.",
+        );
+    return items.slice(0, itemLimit);
+}
+
 async function listRunCreateItems(
     db: IDb,
     datasetId: string,
@@ -1324,7 +2003,8 @@ async function listRunCreateItems(
     const result = await db.query<IRunCreateItemRow>(
         `select id, input_text, storage_key
         from dataset_items
-        where dataset_id = $1`,
+        where dataset_id = $1
+        order by created_at, id`,
         [datasetId],
     );
     if (result.rows.length === 0) {
@@ -1482,6 +2162,13 @@ async function insertRun(
                 sttConfig,
                 sttVariants,
                 audioRunMode: input.audioRunMode,
+                benchmark: input.benchmark,
+                dataPolicy: input.dataPolicy,
+                itemLimit: input.itemLimit,
+                ...(input.itemFilter ? { itemFilter: input.itemFilter } : {}),
+                ...(input.maxCostUsd !== undefined
+                    ? { maxCostUsd: input.maxCostUsd }
+                    : {}),
             },
             input.createdBy,
         ],
@@ -1499,9 +2186,9 @@ async function insertRunModels(
         const result = await db.query<{ id: string }>(
             `insert into run_models (
                 run_id, model_id, prompt_version_id, schema_version_id,
-                prompt_snapshot, reasoning_config, is_reference
+                prompt_snapshot, reasoning_config, is_reference, temperature
             )
-            values ($1, $2, $3, $4, $5, $6, $7)
+            values ($1, $2, $3, $4, $5, $6, $7, $8)
             returning id`,
             [
                 runId,
@@ -1511,6 +2198,7 @@ async function insertRunModels(
                 model.promptSnapshot ?? null,
                 model.reasoningConfig ?? null,
                 model.isReference,
+                model.temperature ?? null,
             ],
         );
         runModelIds.push(result.rows[0]!.id);
@@ -1535,20 +2223,101 @@ export function sttConfigForSnapshot(
         canonicalModelId: identity.canonicalModelId,
     };
     if (!sttConfig.transliteration?.enabled) return baseConfig;
+    // The provider the run asks for wins; the server default fills in only
+    // when none was given. The base URL always comes from the server: the
+    // one `config` pairs with the key used (see configWithResolvedKeys).
+    const providerMode = snapshotTransliterationProviderMode(
+        sttConfig.transliteration,
+        config,
+    );
     const providerBaseUrl =
-        config?.flashEvalsLlmProvider === "openrouter"
-            ? config.openrouterBaseUrl
-            : config?.flashEvalsLlmProvider === "bifrost"
-              ? config.bifrostBaseUrl
+        providerMode === "openrouter"
+            ? config?.openrouterBaseUrl
+            : providerMode === "bifrost"
+              ? config?.bifrostBaseUrl
               : undefined;
+    const { providerBaseUrl: _requestedBaseUrl, ...transliteration } =
+        sttConfig.transliteration;
     return {
         ...baseConfig,
         transliteration: {
-            ...sttConfig.transliteration,
-            providerMode: config?.flashEvalsLlmProvider ?? "auto",
+            ...transliteration,
+            providerMode,
             ...(providerBaseUrl ? { providerBaseUrl } : {}),
         },
     };
+}
+
+/**
+ * The transliteration provider a request names, with legacy spellings read
+ * as FLASH_EVALS_LLM_PROVIDER reads them. Undefined when none was given.
+ */
+function requestedTransliterationProviderMode(
+    transliteration: ISttTransliterationConfig,
+): EvalProviderMode | undefined {
+    const raw: unknown = transliteration.providerMode;
+    if (raw === undefined || raw === null || raw === "") return undefined;
+    const mode =
+        typeof raw === "string" ? normalizeProviderMode(raw) : undefined;
+    if (!mode) {
+        throw new ApiBadRequestError(
+            "transliteration: Choose a valid provider (auto, vercel-ai-gateway, openrouter, openai or bifrost).",
+        );
+    }
+    return mode;
+}
+
+/**
+ * The transliteration provider a run records: the requested one, else the
+ * .env default, else "auto". The worker uses exactly this recorded value.
+ */
+function snapshotTransliterationProviderMode(
+    transliteration: ISttTransliterationConfig,
+    config: Pick<IApiConfig, "flashEvalsLlmProvider"> | undefined,
+): EvalProviderMode {
+    return (
+        requestedTransliterationProviderMode(transliteration) ??
+        config?.flashEvalsLlmProvider ??
+        "auto"
+    );
+}
+
+const TRANSLITERATION_MODE_TRANSPORTS: Partial<
+    Record<EvalProviderMode, ProviderTransport>
+> = {
+    "vercel-ai": "openai",
+    openai: "openai",
+    gateway: "gateway",
+    openrouter: "openrouter",
+    bifrost: "bifrost",
+};
+
+/**
+ * Rejects a run whose transliteration asks for a provider the team has no
+ * key for. `config` must already hold the team's saved keys.
+ */
+export function validateTransliterationProviderKeys(
+    sttConfigs: (ISttRunConfig | undefined)[],
+    config: IApiConfig | undefined,
+): void {
+    for (const sttConfig of sttConfigs) {
+        const transliteration = sttConfig?.transliteration;
+        if (!transliteration?.enabled) continue;
+        const mode = requestedTransliterationProviderMode(transliteration);
+        const transport = mode && TRANSLITERATION_MODE_TRANSPORTS[mode];
+        if (!transport) continue;
+        const key = config && transportApiKey(config, transport);
+        if (!key) {
+            throw new ApiBadRequestError(
+                `transliteration: Add ${keyPhrase(transport)} in Settings before running transliteration through ${TRANSPORT_LABELS_FOR_MESSAGES[transport]}.`,
+            );
+        }
+        if (transport === "bifrost" && !config?.bifrostBaseUrl) {
+            throw new ApiBadRequestError(
+                "transliteration: Add a Bifrost base URL in Settings before running transliteration through Bifrost.",
+            );
+        }
+    }
 }
 
 export function normalizeSttVariants(
@@ -1711,6 +2480,13 @@ function validateSttConfigShape(value: ISttRunConfig): void {
         value.transcriptVariant !== "latin"
     )
         throw new ApiBadRequestError("Choose a supported transcript variant.");
+    if (
+        value.levelVolume !== undefined &&
+        typeof value.levelVolume !== "boolean"
+    )
+        throw new ApiBadRequestError(
+            "Level volume first must be true or false.",
+        );
     for (const [field, nested] of [
         ["STT model config", value.config],
         ["transliteration config", value.transliteration],
@@ -1791,6 +2567,7 @@ async function listRunSetupDatasets(
     const result = await db.query<IDatasetOptionRow>(
         `select d.id, d.name, d.modality, d.purpose,
             count(di.id)::int as item_count,
+            avg(length(di.input_text))::int as avg_input_chars,
             count(l.id) filter (where l.label_json <> '{}'::jsonb)::int as labeled_item_count
         from datasets d
         left join dataset_items di on di.dataset_id = d.id
@@ -1808,6 +2585,9 @@ async function listRunSetupDatasets(
             labeledItemCount: countValue(row.labeled_item_count),
             purpose: row.purpose,
             modality: row.modality,
+            ...(row.avg_input_chars
+                ? { avgInputChars: countValue(row.avg_input_chars) }
+                : {}),
         }))
         .filter(
             (row) =>
@@ -1836,7 +2616,8 @@ async function listRunSetupVersions(
 ) {
     const result = await db.query<IVersionOptionRow>(
         `select pv.id, p.name as prompt_name, pv.version, psv.json_schema,
-            psv.field_configs, pv.reasoning_config
+            psv.field_configs, pv.reasoning_config,
+            length(pv.content)::int as prompt_chars
         from prompts p
         inner join prompt_versions pv on pv.prompt_id = p.id
         inner join prompt_schema_versions psv on psv.id = pv.schema_version_id
@@ -1852,6 +2633,10 @@ async function listRunSetupVersions(
                 ? row.field_configs
                 : defaultFieldConfigsForSchema(row.json_schema),
         reasoningConfig: row.reasoning_config ?? undefined,
+        outputSchema: row.json_schema as IJsonSchemaObject,
+        ...(row.prompt_chars
+            ? { promptChars: countValue(row.prompt_chars) }
+            : {}),
     }));
 }
 

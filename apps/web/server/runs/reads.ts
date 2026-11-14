@@ -2,13 +2,14 @@ import { eq, inArray } from "drizzle-orm";
 import {
     buildLeaderboardRows,
     type ILeaderboardRow,
+    type ScorerType,
 } from "@flash-evals/api-contract";
 import { db } from "../db/client";
 import { runCells, runModels, datasetItems, cellScores } from "../db/schema";
 import { getCellAnnotations, type ICellAnnotation } from "./reviews";
 
 export interface MatrixCellScore {
-    scorerType: "field_diff" | "judge" | "transcript_metric" | "transcript_judge";
+    scorerType: ScorerType;
     score: number | null;
     rationale: string | null;
     detailsJson: unknown;

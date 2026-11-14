@@ -2,7 +2,7 @@
 
 [Documentation home](../README.md#documentation) · [First-time setup](getting-started.md) · [Development](development.md)
 
-Use the same Node, pnpm, PostgreSQL and source workflow as a laptop. The extra
+Use the same Node, Bun, PostgreSQL and source workflow as a laptop. The extra
 step is making the browser reach the VM's **web and API** privately. A browser's
 `127.0.0.1` is the browser's machine, not the server. PostgreSQL stays on server
 loopback. These instructions do not deploy the production authentication stack.
@@ -36,13 +36,13 @@ After installing dependencies, **before generating env files on a fresh clone**:
 
 ```bash
 FLASH_EVALS_TAILSCALE_IP=$(tailscale ip -4)
-pnpm run setup:local -- --host "$FLASH_EVALS_TAILSCALE_IP"
+bun run setup:local -- --host "$FLASH_EVALS_TAILSCALE_IP"
 ```
 
 The generator accepts loopback or a Tailscale IPv4 address and writes consistent
 bind hosts, browser URLs and CORS. PostgreSQL still uses `127.0.0.1:54322`.
 Continue the [new-database initialization](getting-started.md#3-initialize-a-new-development-database-once)
-only after confirming the database is disposable, then run `pnpm run dev`.
+only after confirming the database is disposable, then run `bun run dev`.
 Open `http://YOUR_TAILSCALE_IP:3000` from a device allowed to reach that server.
 HTTP travels inside the encrypted tailnet; this does not make the browser origin
 an HTTPS secure context.
@@ -68,7 +68,7 @@ Use the matching private API `/mcp` URL for a desktop MCP client.
 ## SSH port forwarding
 
 This option needs no Tailscale integration in the application. Keep the generated
-loopback configuration on the VM, and start `pnpm run dev` there. In a terminal
+loopback configuration on the VM, and start `bun run dev` there. In a terminal
 on your laptop, substituting your SSH destination:
 
 ```bash
@@ -84,14 +84,14 @@ session unless you use a terminal multiplexer or the optional service below.
 
 ## Optional Linux background service
 
-Foreground `pnpm run dev` is sufficient for normal development. On a Linux host
+Foreground `bun run dev` is sufficient for normal development. On a Linux host
 with a systemd user manager, the standard Compose database and local storage,
 you can opt into boot/crash recovery:
 
 ```bash
-pnpm run dev:install
-pnpm run dev:status
-pnpm run dev:logs
+bun run dev:install
+bun run dev:status
+bun run dev:logs
 ```
 
 This installs user units for the same root launcher and a daily backup timer,
@@ -114,8 +114,8 @@ start it with `docker compose up -d --wait postgres` before restarting the app.
 These user-service commands are not a macOS/Windows service installer.
 
 ```bash
-pnpm run dev:restart
-pnpm run dev:stop
+bun run dev:restart
+bun run dev:stop
 ```
 
 The restart command returns after the launcher starts; shared-package builds and
@@ -136,7 +136,7 @@ Inspect its schedule and logs; change the schedule through a systemd timer
 if that time does not suit your environment.
 
 ```bash
-pnpm run dev:backup
+bun run dev:backup
 systemctl --user list-timers flash-evals-backup.timer
 journalctl --user -u flash-evals-backup.service -n 20 --no-pager
 ```
@@ -162,7 +162,7 @@ key before switching the working application.
 ## Diagnose access and recovery
 
 Check web/API health at your configured browser addresses, the worker's readiness
-log, and `pnpm run worker:status`. For MCP, use the
+log, and `bun run worker:status`. For MCP, use the
 [development smoke checks](development.md#mcp-development). If a VM comes back
 but its UI does not, inspect the app service, Docker database health, private
 interface, user lingering, and the browser-facing API URL. Do not reseed, remove

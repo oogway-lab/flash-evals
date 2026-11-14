@@ -114,6 +114,9 @@ export function PromptsList({ prompts }: { prompts: IPromptListRow[] }) {
                                     {prompt.latest ? (
                                         <PromptStatusBadge
                                             status={prompt.latest.status}
+                                            modelCheck={
+                                                prompt.latest.modelCheck
+                                            }
                                         />
                                     ) : (
                                         <Num>{MISSING_VALUE}</Num>

@@ -4,8 +4,8 @@
 # in one should not block the others.
 version: 2
 updates:
-  - package-ecosystem: npm
-    # The root lockfile covers every pnpm workspace package.
+  - package-ecosystem: bun
+    # The root bun.lock covers every workspace package.
     directory: /
     schedule:
       interval: weekly

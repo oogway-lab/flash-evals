@@ -16,6 +16,7 @@ import {
 import {
     BranchStatusBadge,
     CellStatusBadge,
+    isCellInFlight,
     type BranchStatus,
 } from "@/components/ui/status-badge";
 import { SectionTitle } from "@/components/layout/section-title";
@@ -27,6 +28,12 @@ import { IdLabel } from "@/components/ui/id-label";
 import { Metric, MetricList } from "@/components/ui/metric";
 import { Num } from "@/components/ui/num";
 import { toTranscriptMetricDetails } from "@/components/runs/types";
+import {
+    VOLUME_LEVELLED_LABEL,
+    formatPossiblyPartialCost,
+    transcriptCostIncomplete,
+    transcriptVolumeLevelled,
+} from "@/components/runs/stt-variant-display";
 import {
     formatTranscriptPercent,
     ScoreVerdict,
@@ -60,15 +67,37 @@ import {
     transcriptSegments,
 } from "./run-artifacts";
 
-/** Multi-modal pipelines start at input; legacy STT evaluations start at STT. */
+/**
+ * Multi-modal pipelines start at input; legacy STT evaluations start at STT.
+ * A prompt pipeline is one connected chain: its first step stands for it.
+ */
+function isPromptPipeline(detail: IWorkflowRunDetailResponse): boolean {
+    const snapshot = detail.workflowRun.workflowSnapshot;
+    if (snapshot.kind) return snapshot.kind === "prompt";
+    return !snapshot.nodes.some(
+        (node) => node.nodeType === "input" || node.nodeType === "stt",
+    );
+}
+
 function branchRoots(detail: IWorkflowRunDetailResponse) {
     const snapshot = detail.workflowRun.workflowSnapshot;
+    if (isPromptPipeline(detail)) {
+        const targets = new Set(detail.edges.map((edge) => edge.toNodeId));
+        const first = snapshot.nodes.find((node) => !targets.has(node.id));
+        return first ? [first] : [];
+    }
     const type = snapshot.kind === "stt" ? "stt" : "input";
     return snapshot.nodes.filter((node) => node.nodeType === type);
 }
 
 function rootByNode(detail: IWorkflowRunDetailResponse): Map<string, string> {
     const nodes = detail.workflowRun.workflowSnapshot.nodes;
+    if (isPromptPipeline(detail)) {
+        const root = branchRoots(detail)[0];
+        return new Map(
+            root ? nodes.map((node) => [node.nodeKey, root.nodeKey]) : [],
+        );
+    }
     const keyById = new Map(nodes.map((node) => [node.id, node.nodeKey]));
     const roots = new Map(
         branchRoots(detail).map((node) => [node.nodeKey, node.nodeKey]),
@@ -88,6 +117,12 @@ function branchStatus(
     runStatus: IWorkflowRunDetailResponse["workflowRun"]["status"],
 ): BranchStatus {
     if (cells.some((cell) => cell.status === "failed")) return "failed";
+    if (
+        runStatus !== "pending" &&
+        runStatus !== "running" &&
+        cells.some((cell) => isCellInFlight(cell.status))
+    )
+        return "stopped";
     const pending = cells.filter((cell) => cell.status === "pending").length;
     if (cells.some((cell) => cell.status === "running")) return "running";
     if (pending > 0) return pending === cells.length ? "pending" : "running";
@@ -112,9 +147,36 @@ function branchCellsFor(
     return detail.cells.filter((cell) => branchKeys.has(cell.nodeKey));
 }
 
+/**
+ * Whether the branch's STT step levelled volume: what its finished
+ * transcripts record once any has finished, otherwise the step's setting.
+ * A cell still running holds only a spend checkpoint, not what ran.
+ */
+function branchVolumeLevelled(
+    detail: IWorkflowRunDetailResponse,
+    root: IWorkflowRunDetailResponse["nodes"][number],
+): boolean {
+    const ran = detail.cells.filter(
+        (cell) =>
+            cell.nodeKey === root.nodeKey &&
+            (cell.status === "succeeded" || cell.status === "cached") &&
+            cell.outputJson?.providerMetadata !== undefined,
+    );
+    if (ran.length > 0)
+        return ran.some((cell) => transcriptVolumeLevelled(cell.outputJson!));
+    return (
+        root.nodeConfig?.type === "stt" &&
+        root.nodeConfig.sttConfig.levelVolume === true
+    );
+}
+
+/** Each step's reported cost and what judging it cost, where known. */
 function branchCosts(cells: IWorkflowRunDetailResponse["cells"]): number[] {
     return cells
-        .map((cell) => cell.outputJson?.usage?.costUsd ?? cell.costUsd)
+        .flatMap((cell) => [
+            cell.outputJson?.usage?.costUsd ?? cell.costUsd,
+            cell.judgeCostUsd,
+        ])
         .filter((cost): cost is number => typeof cost === "number");
 }
 
@@ -179,6 +241,10 @@ export function SttRunResults({
             : {},
     );
     const diffs = diffKeys(configs);
+    // Shown on every levelled branch, not only when siblings differ.
+    const settingLabels = roots.map((node) =>
+        branchVolumeLevelled(detail, node) ? [VOLUME_LEVELLED_LABEL] : [],
+    );
     // One unit and precision for the "Reported cost" tile of every branch.
     const fmtBranchCost = formatCostColumn(
         roots.map((root) => {
@@ -191,6 +257,11 @@ export function SttRunResults({
         }),
     );
     const stepOrder = pipelineOrder(detail, ownership, roots);
+    // Steps a finished (cancelled or failed) run never started are "not
+    // run", not in progress.
+    const runStopped =
+        detail.workflowRun.status !== "pending" &&
+        detail.workflowRun.status !== "running";
     const itemGroups: ItemGroup[] = detail.items
         .map((item) => ({
             item,
@@ -225,6 +296,9 @@ export function SttRunResults({
                         metricDetails: toTranscriptMetricDetails(
                             metricScore?.detailsJson,
                         ),
+                        ...(runStopped && isCellInFlight(cell.status)
+                            ? { notRun: true }
+                            : {}),
                     };
                 }),
         }))
@@ -236,6 +310,13 @@ export function SttRunResults({
         <div className="flex flex-col gap-6">
             <div className="grid gap-4 lg:grid-cols-2">
                 {roots.map((root, rootIndex) => {
+                    const branchDetails = [
+                        ...(settingLabels[rootIndex] ?? []),
+                        ...(diffs[rootIndex] ?? []).map(
+                            (key) =>
+                                `${key}: ${String(configs[rootIndex]?.[key] ?? "default")}`,
+                        ),
+                    ];
                     const cells = branchCellsFor(
                         detail,
                         ownership,
@@ -290,14 +371,9 @@ export function SttRunResults({
                                         </Badge>
                                     ) : null}
                                 </div>
-                                {diffs[rootIndex]?.length ? (
+                                {branchDetails.length ? (
                                     <p className="text-copy-14 text-muted-foreground">
-                                        {diffs[rootIndex]
-                                            .map(
-                                                (key) =>
-                                                    `${key}: ${String(configs[rootIndex]?.[key] ?? "default")}`,
-                                            )
-                                            .join(" · ")}
+                                        {branchDetails.join(" · ")}
                                     </p>
                                 ) : null}
                             </CardHeader>
@@ -329,7 +405,15 @@ export function SttRunResults({
                                     <Metric
                                         plain
                                         label="Reported cost"
-                                        value={totalCost(costs, fmtBranchCost)}
+                                        value={totalCost(
+                                            costs,
+                                            fmtBranchCost,
+                                            cells.some((cell) =>
+                                                transcriptCostIncomplete(
+                                                    cell.outputJson ?? {},
+                                                ),
+                                            ),
+                                        )}
                                     />
                                     <Metric
                                         plain
@@ -381,12 +465,20 @@ function averageScore(scores: number[]): string {
     );
 }
 
+/** "at least $X" when a step's cost is only partly known. */
 function totalCost(
     costs: number[],
     format: ReturnType<typeof formatCostColumn>,
+    incomplete: boolean,
 ): string {
-    if (costs.length === 0) return MISSING_VALUE;
-    return format(costs.reduce((sum, cost) => sum + cost, 0));
+    if (costs.length === 0 && !incomplete) return MISSING_VALUE;
+    return formatPossiblyPartialCost(
+        costs.length === 0
+            ? undefined
+            : costs.reduce((sum, cost) => sum + cost, 0),
+        incomplete,
+        format,
+    );
 }
 
 function SpeakerTurns({

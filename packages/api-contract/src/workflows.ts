@@ -1,13 +1,25 @@
 import type {
+    IPipelineComparison,
+    IPipelineComparisonConfig,
+} from "./pipelineComparison.js";
+import type {
+    IPipelineFinalAnswer,
+    IWorkflowRunAnswer,
+    WorkflowRunCondition,
+} from "./pipelineSteps.js";
+import type {
     CellStatus,
     ICellAnnotation,
     IRunDetailItem,
     IRunProgress,
     IPipelineFieldConfig,
+    IRunDataPolicy,
     ISttRunConfig,
     ISttTransliterationConfig,
+    IThinkingOutcome,
     ReasoningEffort,
     RunStatus,
+    RunStopReason,
 } from "./index.js";
 
 export type WorkflowRunTarget = "single_item" | "dataset";
@@ -43,8 +55,40 @@ export const WORKFLOW_JUDGE_SCHEMA_NAME = "judge_verdict" as const;
 export const WORKFLOW_JUDGE_SCHEMA_DIGEST =
     "sha256:da6cc596e2b7c0e3927232ef8198bb54a7681076242488a5e3bcde85305fbc1c" as const;
 
-export type WorkflowLlmTransport =
-    "openai" | "gateway" | "openrouter" | "bifrost";
+/**
+ * Transports a workflow LLM step can call. "anthropic" and "google" call the
+ * model's maker directly (Anthropic, the Gemini API) with the team's Settings
+ * key, the same way eval runs do.
+ */
+export const WORKFLOW_LLM_TRANSPORTS = [
+    "openai",
+    "gateway",
+    "openrouter",
+    "bifrost",
+    "anthropic",
+    "google",
+] as const;
+
+export type WorkflowLlmTransport = (typeof WORKFLOW_LLM_TRANSPORTS)[number];
+
+/** Workflow transports served by the model's maker itself. */
+export type WorkflowDirectMakerTransport = "anthropic" | "google";
+
+export function isWorkflowLlmTransport(
+    value: unknown,
+): value is WorkflowLlmTransport {
+    return (WORKFLOW_LLM_TRANSPORTS as readonly unknown[]).includes(value);
+}
+
+/**
+ * The Settings key a workflow transport authenticates with. Direct Gemini API
+ * calls use the saved Gemini key; every other transport has its own key.
+ */
+export function providerKeyForWorkflowTransport(
+    transport: WorkflowLlmTransport,
+): Exclude<WorkflowLlmTransport, "google"> | "gemini" {
+    return transport === "google" ? "gemini" : transport;
+}
 
 export type IWorkflowLlmSelection =
     /** Default path: invoke the selected provider model directly with the current team key. */
@@ -123,7 +167,10 @@ export type IWorkflowLlmTransportConfig =
     | {
           transport: "bifrost";
           upstreamPolicy: { mode: "bifrost_default" };
-      };
+      }
+    /** Direct call to the maker: no gateway, so no upstream routing. */
+    | { transport: "anthropic" }
+    | { transport: "google" };
 
 export interface IWorkflowLlmRouteConfig {
     transportConfig: IWorkflowLlmTransportConfig;
@@ -161,6 +208,82 @@ export interface IWorkflowLlmCredentialReference {
     providerKeyId: string;
     rotationVersion: string;
     hint?: string;
+}
+
+/**
+ * The credential reference of a step whose key comes from the server's
+ * environment (see WORKFLOW_ENV_KEYS, e.g. `AI_GATEWAY_API_KEY` or
+ * `BIFROST_API_KEY` in apps/api/.env), not from Settings. Like
+ * an eval run, it records no key id: the worker uses the environment's key
+ * when the step runs. A key saved in Settings always wins over it.
+ */
+export const WORKFLOW_ENV_CREDENTIAL = {
+    providerKeyId: "env",
+    rotationVersion: "env",
+    hint: "key from the server's .env",
+} as const satisfies IWorkflowLlmCredentialReference;
+
+/** Whether a step's key comes from the server's environment, not Settings. */
+export function isWorkflowEnvCredential(
+    credential: Pick<IWorkflowLlmCredentialReference, "providerKeyId">,
+): boolean {
+    return credential.providerKeyId === WORKFLOW_ENV_CREDENTIAL.providerKeyId;
+}
+
+/** Where a transport's key comes from in the server's environment. */
+export interface IWorkflowEnvKeySource {
+    /** The provider's name in messages. */
+    label: string;
+    /** The env variable holding the key. */
+    apiKeyEnv: string;
+    /** The env variable holding the address, when the transport needs one. */
+    baseUrlEnv?: string;
+}
+
+/**
+ * Transports whose key may come from the server's environment (apps/api/.env)
+ * when none is saved in Settings, on the pipeline side, the same variables
+ * eval runs read. OpenAI and OpenRouter keys from the environment are not
+ * used by pipeline steps; their keys must be saved in Settings.
+ */
+export const WORKFLOW_ENV_KEYS = {
+    gateway: { label: "Vercel AI Gateway", apiKeyEnv: "AI_GATEWAY_API_KEY" },
+    bifrost: {
+        label: "Bifrost",
+        apiKeyEnv: "BIFROST_API_KEY",
+        baseUrlEnv: "BIFROST_BASE_URL",
+    },
+} as const satisfies Partial<
+    Record<WorkflowLlmTransport, IWorkflowEnvKeySource>
+>;
+
+/** The env variables a transport's key may come from, if any. */
+export function workflowEnvKeySource(
+    transport: WorkflowLlmTransport,
+): IWorkflowEnvKeySource | undefined {
+    return (
+        WORKFLOW_ENV_KEYS as Partial<
+            Record<WorkflowLlmTransport, IWorkflowEnvKeySource>
+        >
+    )[transport];
+}
+
+/** Whether a transport's key may come from the server's environment. */
+export function workflowTransportAcceptsEnvKey(
+    transport: WorkflowLlmTransport,
+): boolean {
+    return workflowEnvKeySource(transport) !== undefined;
+}
+
+/**
+ * Names the env key a transport uses, for messages: "the Vercel AI Gateway
+ * key from the server's .env (AI_GATEWAY_API_KEY)".
+ */
+export function describeWorkflowEnvKey(source: IWorkflowEnvKeySource): string {
+    const vars = source.baseUrlEnv
+        ? `${source.apiKeyEnv} and ${source.baseUrlEnv}`
+        : source.apiKeyEnv;
+    return `the ${source.label} key from the server's .env (${vars})`;
 }
 
 export interface IWorkflowLlmResolvedExecution {
@@ -232,6 +355,9 @@ export interface IWorkflowLlmUsage {
 export type WorkflowLlmCostSource =
     | "provider_reported"
     | "gateway_reported"
+    /** Priced at the price Bifrost's model list gives the id it was sent as. */
+    | "bifrost_list_price"
+    /** Priced at the model registry's list price. */
     | "catalog_estimate"
     | "unavailable";
 
@@ -336,6 +462,15 @@ export interface IWorkflowNodeArtifact {
     };
     executionProvenance?: IWorkflowLlmExecutionProvenance;
     providerMetadata?: Record<string, unknown>;
+    /** Whether the step's thinking level was sent with its call. */
+    thinking?: IThinkingOutcome;
+    /**
+     * Plain-words notes about the step's call, e.g. an output limit above
+     * what the model can give (from Bifrost's model list).
+     */
+    warnings?: string[];
+    /** Why a skipped step did not run (no model call was made). */
+    skipReason?: string;
 }
 export interface IWorkflowNodePosition {
     x: number;
@@ -351,6 +486,43 @@ export type IWorkflowNodeEvalConfig =
       }
     | { type: "field_diff"; fieldConfigs: IPipelineFieldConfig[] };
 
+/**
+ * Per-step settings for a Prompt or LLM text step, sent on every call on
+ * every provider. Unset values keep the step's route (or Simple mode's
+ * default output limit; temperature is then not sent).
+ */
+export interface IWorkflowStepSettings {
+    /** 0 to 2. Not sent to models that refuse temperature. */
+    temperature?: number;
+    /** Most output tokens per call, thinking included. */
+    maxOutputTokens?: number;
+    /**
+     * How a step with an output schema asks for JSON: "json_schema" (the
+     * default) has the provider enforce the schema; "json_object" asks for
+     * any JSON object; "text" asks for nothing and reads the JSON object out
+     * of the reply (code fences allowed). The schema checks the parsed answer
+     * in the last two.
+     */
+    outputMode?: WorkflowStepOutputMode;
+    /**
+     * Builds the step's user message instead of the default `<input>` /
+     * `<from node>` assembly: `{{input}}`, `{{input.<name>}}` (a tagged
+     * section or JSON field of the item; `{{input.<name>.<field>}}` reads a
+     * field of the JSON inside a section) and `{{Step.$.path}}` (an earlier
+     * step's answer; `| pick:a,b` keeps some fields). See stepTemplates.
+     */
+    inputTemplate?: string;
+}
+
+export const WORKFLOW_STEP_OUTPUT_MODES = [
+    "json_schema",
+    "json_object",
+    "text",
+] as const;
+
+export type WorkflowStepOutputMode =
+    (typeof WORKFLOW_STEP_OUTPUT_MODES)[number];
+
 export interface IWorkflowNode {
     id: string;
     workflowId: string;
@@ -364,6 +536,10 @@ export interface IWorkflowNode {
     llmExecutionSelection?: IWorkflowLlmSelection;
     evalConfig: IWorkflowNodeEvalConfig;
     position?: IWorkflowNodePosition;
+    /** Run this step only when earlier steps' answers match (all conditions). */
+    runCondition?: WorkflowRunCondition;
+    /** Temperature and output limit for this step's calls. */
+    stepSettings?: IWorkflowStepSettings;
 }
 
 export interface IWorkflowEdge {
@@ -372,6 +548,11 @@ export interface IWorkflowEdge {
     fromNodeId: string;
     toNodeId: string;
     carryOriginalInput: boolean;
+    /**
+     * "Order only": the target step runs after the source (so it can be
+     * gated by it) but reads the original input, not the source's answer.
+     */
+    orderOnly?: boolean;
 }
 
 export interface IPromptWorkflow {
@@ -382,6 +563,8 @@ export interface IPromptWorkflow {
     description: string;
     kind: WorkflowKind;
     sttConfig?: ISttRunConfig;
+    /** How each item's final answer is assembled from step answers. */
+    finalAnswer?: IPipelineFinalAnswer;
     createdAt: string;
     nodes: IWorkflowNode[];
     edges: IWorkflowEdge[];
@@ -406,6 +589,10 @@ interface IWorkflowNodeInputBase {
     llmExecutionSelection?: IWorkflowLlmSelection;
     evalConfig: IWorkflowNodeEvalConfig;
     position?: IWorkflowNodePosition | null;
+    /** Run this step only when earlier steps' answers match (all conditions). */
+    runCondition?: WorkflowRunCondition | null;
+    /** Temperature and output limit for this step's calls; null clears them. */
+    stepSettings?: IWorkflowStepSettings | null;
 }
 
 export type IWorkflowNodeInput = IWorkflowNodeInputBase &
@@ -464,6 +651,8 @@ export interface IWorkflowEdgeInput {
     fromNodeKey: string;
     toNodeKey: string;
     carryOriginalInput: boolean;
+    /** Wait for the source step without passing its answer on. */
+    orderOnly?: boolean;
 }
 
 export type MultiWorkflowModality = "audio" | "image" | "text";
@@ -529,6 +718,7 @@ export interface ICreateWorkflowRequest {
     description?: string;
     kind?: WorkflowKind;
     sttConfig?: ISttRunConfig;
+    finalAnswer?: IPipelineFinalAnswer | null;
     nodes: IWorkflowNodeInput[];
     edges: IWorkflowEdgeInput[];
     createdBy: string;
@@ -542,6 +732,8 @@ export interface IUpdateWorkflowRequest {
     description?: string;
     kind?: WorkflowKind;
     sttConfig?: ISttRunConfig | null;
+    /** Omit to keep the saved final answer; null removes it. */
+    finalAnswer?: IPipelineFinalAnswer | null;
     nodes: IWorkflowNodeInput[];
     edges: IWorkflowEdgeInput[];
 }
@@ -566,6 +758,27 @@ export interface ICreateWorkflowRunRequest {
      */
     idempotencyKey?: string;
     createdBy: string;
+    /**
+     * Spend limit in USD: the worker stops starting steps once the run's
+     * recorded step, judge and transcription spend reaches it.
+     */
+    maxCostUsd?: number;
+    /** Who may serve the run's step and judge calls and what they may keep. */
+    dataPolicy?: IRunDataPolicy;
+    /**
+     * A completed eval run on the same dataset with a benchmark Task Map:
+     * each item's final answer is scored against that run's reference with
+     * its Task Map, policy, judge and data rules. Needs a final answer.
+     */
+    compareWithRunId?: string;
+}
+
+/** Run-level settings captured when a pipeline run is created. */
+export interface IWorkflowRunConfig {
+    maxCostUsd?: number;
+    dataPolicy?: IRunDataPolicy;
+    /** The eval run whose reference the final answers are compared with. */
+    comparison?: IPipelineComparisonConfig;
 }
 
 export interface ICreateWorkflowRunResponse {
@@ -584,6 +797,18 @@ export interface IRetryWorkflowRunRequest {
 export interface IRetryWorkflowRunResponse extends ICreateWorkflowRunResponse {
     /** Failed cells reset to pending, including blocked descendants. */
     retriedCellCount: number;
+    /** False when there was nothing to queue: the run's job is still waiting. */
+    requeued?: boolean;
+}
+
+/** Ask a pending or running pipeline run to stop. */
+export type ICancelWorkflowRunRequest = IRetryWorkflowRunRequest;
+
+export interface ICancelWorkflowRunResponse {
+    workflowRunId: string;
+    /** `cancelled` at once for a run no worker had started; otherwise unchanged until the worker stops. */
+    status: RunStatus;
+    stopReason?: RunStopReason;
 }
 
 export interface IWorkflowRunSummary {
@@ -592,6 +817,8 @@ export interface IWorkflowRunSummary {
     datasetId: string;
     datasetName: string;
     status: RunStatus;
+    /** Why a cancelled run stopped. */
+    stopReason?: RunStopReason;
     runTarget: WorkflowRunTarget;
     total: number;
     done: number;
@@ -611,6 +838,10 @@ export interface IWorkflowRunCell {
     llmExecution?: IWorkflowRunCellLlmExecution;
     latencyMs?: number;
     costUsd?: number;
+    /** What judging this step's answer cost, when a judge call reported it. */
+    judgeCostUsd?: number;
+    /** The hosting company that served this step's call, when the gateway said. */
+    servedBy?: string;
     annotation?: ICellAnnotation;
     error?: string;
 }
@@ -665,6 +896,10 @@ export interface IWorkflowSnapshot {
     >;
     edges: IWorkflowEdge[];
     sttConfig?: ISttRunConfig;
+    /** The final answer mapping, with the output schema captured at launch. */
+    finalAnswer?: IPipelineFinalAnswer & {
+        schema?: { digest: string; schema: Record<string, unknown> };
+    };
 }
 
 export type WorkflowSttTranscriptVariant = "raw" | "latin";
@@ -704,6 +939,10 @@ export interface IWorkflowSttPreparation {
         requestId?: string;
         providerMode?: string;
         providerBaseUrl?: string;
+        /** The audio was loudness-levelled before transcription. */
+        volumeLevelled?: boolean;
+        /** How the audio was prepared: version, levelling filter, chunks. */
+        audioPreparation?: Record<string, unknown>;
     };
     artifactLatencyMs?: number;
     artifactCostUsd?: number;
@@ -711,7 +950,9 @@ export interface IWorkflowSttPreparation {
     lookupLatencyMs?: number;
     transcriptionLatencyMs?: number;
     transliterationLatencyMs?: number;
+    /** Known spend for this item; may be a lower bound, see the source. */
     incurredCostUsd?: number;
+    /** "unavailable": some part's cost is unknown, incurredCostUsd is a floor. */
     incurredCostSource?: "computed" | "unavailable";
     cacheHit?: boolean;
     preparationStatus: WorkflowSttPreparationStatus;
@@ -754,6 +995,12 @@ export interface IWorkflowRunDetailResponse {
         runTarget: WorkflowRunTarget;
         targetItemId?: string;
         workflowSnapshot: IWorkflowSnapshot;
+        /** The spend limit and data rules captured at creation. */
+        configSnapshot?: IWorkflowRunConfig;
+        /** Set once a stop was asked for; see RunStopReason. */
+        stopReason?: RunStopReason;
+        /** Why the run failed before any step started. */
+        error?: string;
         createdAt: string;
     };
     progress: IRunProgress;
@@ -766,9 +1013,25 @@ export interface IWorkflowRunDetailResponse {
     sttItems: IWorkflowSttPreparation[];
     sttScoresByItem: Record<string, IWorkflowSttScore[]>;
     sttAggregates: IWorkflowSttAggregate[];
+    /** Each item's final answer, when the pipeline defines one. */
+    answers?: IWorkflowRunAnswer[];
+    /** The comparison with the chosen eval run's reference, when one was chosen. */
+    comparison?: IPipelineComparison;
+    /**
+     * On a completed run: final answers whose benchmark judge failed on a
+     * task, which a retry judges again. Absent when there are none.
+     */
+    answersToRejudge?: number;
     note?: IWorkflowRunNote;
 }
 
 export interface IWorkflowRunProgressResponse extends IRunProgress {
     status: RunStatus;
+    enqueueStatus?: "pending_enqueue" | "queued";
+    /** Set once a stop was asked for, while the run is still winding down too. */
+    stopReason?: RunStopReason;
+    /** Why the run failed before any step started. */
+    error?: string;
+    /** For a pending run: when it was created or last queued. */
+    pendingSince?: string;
 }

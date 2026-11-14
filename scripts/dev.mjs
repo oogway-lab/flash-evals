@@ -4,6 +4,7 @@ import path from "node:path";
 import { clearInterval, setInterval } from "node:timers";
 import { fileURLToPath, URL } from "node:url";
 import { apiEnv, devHost, root, webEnv } from "./lib/dev-env.cjs";
+import { withoutShellProviderEnv } from "./lib/shell-provider-env.mjs";
 
 const webArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 const hostArgs = optionValue(webArgs, ["-H", "--hostname"])
@@ -39,11 +40,21 @@ const browserApiOrigin =
 const seedTeamId = "f3b1a534-d8ef-4146-aead-96301d99d496";
 const seedUserId = "5b7ecdb4-ac4b-4219-89ea-f5f50aeae7bd";
 
+// Every local process that calls a model: 100 calls per provider at once,
+// fan-out inside one task at 100, and a bigger DB pool to keep up.
+const localParallelEnv = {
+    FLASH_EVALS_PROVIDER_CONCURRENCY:
+        process.env.FLASH_EVALS_PROVIDER_CONCURRENCY || "100",
+    FLASH_EVALS_INNER_CONCURRENCY:
+        process.env.FLASH_EVALS_INNER_CONCURRENCY || "100",
+    FLASH_EVALS_DB_POOL_MAX: process.env.FLASH_EVALS_DB_POOL_MAX || "25",
+};
+
 const commands = [
     {
         name: "api",
-        command: "pnpm",
-        args: ["--filter", "@flash-evals/api", "dev"],
+        command: "bun",
+        args: ["run", "--cwd", "apps/api", "dev"],
         env: {
             CORS_ORIGINS:
                 process.env.CORS_ORIGINS ||
@@ -51,12 +62,19 @@ const commands = [
             FLASH_EVALS_API_PUBLIC_URL: browserApiOrigin,
             PORT: apiPort,
             FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS: "true",
+            ...localParallelEnv,
+            // Per-minute caps on model calls and new runs are off locally
+            // (0 disables; a shell value still wins).
+            FLASH_EVALS_RATE_LIMIT_LLM_PER_MINUTE:
+                process.env.FLASH_EVALS_RATE_LIMIT_LLM_PER_MINUTE || "0",
+            FLASH_EVALS_RATE_LIMIT_RUNS_PER_MINUTE:
+                process.env.FLASH_EVALS_RATE_LIMIT_RUNS_PER_MINUTE || "0",
         },
     },
     {
         name: "web",
-        command: "pnpm",
-        args: ["--filter", "@flash-evals/web", "dev", ...hostArgs, ...webArgs],
+        command: "bun",
+        args: ["run", "--cwd", "apps/web", "dev", ...hostArgs, ...webArgs],
         env: {
             API_BASE_URL:
                 process.env.API_BASE_URL ||
@@ -64,6 +82,7 @@ const commands = [
                 apiOrigin,
             NEXT_PUBLIC_API_BASE_URL: browserApiOrigin,
             FLASH_EVALS_DEV_WEB_ORIGIN: webOrigin,
+            ...localParallelEnv,
             AUTH_DEV: "true",
             AUTH_DEV_ALLOW_INSECURE: "1",
             FLASH_EVALS_DEFAULT_TEAM_ID:
@@ -74,9 +93,15 @@ const commands = [
     },
     {
         name: "worker",
-        command: "pnpm",
-        args: ["--filter", "@flash-evals/web", "worker"],
+        command: "bun",
+        args: ["run", "--cwd", "apps/web", "worker"],
         env: {
+            // Local runs go 100 at a time (the code defaults of 1-5 made a
+            // 500-call run take about an hour). A shell value still wins;
+            // deployed workers keep their own settings.
+            ...localParallelEnv,
+            EVAL_CONCURRENCY: process.env.EVAL_CONCURRENCY || "100",
+            FLASH_EVALS_RUN_SLOTS: process.env.FLASH_EVALS_RUN_SLOTS || "100",
             AUTH_DEV: "true",
             AUTH_DEV_ALLOW_INSECURE: "1",
             FLASH_EVALS_DEFAULT_TEAM_ID:
@@ -99,14 +124,18 @@ const build = spawnSync(process.execPath, [buildScript], {
 if (build.status !== 0) process.exit(build.status ?? 1);
 
 // Each child leads its own process group so shutdown reaches the node
-// processes pnpm starts, not just pnpm; signalling pnpm alone left orphans.
+// processes bun starts, not just bun; signalling bun alone left orphans.
 const processGroups = new Set();
 let shuttingDown = false;
 
 for (const entry of commands) {
     const child = spawn(entry.command, entry.args, {
         cwd: root,
-        env: { ...process.env, FLASH_EVALS_PACKAGES_BUILT: "1", ...entry.env },
+        env: {
+            ...withoutShellProviderKeys(process.env),
+            FLASH_EVALS_PACKAGES_BUILT: "1",
+            ...entry.env,
+        },
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,
     });
@@ -155,7 +184,7 @@ function prefixStream(stream, name) {
     });
 }
 
-// Wait on the process groups rather than the pnpm children: pnpm exits as soon
+// Wait on the process groups rather than the bun children: bun exits as soon
 // as it forwards SIGTERM, while the node process under it is still shutting down.
 function shutdown(exitCode) {
     if (shuttingDown) return;
@@ -184,7 +213,7 @@ function shutdown(exitCode) {
 }
 
 // Kill whatever is still running in the groups before exiting, so a process
-// that outlives its pnpm parent doesn't keep running in the background.
+// that outlives its bun parent doesn't keep running in the background.
 function exit(exitCode) {
     signalProcessGroups("SIGKILL");
     process.exit(exitCode);
@@ -227,4 +256,14 @@ function optionValue(args, names) {
         if (match) return arg.slice(match.length);
     }
     return undefined;
+}
+
+/** Drops shell provider keys and settings; see lib/shell-provider-env.mjs. */
+function withoutShellProviderKeys(env) {
+    const { env: copy, dropped } = withoutShellProviderEnv(env);
+    if (dropped.length > 0)
+        console.warn(
+            `dev: ignoring ${dropped.join(", ")} from your shell; keys come from the repo's .env files or Settings.`,
+        );
+    return copy;
 }

@@ -1,9 +1,24 @@
+import { bifrostApiBaseUrl } from "./bifrost.js";
+import {
+    bifrostModelInfoFromListing,
+    bifrostModelListKeyFor,
+    installBifrostModelInfo,
+    type IBifrostModelInfo,
+} from "./bifrostModelInfo.js";
 import { createGateway, type GatewayProvider } from "@ai-sdk/gateway";
 import OpenAI from "openai";
 import type { ApiKeys } from "../types.js";
 import { gatewayAttributionHeaders } from "./attribution.js";
+import { openAIClientEndpoint } from "./endpoints.js";
 import { providerModeFromEnv, type EvalProviderMode } from "./factory.js";
-import type { IModelPricing, IModelPricingTier } from "../models/registry.js";
+import {
+    directMakerModelIds,
+    isDirectMakerTransport,
+    registryEntryFor,
+    type DirectMakerTransport,
+    type IModelPricing,
+    type IModelPricingTier,
+} from "../models/registry.js";
 
 const MODEL_LIST_TIMEOUT_MS = 15_000;
 
@@ -11,12 +26,14 @@ export interface IListAvailableModelsOptions {
     createGatewayProvider?: (
         apiKey: string,
     ) => Pick<GatewayProvider, "getAvailableModels">;
-    provider?: EvalProviderMode;
+    provider?: EvalProviderMode | DirectMakerTransport;
 }
 
 export interface IAvailableModelMetadata {
     id: string;
     pricing?: IModelPricing;
+    /** Bifrost: what its list says the model takes (see IBifrostModelInfo). */
+    bifrost?: IBifrostModelInfo;
 }
 
 interface IGatewayModelMetadata {
@@ -43,6 +60,9 @@ export async function listAvailableModelMetadata(
     if (provider === "gateway") {
         return listGatewayModels(apiKeys, options);
     }
+    if (isDirectMakerTransport(provider)) {
+        return listDirectMakerModels(apiKeys, provider);
+    }
     if (provider === "openrouter") {
         return (
             await listOpenAICompatibleModels({
@@ -55,18 +75,62 @@ export async function listAvailableModelMetadata(
         ).map((id) => ({ id }));
     }
     if (provider === "bifrost") {
-        return (
-            await listOpenAICompatibleModels({
+        // Bifrost's list carries OpenRouter's metadata for openrouter/ ids;
+        // remembered so thinking and output limits can follow it.
+        const models = (
+            await listOpenAICompatibleModelRecords({
                 apiKey: apiKeys.bifrost,
-                baseURL: apiKeys.bifrostBaseUrl,
+                baseURL: apiKeys.bifrostBaseUrl
+                    ? bifrostApiBaseUrl(apiKeys.bifrostBaseUrl)
+                    : undefined,
                 missingKeyMessage:
                     "Please add your Bifrost API key to list models.",
                 missingBaseUrlMessage:
                     "Please add BIFROST_BASE_URL to list Bifrost models.",
             })
-        ).map((id) => ({ id }));
+        ).flatMap((record) => {
+            const info = bifrostModelInfoFromListing(record);
+            return info
+                ? [
+                      {
+                          id: info.id,
+                          bifrost: info,
+                          ...(info.pricing ? { pricing: info.pricing } : {}),
+                      },
+                  ]
+                : [];
+        });
+        const listKey = bifrostModelListKeyFor(apiKeys);
+        if (listKey)
+            installBifrostModelInfo(
+                listKey,
+                models.map((model) => model.bifrost),
+            );
+        return models;
     }
     return (await listOpenAIModels(apiKeys)).map((id) => ({ id }));
+}
+
+/**
+ * Direct maker models come from the registry, with no request to the maker:
+ * only models whose direct id has been checked are offered.
+ */
+function listDirectMakerModels(
+    apiKeys: ApiKeys,
+    transport: DirectMakerTransport,
+): IAvailableModelMetadata[] {
+    if (!apiKeys[transport]) {
+        throw new Error(
+            `Please add your ${transport === "anthropic" ? "Anthropic" : "Gemini"} API key in Settings to list models.`,
+        );
+    }
+    return directMakerModelIds(transport).flatMap((id) => {
+        const entry = registryEntryFor(id);
+        const modelId = entry?.transports[transport];
+        if (!entry || !modelId) return [];
+        const pricing = entry.pricingByTransport?.[transport];
+        return [{ id: modelId, ...(pricing ? { pricing } : {}) }];
+    });
 }
 
 async function listOpenAIModels(apiKeys: ApiKeys): Promise<string[]> {
@@ -79,12 +143,25 @@ async function listOpenAIModels(apiKeys: ApiKeys): Promise<string[]> {
     });
 }
 
-async function listOpenAICompatibleModels(input: {
+interface IOpenAICompatibleListInput {
     apiKey?: string;
     baseURL?: string;
     missingKeyMessage: string;
     missingBaseUrlMessage?: string;
-}): Promise<string[]> {
+}
+
+async function listOpenAICompatibleModels(
+    input: IOpenAICompatibleListInput,
+): Promise<string[]> {
+    return (await listOpenAICompatibleModelRecords(input)).map(
+        (model) => model.id,
+    );
+}
+
+/** Every listed model as the provider sent it, extra fields included. */
+async function listOpenAICompatibleModelRecords(
+    input: IOpenAICompatibleListInput,
+): Promise<OpenAI.Models.Model[]> {
     if (!input.apiKey) {
         throw new Error(input.missingKeyMessage);
     }
@@ -93,15 +170,15 @@ async function listOpenAICompatibleModels(input: {
     }
     const client = new OpenAI({
         apiKey: input.apiKey,
-        ...(input.baseURL ? { baseURL: input.baseURL } : {}),
+        ...openAIClientEndpoint(input.baseURL),
         timeout: 15_000,
         maxRetries: 1,
     });
-    const ids: string[] = [];
+    const models: OpenAI.Models.Model[] = [];
     for await (const model of client.models.list()) {
-        ids.push(model.id);
+        models.push(model);
     }
-    return ids;
+    return models;
 }
 
 async function listGatewayModels(

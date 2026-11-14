@@ -1,7 +1,7 @@
 import { getBareModelName, type ApiKeys } from "@flash-evals/llm-core";
 import { runJudge, type JudgeInput, type JudgeOutcome } from "./judge";
 import { isRecord } from "../lib/objects";
-import { mapPool } from "../lib/concurrency";
+import { innerConcurrency, mapPool } from "../lib/concurrency";
 import type {
     IGenerativeFieldResult,
     IPipelineFieldConfig,
@@ -10,7 +10,11 @@ import type {
     LabelJson,
     OutputJson,
 } from "../db/jsonTypes";
-import type { ReasoningEffort } from "@flash-evals/llm-core";
+import type {
+    ICompletionDataPolicy,
+    ICostPricing,
+    ReasoningEffort,
+} from "@flash-evals/llm-core";
 
 export type JudgeFn = (input: JudgeInput) => Promise<JudgeOutcome>;
 
@@ -30,11 +34,17 @@ export interface IJudgeFieldsArgs {
     maxTokens: number;
     declaredInputs?: JudgeDeclaredInput[];
     reasoningEffort?: ReasoningEffort;
+    /** The run's data rules, applied to each judge call. */
+    dataPolicy?: ICompletionDataPolicy;
+    /** Prices for a field's judge model, so each call's cost is recorded. */
+    pricingFor?: (modelId: string) => Promise<ICostPricing | undefined>;
 }
 
 export interface IJudgeFieldsResult {
     score: number | null;
     details: IJudgeDetails;
+    /** What the field judges cost together, when any cost was known. */
+    costUsd?: number;
 }
 
 const JUDGE_FIELD_CONCURRENCY = 4;
@@ -48,10 +58,12 @@ export async function judgeFields(
         (c): c is IGenerativeFieldConfig => c.kind === "generative",
     );
 
+    const costs: number[] = [];
     const fields = await mapPool(
         generative,
-        JUDGE_FIELD_CONCURRENCY,
+        innerConcurrency(JUDGE_FIELD_CONCURRENCY),
         async (config): Promise<IGenerativeFieldResult> => {
+            const pricing = await args.pricingFor?.(config.modelId);
             const value = isRecord(args.output)
                 ? args.output[config.field]
                 : undefined;
@@ -68,7 +80,10 @@ export async function judgeFields(
                 maxTokens: Math.min(args.maxTokens, JUDGE_MAX_TOKENS),
                 declaredInputs: args.declaredInputs,
                 reasoningEffort: args.reasoningEffort,
+                ...(args.dataPolicy ? { dataPolicy: args.dataPolicy } : {}),
+                ...(pricing ? { pricing } : {}),
             });
+            if (verdict.costUsd !== undefined) costs.push(verdict.costUsd);
 
             return {
                 field: config.field,
@@ -81,12 +96,19 @@ export async function judgeFields(
     );
 
     const scored = fields.filter(
-        (f): f is IGenerativeFieldResult & { score: number } => f.score !== null,
+        (f): f is IGenerativeFieldResult & { score: number } =>
+            f.score !== null,
     );
     const score = scored.length
         ? scored.reduce((sum, f) => sum + f.score, 0) / scored.length
         : null;
     const errorCount = fields.length - scored.length;
 
-    return { score, details: { fields, errorCount } };
+    return {
+        score,
+        details: { fields, errorCount },
+        ...(costs.length > 0
+            ? { costUsd: costs.reduce((total, cost) => total + cost, 0) }
+            : {}),
+    };
 }

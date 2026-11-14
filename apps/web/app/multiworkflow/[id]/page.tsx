@@ -42,13 +42,21 @@ export default async function SttEvalCanvasPage({
         if (err instanceof FlashEvalsApiError && err.status === 404) notFound();
         throw err;
     });
-    if (workflow.kind !== "stt" && workflow.kind !== "multi") notFound();
-    const routing = await loadLlmRouting(principal.teamId, principal.projectId);
+    // Every kind opens on the canvas. A "prompt" pipeline (created through the
+    // API or MCP) has no input block: its first steps read the dataset item.
+    const [routing, comparisonRuns] = await Promise.all([
+        loadLlmRouting(principal.teamId, principal.projectId),
+        loadComparisonRuns(principal.teamId, principal.projectId),
+    ]);
     return (
         <Page>
             <PageHeader
                 title={workflow.name}
-                description="Connect one independent downstream branch to each input block."
+                description={
+                    workflow.kind === "prompt"
+                        ? "Chain prompt steps. Steps without an incoming connection read each dataset item."
+                        : "Connect one independent downstream branch to each input block."
+                }
                 breadcrumbs={[
                     { label: "Pipelines", href: "/multiworkflow" },
                     { label: workflow.name },
@@ -66,6 +74,7 @@ export default async function SttEvalCanvasPage({
                     datasets: setup.datasets,
                     initialDatasetId: datasetId,
                     action: createSttEvalRunAction,
+                    comparisonRuns,
                 }}
                 canvas={{
                     workflow,
@@ -84,6 +93,21 @@ export default async function SttEvalCanvasPage({
             />
         </Page>
     );
+}
+
+/**
+ * Eval runs the launcher offers to compare with. Comparing is optional, so
+ * a failed lookup offers none instead of failing the canvas.
+ */
+async function loadComparisonRuns(teamId: string, projectId: string) {
+    try {
+        return await serverApiClient().listPipelineComparisonRuns(
+            teamId,
+            projectId,
+        );
+    } catch {
+        return [];
+    }
 }
 
 async function loadLlmRouting(teamId: string, projectId: string) {

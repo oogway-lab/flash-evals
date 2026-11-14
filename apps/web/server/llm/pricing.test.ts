@@ -76,6 +76,22 @@ describe("pricingFor", () => {
         ).toBeCloseTo(2.5 / M, 12);
     });
 
+    it("prices a Bifrost id as the registry model behind it", async () => {
+        const registry = pricingFor("anthropic/claude-sonnet-4.6");
+        expect(registry).toBeDefined();
+        expect(pricingFor("openrouter/anthropic/claude-sonnet-4.6")).toEqual(
+            registry,
+        );
+        expect(
+            await resolvePricingFor(
+                "openrouter/anthropic/claude-sonnet-4.6",
+                {},
+                "bifrost",
+            ),
+        ).toEqual(registry);
+        expect(pricingFor("openrouter/nobody/unknown-model")).toBeUndefined();
+    });
+
     it("returns undefined for unknown models so cost is recorded unavailable", () => {
         expect(pricingFor("nonexistent-model")).toBeUndefined();
     });

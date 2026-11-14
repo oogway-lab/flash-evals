@@ -7,18 +7,14 @@ import type {
     IRunConfigSnapshot,
     IRunContext,
 } from "@flash-evals/api-contract";
-import { fmtCost, fmtDate, fmtScore, MISSING_VALUE } from "@/lib/format";
+import { fmtCost, fmtDate } from "@/lib/format";
 import { HintText } from "@/components/ui/hint";
 import { Num } from "@/components/ui/num";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { RunStatusBadge } from "@/components/ui/status-badge";
+import { RunStatusNotice } from "@/components/runs/run-status-notice";
 import { cn } from "@/lib/cn";
-import {
-    summarizeBestModel,
-    type IBestModelSummary,
-} from "@/components/runs/best-model";
-import { sttVariantDisplay } from "@/components/runs/stt-variant-display";
 import {
     isActiveRunStatus,
     progressPercent,
@@ -36,34 +32,6 @@ const connectionLabels: Record<
     reconnecting: "Reconnecting…",
     paused: "Updates paused",
 };
-
-const METRIC_LABELS = {
-    judge: "judge score",
-    field: "golden score",
-    transcript: "transcript score",
-} as const;
-
-function modelLabel(snapshot: IRunConfigSnapshot, modelId: string) {
-    const variant = sttVariantDisplay(snapshot, modelId);
-    return variant
-        ? { text: variant.label, mono: false }
-        : { text: modelId, mono: true };
-}
-
-function ModelName({
-    snapshot,
-    modelId,
-}: {
-    snapshot: IRunConfigSnapshot;
-    modelId: string;
-}) {
-    const { text, mono } = modelLabel(snapshot, modelId);
-    return (
-        <span className={cn("text-on-surface", mono && "text-mono-13")}>
-            {text}
-        </span>
-    );
-}
 
 /** One label over one value, with an optional detail line under it. */
 function Stat({
@@ -97,101 +65,49 @@ function Stat({
     );
 }
 
-function BestModelStat({
-    rows,
-    active,
-    snapshot,
-}: {
-    rows: ILeaderboardRow[];
-    active: boolean;
-    snapshot: IRunConfigSnapshot;
-}) {
-    const best = summarizeBestModel(rows);
-    // A single-model run has no winner, only a score.
-    const label =
-        rows.length < 2 ? "Score" : active ? "Leading model" : "Best model";
-    if (!best) {
-        return (
-            <Stat
-                label={label}
-                value={<Num>{MISSING_VALUE}</Num>}
-                detail={
-                    active
-                        ? "Scores appear as cells finish."
-                        : "No scores recorded for this run."
-                }
-                className="col-span-2 sm:col-span-1"
-            />
-        );
-    }
-    return (
-        <Stat
-            label={label}
-            value={<Num>{fmtScore(best.score)}</Num>}
-            detail={
-                <BestModelDetail best={best} rows={rows} snapshot={snapshot} />
-            }
-            className="col-span-2 sm:col-span-1"
-        />
-    );
-}
+const sumOf = (values: number[]) =>
+    values.length > 0 ? values.reduce((a, b) => a + b, 0) : undefined;
 
-function BestModelDetail({
-    best,
-    rows,
-    snapshot,
-}: {
-    best: IBestModelSummary;
-    rows: ILeaderboardRow[];
-    snapshot: IRunConfigSnapshot;
-}) {
-    const metric = METRIC_LABELS[best.metric];
-    const partial =
-        best.scored < rows.length
-            ? ` · ${best.scored} of ${rows.length} scored`
-            : "";
-    if (best.tied) {
-        const names = best.modelIds.map((id) => modelLabel(snapshot, id).text);
-        return (
-            <>
-                <HintText hint={names.join(", ")}>
-                    {best.modelIds.length} models tied
-                </HintText>
-                {` · ${metric}${partial}`}
-            </>
-        );
-    }
-    return (
-        <>
-            <ModelName snapshot={snapshot} modelId={best.modelIds[0]!} />
-            {` · ${metric}${partial}`}
-        </>
+/** Model calls plus the judge calls that scored them. */
+export function totalCost(rows: ILeaderboardRow[]) {
+    const models = sumOf(
+        rows.flatMap((r) =>
+            r.totalCostUsd === undefined ? [] : [r.totalCostUsd],
+        ),
     );
-}
-
-function totalCost(rows: ILeaderboardRow[]) {
-    const known = rows.flatMap((r) =>
-        r.totalCostUsd === undefined ? [] : [r.totalCostUsd],
+    const judging = sumOf(
+        rows.flatMap((r) =>
+            r.totalJudgeCostUsd === undefined ? [] : [r.totalJudgeCostUsd],
+        ),
     );
     return {
-        total: known.length > 0 ? known.reduce((a, b) => a + b, 0) : undefined,
+        total: sumOf([models, judging].filter((v) => v !== undefined)),
+        judging,
         complete: rows.length > 0 && rows.every((r) => r.costAvailable),
     };
 }
 
+function costDetail(
+    { total, judging, complete }: ReturnType<typeof totalCost>,
+    models: number,
+): string {
+    if (total === undefined) return "No cost reported.";
+    const scope = complete
+        ? `Across ${models} ${models === 1 ? "model" : "models"}`
+        : "Some cells reported no cost";
+    const sentence = complete ? scope : `${scope}.`;
+    return judging
+        ? `${complete ? `${scope}.` : sentence} Includes ${fmtCost(judging)} for judging.`
+        : sentence;
+}
+
 function CostStat({ rows }: { rows: ILeaderboardRow[] }) {
-    const { total, complete } = totalCost(rows);
+    const cost = totalCost(rows);
     return (
         <Stat
             label="Total cost"
-            value={<Num>{fmtCost(total)}</Num>}
-            detail={
-                total === undefined
-                    ? "No cost reported."
-                    : complete
-                      ? `Across ${rows.length} ${rows.length === 1 ? "model" : "models"}`
-                      : "Some cells reported no cost."
-            }
+            value={<Num>{fmtCost(cost.total)}</Num>}
+            detail={costDetail(cost, rows.length)}
         />
     );
 }
@@ -212,7 +128,10 @@ function cellsDetail(data: IRunProgressSnapshot, active: boolean) {
     if (data.total === 0) return "No cells";
     if (data.done === data.total) return "All complete";
     const unfinished = data.total - settledCells(data);
-    const pending = unfinished > 0 ? `${unfinished} pending` : undefined;
+    const pending =
+        unfinished > 0
+            ? `${unfinished} ${data.status === "cancelled" ? "not run" : "pending"}`
+            : undefined;
     return [failed, pending].filter(Boolean).join(" · ");
 }
 
@@ -356,11 +275,24 @@ function JudgeItem({
 }
 
 /**
- * The top of a run page: what the run is, who is winning, what it cost, and
- * how it was configured. While the run is active it polls for progress and
+ * Run status, what the run cost, its cells, and how it was configured. The
+ * answer (which model wins) is the banner above it. While the run is active it polls for progress and
  * shows the live bar; once finished the bar disappears and only the cell
  * count stays.
  */
+/** "Only items labelled "sales" for Call type", from the run's snapshot. */
+export function itemFilterText(snapshot: IRunConfigSnapshot): string {
+    const filter = snapshot.itemFilter;
+    if (!filter) return "";
+    const task = filter.taskKey
+        ? snapshot.benchmark?.taskMap.tasks.find(
+              (entry) => entry.key === filter.taskKey,
+          )
+        : undefined;
+    const field = task?.name ?? filter.path ?? filter.taskKey ?? "";
+    return `Only items labelled "${String(filter.equals)}" for ${field}`;
+}
+
 export function RunSummary({
     progressUrl,
     initial,
@@ -369,9 +301,12 @@ export function RunSummary({
     datasetId,
     createdAt,
     context,
+    retryAction,
 }: {
     progressUrl: string;
     initial: IRunProgressSnapshot;
+    /** Offered when the run waits for a worker that hasn't taken it. */
+    retryAction?: React.ReactNode;
     leaderboard: ILeaderboardRow[];
     configSnapshot: IRunConfigSnapshot;
     datasetId: string;
@@ -391,7 +326,10 @@ export function RunSummary({
         >
             <div className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-3">
-                    <RunStatusBadge status={data.status} />
+                    <RunStatusBadge
+                        status={data.status}
+                        stopReason={data.stopReason}
+                    />
                     {active && connection !== "idle" && (
                         <span className="flex items-center gap-2 text-copy-14 text-muted-foreground">
                             {connection === "reconnecting" && (
@@ -408,14 +346,14 @@ export function RunSummary({
                         indeterminate={data.total === 0}
                     />
                 )}
+                <RunStatusNotice
+                    data={data}
+                    maxCostUsd={configSnapshot.maxCostUsd}
+                    retryAction={retryAction}
+                />
             </div>
 
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
-                <BestModelStat
-                    rows={leaderboard}
-                    active={active}
-                    snapshot={configSnapshot}
-                />
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
                 <CostStat rows={leaderboard} />
                 <CellsStat data={data} active={active} />
             </dl>
@@ -431,6 +369,16 @@ export function RunSummary({
                 </ConfigItem>
                 <PromptItem prompts={context?.prompts ?? []} />
                 <JudgeItem judge={judge} />
+                {configSnapshot.itemFilter && (
+                    <ConfigItem label="Items">
+                        {itemFilterText(configSnapshot)}
+                    </ConfigItem>
+                )}
+                {configSnapshot.maxCostUsd !== undefined && (
+                    <ConfigItem label="Spend limit">
+                        <Num>{fmtCost(configSnapshot.maxCostUsd)}</Num>
+                    </ConfigItem>
+                )}
                 <ConfigItem label="Created">
                     <time dateTime={createdAt}>{fmtDate(createdAt)}</time>
                 </ConfigItem>

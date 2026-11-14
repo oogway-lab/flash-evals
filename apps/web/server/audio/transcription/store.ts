@@ -12,9 +12,14 @@ import { audioTranscripts } from "../../db/schema";
 import { normalizeTranscript } from "../metrics";
 import type { ITranscriptArtifact, ITranscriptIdentity } from "./types";
 
+/**
+ * Cache identity of a transcript. Levelled audio hashes differently; without
+ * levelling the hash is unchanged so existing transcripts stay reusable.
+ */
 export function transcriptIdentity(
     modelId: string,
     config: Record<string, unknown> | undefined,
+    options: { levelVolume?: boolean } = {},
 ): ITranscriptIdentity {
     const configJson = canonicalJsonObject(config ?? {});
     const identity = sttModelIdentityForId(modelId);
@@ -23,6 +28,7 @@ export function transcriptIdentity(
         configHash: audioTranscriptConfigHash(
             identity,
             canonicalJsonString(configJson),
+            { levelVolume: options.levelVolume === true },
         ),
         configJson,
     };
@@ -84,6 +90,7 @@ export async function writeCompletedTranscriptArtifact(input: {
     const costUsd = sttCostUsdForDuration(
         input.modelId,
         input.artifact.durationMs,
+        input.identity.configJson,
     );
     const providerMetadata = {
         provider: input.identity.providerId,

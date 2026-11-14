@@ -5,7 +5,9 @@ import type {
     IRunSetupDatasetOption,
     IRunSetupJudgePromptOption,
     IRunSetupModelOption,
+    IRunDataPolicy,
     IRunSetupVersionOption,
+    ProviderTransport,
 } from "@flash-evals/api-contract";
 import type { IActionState } from "@/app/actions";
 import { AudioRunModeSelector } from "./audio-run-mode-selector";
@@ -33,6 +35,8 @@ export function RunModeSections({
     availableModels,
     versionOptions,
     modelsDegraded,
+    savedKeyProviders,
+    initialDataPolicy,
     judgePrompts,
     fieldErrors,
 }: {
@@ -47,6 +51,8 @@ export function RunModeSections({
     availableModels: IRunSetupModelOption[];
     versionOptions: IRunSetupVersionOption[];
     modelsDegraded: boolean;
+    savedKeyProviders?: ProviderTransport[];
+    initialDataPolicy?: IRunDataPolicy;
     judgePrompts: IRunSetupJudgePromptOption[];
     fieldErrors: IActionState["fieldErrors"];
 }) {
@@ -81,6 +87,8 @@ export function RunModeSections({
                     versionOptions={versionOptions}
                     selectedDataset={selectedDataset}
                     modelsDegraded={modelsDegraded}
+                    savedKeyProviders={savedKeyProviders}
+                    initialDataPolicy={initialDataPolicy}
                 />
             )}
             {!selectedDatasetIsAudio && (

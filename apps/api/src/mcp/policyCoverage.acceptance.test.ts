@@ -47,6 +47,9 @@ const READ_TOOLS = [
     "list_workflow_llm_provider_models",
     "list_workflow_llm_route_history",
     "get_workflow_llm_default",
+    "get_setup_comparison",
+    "list_setup_comparison_pipelines",
+    "list_pipeline_comparison_runs",
 ] as const;
 
 const ADMIN_ONLY_TOOLS = [
@@ -105,6 +108,7 @@ const ALL_TOOLS = [
     "optimize_prompt",
     "test_judge_draft",
     "generate_judge_for_run",
+    "propose_benchmark_task_map",
     "create_judge_prompt",
     "duplicate_prompt_version",
     "delete_prompt",
@@ -118,6 +122,7 @@ const ALL_TOOLS = [
     "save_run_note",
     "annotate_run_cell",
     "retry_run",
+    "cancel_run",
     "delete_run",
     "list_workflows",
     "list_workflow_summaries_page",
@@ -135,6 +140,8 @@ const ALL_TOOLS = [
     "list_workflow_run_cells",
     "save_workflow_run_note",
     "annotate_workflow_run_cell",
+    "cancel_workflow_run",
+    "retry_workflow_run",
     "get_workflow_run_progress",
     "list_provider_keys",
     "set_provider_key",
@@ -151,6 +158,11 @@ const ALL_TOOLS = [
     "get_workflow_llm_default",
     "set_workflow_llm_default",
     "clear_workflow_llm_default",
+    "create_setup_comparison",
+    "get_setup_comparison",
+    "cancel_setup_comparison",
+    "list_setup_comparison_pipelines",
+    "list_pipeline_comparison_runs",
 ] as const;
 
 const EXPECTED_BY_PROFILE = {
@@ -162,11 +174,11 @@ const EXPECTED_BY_PROFILE = {
 } as const;
 
 describe("MCP independent profile policy over the protocol", () => {
-    it("matches the reviewed 88-tool inventory and expected profile matrix", async () => {
-        expect(new Set(ALL_TOOLS).size).toBe(88);
-        expect(new Set(READ_TOOLS).size).toBe(33);
+    it("matches the reviewed 97-tool inventory and expected profile matrix", async () => {
+        expect(new Set(ALL_TOOLS).size).toBe(97);
+        expect(new Set(READ_TOOLS).size).toBe(36);
         expect(new Set(ADMIN_ONLY_TOOLS).size).toBe(10);
-        expect(EXPECTED_BY_PROFILE.eval.size).toBe(78);
+        expect(EXPECTED_BY_PROFILE.eval.size).toBe(87);
 
         for (const profile of ["read", "eval", "admin"] as const) {
             const session = await connect(profile);

@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
     PROVIDER_KEY_PROVIDERS,
+    providerKeyForWorkflowTransport,
     type IWorkflowLlmProjectDefaultResponse,
     type IWorkflowLlmRoute,
     type IWorkflowLlmRouteConfig,
@@ -38,6 +39,7 @@ import {
     WorkflowLlmTransport,
 } from "../../routes/llmRoutingSchemas.js";
 import { createSttRouteProbePayload } from "../../routes/sttProbes.js";
+import { TRANSPORT_LABELS_FOR_MESSAGES } from "../../transportLabels.js";
 import { ok } from "../responses.js";
 import { ProjectId, ReasoningEffort } from "../schemas.js";
 import { resolveProjectId, type IMcpContext } from "./context.js";
@@ -197,6 +199,7 @@ export function registerSettingsTools(
                     runtime.db,
                     principal.teamId,
                     resolvedProjectId,
+                    runtime.config,
                 ),
             );
         },
@@ -220,7 +223,11 @@ export function registerSettingsTools(
             const projectId = await resolveProjectId(context, input.projectId);
             const providerKey = (
                 await listProviderKeysPayload(runtime.db, principal.teamId)
-            ).find((key) => key.provider === input.transport);
+            ).find(
+                (key) =>
+                    key.provider ===
+                    providerKeyForWorkflowTransport(input.transport),
+            );
             if (!providerKey?.id) {
                 throw new ApiBadRequestError(
                     "The selected provider does not have a configured credential.",
@@ -289,7 +296,8 @@ export function registerSettingsTools(
                 runtime.db,
                 principal.teamId,
             );
-            if (!credentials.some(({ provider }) => provider === transport)) {
+            const keyName = providerKeyForWorkflowTransport(transport);
+            if (!credentials.some(({ provider }) => provider === keyName)) {
                 throw new ApiBadRequestError(
                     "The selected provider does not have a configured credential.",
                 );
@@ -587,12 +595,15 @@ function simpleRouteConfig(
                           transport: "bifrost",
                           upstreamPolicy: { mode: "bifrost_default" },
                       }
-                    : {
-                          transport: "openrouter",
-                          upstreamPolicy: { mode: "auto" },
-                          requireParameters: true,
-                          responseCache: "allow",
-                      },
+                    : input.transport === "anthropic" ||
+                        input.transport === "google"
+                      ? { transport: input.transport }
+                      : {
+                            transport: "openrouter",
+                            upstreamPolicy: { mode: "auto" },
+                            requireParameters: true,
+                            responseCache: "allow",
+                        },
         generation: {
             maxOutputTokens: input.generation?.maxOutputTokens ?? 4096,
             ...(input.generation?.temperature !== undefined
@@ -663,8 +674,5 @@ function routeCreationResponse(
 }
 
 function providerLabel(transport: WorkflowLlmTransportName): string {
-    if (transport === "gateway") return "Vercel AI Gateway";
-    if (transport === "openrouter") return "OpenRouter";
-    if (transport === "openai") return "OpenAI";
-    return "Bifrost";
+    return TRANSPORT_LABELS_FOR_MESSAGES[transport];
 }

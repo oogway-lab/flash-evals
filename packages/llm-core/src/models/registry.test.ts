@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { gatewayDataOptions } from "../providers/gateway.js";
+import { makerOfModel, thinkingPlanFor } from "../providers/thinking.js";
 import {
     registryEntryFor,
     transportCapabilityForModel,
+    transportModelIdFor,
     transportsForModel,
 } from "./registry.js";
 
@@ -56,6 +59,22 @@ describe("transportsForModel", () => {
             });
         },
     );
+
+    it("maps a model's id on one provider to its id on another", () => {
+        // OpenRouter spells the maker "z-ai", Vercel "zai".
+        expect(transportModelIdFor("z-ai/glm-5.2", "gateway")).toBe(
+            "zai/glm-5.2",
+        );
+        expect(transportModelIdFor("zai/glm-5.2", "openrouter")).toBe(
+            "z-ai/glm-5.2",
+        );
+        expect(
+            transportModelIdFor("openrouter/z-ai/glm-5.2", "gateway"),
+        ).toBeUndefined();
+        expect(
+            transportModelIdFor("unknown-vendor/model-x", "gateway"),
+        ).toBeUndefined();
+    });
 
     it.each(["openrouter/z-ai/glm-5.2", "openrouter/minimax/minimax-m3"])(
         "registers %s for Bifrost workflows",
@@ -113,5 +132,56 @@ describe("transportCapabilityForModel", () => {
                 requiresCurrentDiscovery: true,
             });
         }
+    });
+});
+
+describe("Muse Ember", () => {
+    it("is registered for Vercel AI Gateway with structured output and thinking", () => {
+        expect(transportsForModel("meta/muse-ember")).toEqual({
+            gateway: "meta/muse-ember",
+            bifrost: "meta/muse-ember",
+        });
+        expect(registryEntryFor("meta/muse-ember")).toMatchObject({
+            label: "Muse Ember",
+            provider: "meta",
+            providerLabel: "Meta",
+            structuredOutput: true,
+            judgeSuitable: true,
+            reasoning: true,
+            reasoningEffort: {
+                supportedLevels: ["low", "medium", "high"],
+                defaultLevel: "medium",
+            },
+        });
+        expect(
+            transportCapabilityForModel("meta/muse-ember", "gateway"),
+        ).toMatchObject({
+            transportModelId: "meta/muse-ember",
+            supportsStructuredOutput: true,
+            supportedGenerationControls: [
+                "maxOutputTokens",
+                "reasoningEffort",
+                "temperature",
+                "topP",
+                "seed",
+            ],
+        });
+    });
+
+    it("prices input, output and cached input per token", () => {
+        const pricing = registryEntryFor("meta/muse-ember")?.pricing;
+        expect(pricing?.promptPricePerToken).toBeCloseTo(0.1 / 1e6, 15);
+        expect(pricing?.completionPricePerToken).toBeCloseTo(0.5 / 1e6, 15);
+        expect(pricing?.cacheReadPricePerToken).toBeCloseTo(0.004 / 1e6, 15);
+    });
+
+    it("treats meta as the maker host for thinking and allowed-host rules", () => {
+        expect(makerOfModel("meta/muse-ember")).toBe("meta");
+        expect(
+            thinkingPlanFor("meta/muse-ember", "gateway", "high")?.outcome,
+        ).toMatchObject({ sent: false });
+        expect(gatewayDataOptions({ onlyHosts: ["meta"] })).toEqual({
+            only: ["meta"],
+        });
     });
 });

@@ -1,16 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+    bifrostModelListKey,
+    installBifrostModelInfo,
+    resetBifrostModelInfo,
+} from "./bifrostModelInfo.js";
 import { OpenAIEvalProvider } from "./openai.js";
 
 function provider(
-    transport: "openai" | "openrouter" = "openai",
+    transport: "openai" | "openrouter" | "bifrost" = "openai",
     cacheStatus = "MISS",
     finishReason = "stop",
     usageExtras: Record<string, unknown> = {},
+    providerField: string | null = "openai",
 ) {
     const response = {
         id: "gen-1",
         model: "openai/gpt-4o",
-        provider: "openai",
+        provider: providerField ?? undefined,
         choices: [{ message: { content: "ok" }, finish_reason: finishReason }],
         usage: {
             prompt_tokens: 1,
@@ -181,6 +187,184 @@ describe("OpenAI-compatible route forwarding", () => {
         expect(harness.create.mock.calls[0]?.[1]).toMatchObject({
             headers: { "X-OpenRouter-Cache": "false" },
         });
+    });
+
+    it("sends data rules to OpenRouter and records the host that served it", async () => {
+        const harness = provider("openrouter");
+        const result = await harness.provider.complete({
+            model: "gpt-4o",
+            prompt: "hi",
+            maxTokens: 10,
+            dataPolicy: {
+                onlyHosts: ["google-vertex"],
+                zeroDataRetention: true,
+                disallowPromptTraining: true,
+            },
+        });
+        expect(harness.create.mock.calls[0]?.[0]).toMatchObject({
+            provider: {
+                only: ["google-vertex"],
+                allow_fallbacks: false,
+                zdr: true,
+                data_collection: "deny",
+            },
+        });
+        expect(result.providerMetadata).toEqual({ servedBy: "openai" });
+    });
+
+    it("refuses data rules on transports that can't route between hosts", async () => {
+        const harness = provider("openai");
+        await expect(
+            harness.provider.complete({
+                model: "gpt-4o",
+                prompt: "hi",
+                maxTokens: 10,
+                dataPolicy: { zeroDataRetention: true },
+            }),
+        ).rejects.toThrow(/can't limit which hosting companies/);
+        expect(harness.create).not.toHaveBeenCalled();
+    });
+
+    it("sends OpenRouter's provider settings through Bifrost for a model it forwards to OpenRouter", async () => {
+        const harness = provider(
+            "bifrost",
+            "MISS",
+            "stop",
+            {},
+            "google-vertex",
+        );
+        const result = await harness.provider.complete({
+            model: "openrouter/google/gemini-2.5-flash",
+            prompt: "hi",
+            maxTokens: 10,
+            dataPolicy: {
+                onlyHosts: ["google-vertex"],
+                zeroDataRetention: true,
+                disallowPromptTraining: true,
+            },
+        });
+        const [body, options] = harness.create.mock.calls[0] as [
+            Record<string, unknown>,
+            { headers?: Record<string, string> },
+        ];
+        expect(body).toMatchObject({
+            model: "openrouter/google/gemini-2.5-flash",
+            provider: {
+                only: ["google-vertex"],
+                allow_fallbacks: false,
+                zdr: true,
+                data_collection: "deny",
+            },
+        });
+        expect(options.headers).toEqual({
+            "x-bf-passthrough-extra-params": "true",
+        });
+        expect(result.providerMetadata).toEqual({ servedBy: "google-vertex" });
+    });
+
+    it("sends Bifrost no provider settings without data rules", async () => {
+        const harness = provider("bifrost");
+        await harness.provider.complete({
+            model: "openrouter/google/gemini-2.5-flash",
+            prompt: "hi",
+            maxTokens: 10,
+        });
+        const [body, options] = harness.create.mock.calls[0] as [
+            Record<string, unknown>,
+            { headers?: Record<string, string> },
+        ];
+        expect(body).not.toHaveProperty("provider");
+        expect(options.headers).toBeUndefined();
+    });
+
+    it("refuses data rules for a Bifrost model that doesn't go through OpenRouter", async () => {
+        const harness = provider("bifrost");
+        await expect(
+            harness.provider.complete({
+                model: "gemini/gemini-2.5-flash",
+                prompt: "hi",
+                maxTokens: 10,
+                dataPolicy: { onlyHosts: ["google-vertex"] },
+            }),
+        ).rejects.toThrow(
+            "Bifrost sends gemini/gemini-2.5-flash to gemini, not OpenRouter",
+        );
+        expect(harness.create).not.toHaveBeenCalled();
+    });
+
+    it("records no host through Bifrost when the response names none, or only Bifrost's upstream", async () => {
+        for (const field of [null, "openrouter"]) {
+            const harness = provider("bifrost", "MISS", "stop", {}, field);
+            const result = await harness.provider.complete({
+                model: "openrouter/google/gemini-2.5-flash",
+                prompt: "hi",
+                maxTokens: 10,
+            });
+            expect(result.providerMetadata).toBeUndefined();
+            expect(result.actualRoute).toMatchObject({
+                status: "unresolved",
+                transport: "bifrost",
+            });
+        }
+    });
+
+    it("keeps a cost Bifrost passes through, else leaves it to list prices", async () => {
+        const reported = provider("bifrost", "MISS", "stop", { cost: 0.0004 });
+        expect(
+            (
+                await reported.provider.complete({
+                    model: "openrouter/google/gemini-2.5-flash",
+                    prompt: "hi",
+                    maxTokens: 10,
+                })
+            ).cost,
+        ).toEqual({ usd: 0.0004, source: "provider_reported" });
+        const unreported = provider("bifrost");
+        expect(
+            (
+                await unreported.provider.complete({
+                    model: "openrouter/google/gemini-2.5-flash",
+                    prompt: "hi",
+                    maxTokens: 10,
+                })
+            ).cost,
+        ).toBeUndefined();
+    });
+
+    it("prices an unreported Bifrost cost at Bifrost's list price, and prefers a reported one", async () => {
+        installBifrostModelInfo(bifrostModelListKey(undefined, "secret"), [
+            {
+                id: "openrouter/z-ai/glm-5.2",
+                pricing: {
+                    promptPricePerToken: 0.000001,
+                    completionPricePerToken: 0.000003,
+                },
+            },
+        ]);
+        try {
+            const request = {
+                model: "openrouter/z-ai/glm-5.2",
+                prompt: "hi",
+                maxTokens: 10,
+            };
+            const unreported =
+                await provider("bifrost").provider.complete(request);
+            expect(unreported.cost?.source).toBe("bifrost_list_price");
+            expect(unreported.cost?.usd).toBeCloseTo(0.000004, 12);
+            const reported = await provider("bifrost", "MISS", "stop", {
+                cost: 0.0004,
+            }).provider.complete(request);
+            expect(reported.cost).toEqual({
+                usd: 0.0004,
+                source: "provider_reported",
+            });
+            // Only Bifrost calls use Bifrost's list.
+            const direct =
+                await provider("openrouter").provider.complete(request);
+            expect(direct.cost).toBeUndefined();
+        } finally {
+            resetBifrostModelInfo();
+        }
     });
 
     it("forwards ordered OpenRouter preference and explicit fallback policy", async () => {

@@ -1,7 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { IPipelineFieldConfig } from "@flash-evals/api-contract";
 import {
+    MAX_RUN_COST_LIMIT_USD,
+    type IPipelineFieldConfig,
+} from "@flash-evals/api-contract";
+import {
+    cancelRunPayload,
     createRunFromSelectionPayload,
     deleteRunPayload,
     listRunsPayload,
@@ -17,11 +21,13 @@ import {
 import { publishRunEnqueue } from "../../runEnqueue.js";
 import { ok } from "../responses.js";
 import {
+    BenchmarkConfig,
     FieldConfig,
     ProjectId,
     ReasoningConfig,
     ReasoningEffort,
     ReviewVerdict,
+    RunDataPolicy,
 } from "../schemas.js";
 import { resolveProjectId, type IMcpContext } from "./context.js";
 import {
@@ -29,6 +35,81 @@ import {
     decodeMcpPageCursor,
     encodeMcpPageCursor,
 } from "../pagination.js";
+
+/**
+ * What an eval run is created from, shared by create_eval_run and
+ * create_setup_comparison (whose eval run is created from the same fields).
+ */
+export const EvalRunInput = {
+    projectId: ProjectId,
+    datasetId: z.string().uuid(),
+    idempotencyKey: z.string().trim().min(1).max(200).optional(),
+    pipelineId: z.string().uuid().optional(),
+    promptVersionId: z.string().uuid(),
+    maxTokens: z.number().int().positive(),
+    judgeConfigId: z.string().uuid().optional(),
+    judgePromptVersionId: z.string().uuid().optional(),
+    judgeRubric: z.string().optional(),
+    judgeModelId: z.string().min(1),
+    judgeReasoningEffort: ReasoningEffort.optional(),
+    referenceModel: z.string().optional(),
+    modelIds: z.array(z.string().min(1)).min(1),
+    promptAssignments: z
+        .array(
+            z.object({
+                modelId: z.string().min(1),
+                promptVersionId: z.string().uuid(),
+            }),
+        )
+        .optional(),
+    reasoningConfigs: z
+        .array(
+            z.object({
+                modelId: z.string().min(1),
+                reasoningConfig: ReasoningConfig.optional(),
+            }),
+        )
+        .optional(),
+    temperatureAssignments: z
+        .array(
+            z.object({
+                modelId: z.string().min(1),
+                temperature: z.number().min(0).max(2),
+            }),
+        )
+        .optional()
+        .describe(
+            "Temperature (0 to 2) for listed models; others run at the provider's default. Refused for a model that can't take it: OpenAI reasoning models, and Claude with thinking on (only 1 is allowed there).",
+        ),
+    fieldConfigs: z.array(FieldConfig),
+    sourceRunId: z.string().uuid().optional(),
+    benchmark: BenchmarkConfig.optional(),
+    maxCostUsd: z
+        .number()
+        .positive()
+        .max(MAX_RUN_COST_LIMIT_USD)
+        .optional()
+        .describe(
+            "Spend limit in USD for this run (model and judge calls). The worker stops starting cells once recorded spend reaches it; calls already sent finish, so spend can go slightly over. Omit for no per-run limit.",
+        ),
+    itemFilter: z
+        .object({
+            taskKey: z.string().min(1).optional(),
+            path: z.string().min(1).optional(),
+            equals: z.union([
+                z.string().trim().min(1).max(200),
+                z.number(),
+                z.boolean(),
+            ]),
+        })
+        .optional()
+        .describe(
+            'Run only on items whose stored answer has one label, e.g. { taskKey: "call_type", equals: "sales" }: taskKey names a benchmark task that compares one field (or give path, e.g. "$.call_type"). Compared as text, trimmed and ignoring case. Every model runs on the same items.',
+        ),
+    dataPolicy: RunDataPolicy.optional().describe(
+        "Who may serve the run's model and judge calls, and what they may keep (allowed hosts, zero data retention, no prompt training). Models must be on a Vercel AI Gateway or OpenRouter route that can follow the rules, or on Anthropic / the Gemini API when the rules are an allowed-host list naming that maker.",
+    ),
+};
 
 export function registerRunTools(
     server: McpServer,
@@ -338,39 +419,7 @@ export function registerRunTools(
             title: "Create eval run",
             description:
                 "Create an eval run and durably enqueue it. The optional idempotencyKey makes retries safe; when supplied, choose it before the first request and reuse it for the same intent. pending_enqueue means publication will be retried automatically.",
-            inputSchema: z.object({
-                projectId: ProjectId,
-                datasetId: z.string().uuid(),
-                idempotencyKey: z.string().trim().min(1).max(200).optional(),
-                pipelineId: z.string().uuid().optional(),
-                promptVersionId: z.string().uuid(),
-                maxTokens: z.number().int().positive(),
-                judgeConfigId: z.string().uuid().optional(),
-                judgePromptVersionId: z.string().uuid().optional(),
-                judgeRubric: z.string().optional(),
-                judgeModelId: z.string().min(1),
-                judgeReasoningEffort: ReasoningEffort.optional(),
-                referenceModel: z.string().optional(),
-                modelIds: z.array(z.string().min(1)).min(1),
-                promptAssignments: z
-                    .array(
-                        z.object({
-                            modelId: z.string().min(1),
-                            promptVersionId: z.string().uuid(),
-                        }),
-                    )
-                    .optional(),
-                reasoningConfigs: z
-                    .array(
-                        z.object({
-                            modelId: z.string().min(1),
-                            reasoningConfig: ReasoningConfig.optional(),
-                        }),
-                    )
-                    .optional(),
-                fieldConfigs: z.array(FieldConfig),
-                sourceRunId: z.string().uuid().optional(),
-            }),
+            inputSchema: z.object(EvalRunInput),
         },
         async (input) => {
             const result = await createRunFromSelectionPayload(
@@ -465,21 +514,57 @@ export function registerRunTools(
             }),
         },
         async (input) => {
-            await retryRunPayload(runtime.db, {
-                teamId: principal.teamId,
-                projectId: await resolveProjectId(context, input.projectId),
-                runId: input.runId,
-            });
+            const { requeued } = await retryRunPayload(
+                runtime.db,
+                {
+                    teamId: principal.teamId,
+                    projectId: await resolveProjectId(context, input.projectId),
+                    runId: input.runId,
+                },
+                {
+                    teamDailySpendCapUsd: runtime.config.teamDailySpendCapUsd,
+                },
+            );
             const publication = await publishRunEnqueue(
                 runtime.db,
                 runtime.config,
                 input.runId,
             );
             return ok(
-                publication.enqueueStatus === "queued"
-                    ? "Retried and queued eval run."
-                    : "Retry saved; queue publication will be retried automatically.",
-                publication,
+                !requeued
+                    ? "Nothing to retry: the run is running or still waiting in the queue for a worker."
+                    : publication.enqueueStatus === "queued"
+                      ? "Retried and queued eval run."
+                      : "Retry saved; queue publication will be retried automatically.",
+                { ...publication, requeued },
+            );
+        },
+    );
+
+    server.registerTool(
+        "cancel_run",
+        {
+            title: "Cancel eval run",
+            description:
+                "Stop a pending or running eval run. Calls already sent finish; cells not started are not run, and the run ends cancelled. A run no worker has started is cancelled at once. Retry resumes a cancelled run.",
+            inputSchema: z.object({
+                projectId: ProjectId,
+                runId: z.string().uuid(),
+            }),
+        },
+        async (input) => {
+            const result = await cancelRunPayload(runtime.db, {
+                teamId: principal.teamId,
+                projectId: await resolveProjectId(context, input.projectId),
+                runId: input.runId,
+            });
+            return ok(
+                result.status === "cancelled"
+                    ? "Eval run cancelled."
+                    : result.status === "pending" || result.status === "running"
+                      ? "Cancel requested; the worker stops before its next cell."
+                      : `Eval run already ended (${result.status}); nothing to cancel.`,
+                result,
             );
         },
     );

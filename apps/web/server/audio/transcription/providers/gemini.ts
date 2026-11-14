@@ -1,7 +1,8 @@
 import type { ITranscriptSegment } from "../../../db/jsonTypes";
-import type {
-    ITranscriptArtifact,
-    ITranscriptionProviderInput,
+import {
+    EmptyTranscriptError,
+    type ITranscriptArtifact,
+    type ITranscriptionProviderInput,
 } from "../types";
 import {
     booleanConfig,
@@ -75,7 +76,11 @@ export async function transcribeWithGemini(
             .map((segment) => segment.text)
             .join(" ")
             .trim();
-    if (!text) throw new Error("Gemini transcription returned empty text.");
+    // The reply states no audio length or price, so the charge is unknown.
+    if (!text)
+        throw new EmptyTranscriptError(
+            "Gemini transcription returned empty text.",
+        );
     const usage = geminiUsage(parsed);
     return {
         text,
@@ -193,7 +198,9 @@ async function uploadGeminiFile(
                 ),
                 "X-Goog-Upload-Header-Content-Type": mimeType,
             },
-            body: JSON.stringify({ file: { displayName: "flash-evals-stt-audio" } }),
+            body: JSON.stringify({
+                file: { displayName: "flash-evals-stt-audio" },
+            }),
         },
     );
     if (!start.ok) {

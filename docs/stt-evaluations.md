@@ -69,6 +69,46 @@ judge models too. Latin transcript scoring requires an
 `expectedTranscriptLatin` reference; native transcript scoring uses
 `expectedTranscript`. A missing reference skips that metric.
 
+## ElevenLabs Scribe
+
+**ElevenLabs Scribe v2** (`elevenlabs:scribe_v2`) sends the audio file to
+ElevenLabs' speech-to-text endpoint (`POST https://api.elevenlabs.io/v1/speech-to-text`,
+model `scribe_v2`) in one request and gets the whole transcript back in the
+reply. The key comes from Settings > Provider keys > ElevenLabs, or from
+`ELEVENLABS_API_KEY` in `apps/api/.env`; a key saved in Settings wins.
+
+The route is not yet checked against the real API, so it starts as unverified,
+like the Gemini audio routes. With a key in place, run its route check in
+Settings (one short request with a 2.4-second tone, which has no speech, so an
+empty transcript passes) or add it to `FLASH_EVALS_STT_CAPABILITY_PROBES`. After
+a successful check, the model can be picked in the STT run form and in the STT
+pipeline node.
+
+What each run setting sends:
+
+| Setting        | Sent to ElevenLabs                                                                                                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Audio language | `language_code` (ISO code such as `hi` or `en`). Leave it empty for Hindi/English code-switched audio: one code forces that language, and an empty value lets Scribe detect it.                              |
+| Diarization    | `diarize=true`; speaker IDs (`speaker_0`, `speaker_1`, ...) become the transcript's speaker labels.                                                                                                          |
+| Keyword boost  | One `keyterms` field per term. ElevenLabs takes up to 1000 terms, each at most 50 characters and 5 words, without `< > { } [ ] \`; terms over those limits are skipped and named in the transcript warnings. |
+
+Every request also sends `timestamps_granularity=word` (word timings) and
+`tag_audio_events=false`, so tags such as "(laughter)" do not count against the
+reference transcript. Words are grouped into segments by speaker, sentence end,
+and pauses over one second. The detected language (`language_code`, for example
+`hin`) and the full reply are kept in the transcript's provider metadata.
+
+Cost is computed from `audio_duration_secs` at the published price of $0.22 per
+audio hour, plus $0.05 per hour when keyword boost sends at least one term
+([elevenlabs.io/pricing/api](https://elevenlabs.io/pricing/api)). It is a list
+price (`costSource: "computed"`), not an invoice: other plan terms, and the
+20-second minimum ElevenLabs bills when a request has more than 100 keyterms,
+are not included.
+
+The reply arrives only when the transcription is done, so the request waits up
+to 10 minutes. Scribe v2 Realtime, Scribe v2 Medical and multichannel audio are
+not offered.
+
 ## Config variants
 
 An STT metrics run can compare one to six configuration variants. Each variant
@@ -79,16 +119,54 @@ transcript and metric cells; adding variants therefore multiplies provider cost
 for every audio item.
 
 Keyword boost is provider-aware. Soniox receives the terms in its native
-`context` field. OpenAI transcription routes that accept an initial prompt get
+`context` field, and ElevenLabs as `keyterms`. OpenAI transcription routes that accept an initial prompt get
 the same comma-separated terms appended as plain transcript-like vocabulary.
 Routes with neither surface do not show the field. The thinking-token budget is
 defined for audio-understanding routes but remains unavailable until one of
 those routes is live-verified.
 
+**Level volume first** (`levelVolume: true` in an STT config) raises
+the loudness of each recording on the worker before any provider receives it.
+FFmpeg applies `loudnorm=I=-23:TP=-2:LRA=11` and writes 16 kHz mono 16-bit
+audio. Routes that accept FLAC (OpenAI and OpenRouter transcription uploads,
+ElevenLabs, Soniox, Gemini, Vercel Gateway) get lossless FLAC, often around half to two thirds the
+size of WAV, when it fits the route's upload budget: 23 MiB for OpenAI,
+OpenRouter transcription and Vercel Gateway (under OpenAI's 25 MB upload
+limit), and a conservative 100 MiB for ElevenLabs, Soniox and Gemini. A larger
+levelled FLAC (roughly 20 minutes or more for the 23 MiB routes) is re-encoded
+from the levelled audio as 48 kbps speech MP3, and split into ordered chunks at
+silences when that MP3 would still be over the budget; a chunk that is still
+too large fails the request with its size. OpenAI's gpt-4o-transcribe models
+(mini and diarize included, on any route) also cap one request at 1,400
+seconds of levelled audio (a margin under their roughly 1,500 second limit,
+not verified here), so longer recordings are split the same way even when the
+FLAC fits; whisper-1 and other models are not split by length. Gemini on OpenRouter chat audio
+takes only WAV or MP3, so it gets WAV, and a WAV over its size or length budget
+is compressed and split as described above. Use it for quiet recordings (an average level far below
+-30 dBFS) or when a provider returns empty transcripts or the wrong language on
+some files. It needs FFmpeg on the worker, follows `STT_AUDIO_PREP_CONCURRENCY`,
+and never falls back to the original audio. Levelled transcripts are cached
+separately from unlevelled ones, record `volumeLevelled` in their provider
+metadata, and show "Volume levelled" in the matrix and transcript views. The
+option is on each STT metrics variant, on the STT model of an STT plus prompt
+run, and on a pipeline's STT step (where the run results show "Volume levelled"
+on that branch). Reruns restore it.
+
 Transliteration and the custom transcript judge are shared across all variants
-in the run. Results use the variant labels in the leaderboard, matrix, and
+in the run. Results use the variant labels in the models table, matrix, and
 transcript views. When variants share a base model, badges call out every config
 value that differs.
+
+Long transcripts are transliterated in pieces of at most 1,200 characters, split
+at line breaks, then sentence ends, then spaces. Each piece must come back with
+about as many words as it was sent (75% to 150%); a piece that falls short is
+sent once more in parts of at most 500 characters, and if it is still short the
+transliteration fails instead of storing a Latin transcript with text missing.
+Every call is counted in the run's cost, retries and failed calls included.
+
+Speaker metrics (DER, cpWER, per-speaker WER) have safe limits on speaker count
+and workload. When a recording is past them, the transcript score keeps WER and
+the other metrics and shows "Speaker metrics not computed" with the reason.
 
 ## Importing gold answers
 

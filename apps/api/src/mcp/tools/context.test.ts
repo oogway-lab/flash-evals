@@ -57,6 +57,7 @@ describe("MCP eval context", () => {
             runtime.db,
             TEST_TEAM_ID,
             TEST_PROJECT_ID,
+            runtime.config,
         );
         expect(response).toMatchObject({
             structuredContent: {

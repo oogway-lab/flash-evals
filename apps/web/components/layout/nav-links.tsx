@@ -17,6 +17,7 @@ const links: ReadonlyArray<{ href: Route; label: string }> = [
     // keep the old "multiworkflow" name; renaming the URL is a separate change.
     { href: "/multiworkflow", label: "Pipelines" },
     { href: "/runs", label: "Runs" },
+    { href: "/models", label: "Models" },
     { href: "/settings", label: "Settings" },
 ];
 

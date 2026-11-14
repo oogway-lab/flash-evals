@@ -39,19 +39,21 @@ import {
     generateJudgeForRunPayload,
     listRunsPayload,
     retryRunPayload,
+    cancelRunPayload,
     runDetailPayload,
     runProgressPayload,
     runSetupPayload,
     saveCellAnnotationPayload,
     saveRunNotePayload,
 } from "./runs.js";
+import { runStaleClaimMs } from "./runs/lifecycle.js";
 import { ApiNotFoundError } from "../errors.js";
 import type { IDb } from "../db.js";
 import type { IApiConfig } from "../config.js";
 import type { ISttRunConfig } from "@flash-evals/api-contract";
 import { resolveApiFeatureFlags } from "../featureFlags.js";
 import { encryptSecret } from "@flash-evals/secrets";
-import { normalizeSttVariants } from "./runs/creation.js";
+import { normalizeSttVariants, sttConfigForSnapshot } from "./runs/creation.js";
 
 const TEST_SECRETS_KEY = Buffer.alloc(32, 7).toString("base64");
 
@@ -118,7 +120,55 @@ it("rejects an unsupported transport before persistence", async () => {
             fieldConfigs: [],
             createdBy: "user-1",
         }),
-    ).rejects.toThrow('does not support the "openai" transport');
+    ).rejects.toThrow(
+        'Model "alibaba/qwen3-max" can\'t be sent through OpenAI',
+    );
+    expect(db.query).not.toHaveBeenCalled();
+});
+
+it.each([
+    // Known to the app, but not under a Vercel AI Gateway id.
+    ["openrouter/z-ai/glm-5.2", "It is available through Bifrost."],
+])(
+    "rejects %s on Vercel AI Gateway before persistence",
+    async (modelId, hint) => {
+        const db = { query: vi.fn() } as unknown as IDb;
+        const create = createRunPayload(db, {
+            teamId: "team-1",
+            projectId: "project-1",
+            datasetId: "dataset-1",
+            models: [{ modelId, transport: "gateway", isReference: true }],
+            maxTokens: 100,
+            fieldConfigs: [],
+            createdBy: "user-1",
+        });
+        await expect(create).rejects.toThrow(
+            `Model "${modelId}" can't be sent through Vercel AI Gateway: the app doesn't know its Vercel AI Gateway model id. ${hint}`,
+        );
+        expect(db.query).not.toHaveBeenCalled();
+    },
+);
+
+it("rejects a run judge the app can't send through its provider", async () => {
+    const db = { query: vi.fn() } as unknown as IDb;
+    await expect(
+        createRunPayload(db, {
+            teamId: "team-1",
+            projectId: "project-1",
+            datasetId: "dataset-1",
+            models: [{ modelId: "gpt-4o", isReference: true }],
+            runJudge: {
+                modelId: "unknown-vendor/judge-x",
+                rubricPrompt: "Score it.",
+                transport: "gateway",
+            },
+            maxTokens: 100,
+            fieldConfigs: [],
+            createdBy: "user-1",
+        }),
+    ).rejects.toThrow(
+        'runJudge: Model "unknown-vendor/judge-x" can\'t be sent through Vercel AI Gateway',
+    );
     expect(db.query).not.toHaveBeenCalled();
 });
 
@@ -144,7 +194,9 @@ it("rejects a missing explicit transport key before persistence", async () => {
             },
             testConfig({ aiGatewayApiKey: "" }),
         ),
-    ).rejects.toThrow("transportAssignments: Add a Vercel AI Gateway API key");
+    ).rejects.toThrow(
+        "transportAssignments: Add a Vercel AI Gateway key in Settings",
+    );
     expect(db.query).toHaveBeenCalledTimes(1);
     expect(db.query).not.toHaveBeenCalledWith(
         expect.stringContaining("insert into runs"),
@@ -705,6 +757,50 @@ function testConfig(overrides: Partial<IApiConfig> = {}): IApiConfig {
     };
 }
 
+describe("runProgressPayload for a waiting or failed run", () => {
+    it("says since when a pending run has waited and why a run failed", async () => {
+        const pending = dbWithRows([
+            [
+                {
+                    status: "pending",
+                    enqueueStatus: "queued",
+                    pendingSince: new Date("2026-11-01T10:00:00.000Z"),
+                },
+            ],
+            [{ status: "pending", count: 2 }],
+        ]);
+        await expect(
+            runProgressPayload(pending, "team-1", "project-1", "run-1"),
+        ).resolves.toMatchObject({
+            status: "pending",
+            enqueueStatus: "queued",
+            pendingSince: "2026-11-01T10:00:00.000Z",
+        });
+
+        const failed = dbWithRows([
+            [
+                {
+                    status: "failed",
+                    error: "No API key for this model.",
+                    pendingSince: new Date("2026-11-01T10:00:00.000Z"),
+                },
+            ],
+            [{ status: "pending", count: 2 }],
+        ]);
+        const progress = await runProgressPayload(
+            failed,
+            "team-1",
+            "project-1",
+            "run-1",
+        );
+        expect(progress).toMatchObject({
+            status: "failed",
+            error: "No API key for this model.",
+        });
+        expect(progress).not.toHaveProperty("pendingSince");
+    });
+});
+
 describe("runProgressPayload", () => {
     it("returns progress for a team-owned run", async () => {
         const db = dbWithRows([
@@ -814,6 +910,57 @@ describe("createRunPayload", () => {
         );
     });
 
+    it("runs only on items whose stored answer has the filtered label and records the filter", async () => {
+        const db = dbForRunLimits({ itemCount: 4, spentUsd: 0 });
+        const base = vi.mocked(db.query).getMockImplementation()!;
+        vi.mocked(db.query).mockImplementation(async (sql, values) => {
+            if (String(sql).includes("from labels"))
+                return {
+                    rows: [
+                        {
+                            dataset_item_id: "item-1",
+                            label_json: { kind: "Sales" },
+                        },
+                        {
+                            dataset_item_id: "item-2",
+                            label_json: { kind: "Service" },
+                        },
+                        {
+                            dataset_item_id: "item-4",
+                            label_json: { kind: "sales" },
+                        },
+                    ],
+                } as never;
+            return base(sql, values);
+        });
+
+        await createRunPayload(
+            db,
+            {
+                ...limitRunInput(),
+                itemFilter: { path: "$.kind", equals: "sales" },
+                itemLimit: 5,
+            },
+            testConfig(),
+        );
+
+        const [, runValues] = insertedRuns(db)[0] as [string, unknown[]];
+        expect(runValues).toContainEqual(
+            expect.objectContaining({
+                itemFilter: { path: "$.kind", equals: "sales" },
+            }),
+        );
+        const cells = vi
+            .mocked(db.query)
+            .mock.calls.find(([sql]) =>
+                String(sql).includes("insert into run_cells"),
+            )!;
+        const itemIds = (cells[1] as unknown[]).filter(
+            (value) => typeof value === "string" && value.startsWith("item-"),
+        );
+        expect(itemIds).toEqual(["item-1", "item-4"]);
+    });
+
     it("rejects runs over the configured cell limit before inserting rows", async () => {
         const db = dbForRunLimits({ itemCount: 3, spentUsd: 0 });
 
@@ -856,6 +1003,92 @@ describe("createRunPayload", () => {
             enqueueStatus: "pending_enqueue",
         });
         expect(insertedRuns(db)).toHaveLength(1);
+    });
+
+    it("stores a per-run spend limit in the run snapshot", async () => {
+        const db = dbForRunLimits({ itemCount: 1, spentUsd: 0 });
+
+        await createRunPayload(
+            db,
+            { ...limitRunInput(), maxCostUsd: 42.5 },
+            testConfig(),
+        );
+
+        const [, values] = insertedRuns(db)[0] as [string, unknown[]];
+        expect(values[6]).toMatchObject({ maxCostUsd: 42.5 });
+    });
+
+    it.each([0, -1, Number.NaN, 100_001])(
+        "rejects a spend limit of %s",
+        async (maxCostUsd) => {
+            const db = dbForRunLimits({ itemCount: 1, spentUsd: 0 });
+
+            await expect(
+                createRunPayload(
+                    db,
+                    { ...limitRunInput(), maxCostUsd },
+                    testConfig(),
+                ),
+            ).rejects.toThrow("The spend limit must be more than $0");
+            expect(insertedRuns(db)).toHaveLength(0);
+        },
+    );
+
+    it("stores benchmark settings in the run snapshot", async () => {
+        const db = dbForRunLimits({ itemCount: 1, spentUsd: 0 });
+        const benchmark = {
+            taskMap: {
+                tasks: [
+                    {
+                        key: "sales",
+                        name: "Sales call",
+                        method: "agreement" as const,
+                        fields: [
+                            { path: "$.is_sales", matcher: "exact" as const },
+                        ],
+                    },
+                ],
+            },
+        };
+
+        await createRunPayload(
+            db,
+            {
+                ...limitRunInput(),
+                models: [
+                    {
+                        modelId: "gpt-4o",
+                        promptVersionId: null,
+                        isReference: true,
+                    },
+                    {
+                        modelId: "gpt-4o-mini",
+                        promptVersionId: null,
+                        isReference: false,
+                    },
+                ],
+                benchmark,
+            },
+            testConfig(),
+        );
+        const [, values] = insertedRuns(db)[0] as [string, unknown[]];
+        expect(values[6]).toMatchObject({ benchmark });
+    });
+
+    it("rejects a benchmark run with no reference model before inserting rows", async () => {
+        const db = dbForRunLimits({ itemCount: 1, spentUsd: 0 });
+
+        await expect(
+            createRunPayload(
+                db,
+                {
+                    ...limitRunInput(),
+                    benchmark: { taskMap: { tasks: [] } },
+                },
+                testConfig(),
+            ),
+        ).rejects.toThrow("Choose a reference model");
+        expect(insertedRuns(db)).toHaveLength(0);
     });
 
     it("rejects archived datasets before inserting rows", async () => {
@@ -1116,6 +1349,71 @@ describe("createRunFromSelectionPayload", () => {
             ),
         ).rejects.toThrow("Choose a runnable prompt version for zai/glm-5.1.");
         expect(db.query).toHaveBeenCalledTimes(2);
+    });
+
+    it("accepts a registry id with its Bifrost id on Bifrost, and refuses another model's", async () => {
+        const selection = (transportModelId: string) => {
+            const db = dbWithRows([
+                [
+                    {
+                        id: "dataset-1",
+                        team_id: "team-1",
+                        archived_at: null,
+                        purpose: "golden",
+                        modality: "text",
+                    },
+                ],
+                [
+                    {
+                        id: "pv-1",
+                        prompt_id: "prompt-1",
+                        version: 1,
+                        schema_version_id: "schema-1",
+                        status: "legacy",
+                        reasoning_config: null,
+                    },
+                ],
+            ]);
+            return createRunFromSelectionPayload(
+                db,
+                {
+                    teamId: "team-1",
+                    projectId: "project-1",
+                    datasetId: "dataset-1",
+                    promptVersionId: "pv-1",
+                    maxTokens: 500,
+                    judgeModelId: "gpt-5.4-mini",
+                    modelIds: ["anthropic/claude-sonnet-5.5"],
+                    transportAssignments: [
+                        {
+                            modelId: "anthropic/claude-sonnet-5.5",
+                            transport: "bifrost",
+                            transportModelId,
+                        },
+                    ],
+                    promptAssignments: [],
+                    reasoningConfigs: [
+                        {
+                            modelId: "anthropic/claude-sonnet-5.5",
+                            reasoningConfig: { effort: "medium" },
+                        },
+                    ],
+                    fieldConfigs: [],
+                    createdBy: "user-1",
+                },
+                testConfig(),
+            );
+        };
+
+        // The transport check passes; the run stops at the prompt version.
+        await expect(
+            selection("openrouter/anthropic/claude-sonnet-5.5"),
+        ).rejects.toThrow(
+            "Choose a runnable prompt version for anthropic/claude-sonnet-5.5.",
+        );
+        await expect(selection("openrouter/openai/gpt-4o")).rejects.toThrow(
+            'transportAssignments: Bifrost id "openrouter/openai/gpt-4o" is not anthropic/claude-sonnet-5.5.',
+        );
     });
 
     it("allows a provider-listed Gateway model with an unqualified canonical id", async () => {
@@ -1451,7 +1749,212 @@ describe("createRunFromSelectionPayload", () => {
             null,
             null,
             true,
+            // No temperature: the provider's default.
+            null,
         ]);
+    });
+
+    it("runs STT metrics only on items with the filtered label and records the filter", async () => {
+        const audioItem = (id: string) => ({
+            id,
+            input_text: null,
+            storage_key: `audio/${id}.wav`,
+        });
+        const db = dbWithRows([
+            [
+                {
+                    id: "dataset-1",
+                    team_id: "team-1",
+                    archived_at: null,
+                    purpose: "golden",
+                    modality: "audio",
+                },
+            ],
+            [
+                {
+                    id: "dataset-1",
+                    team_id: "team-1",
+                    archived_at: null,
+                    modality: "audio",
+                },
+            ],
+            [audioItem("item-1"), audioItem("item-2"), audioItem("item-3")],
+            [
+                {
+                    dataset_item_id: "item-1",
+                    label_json: { language: "Hindi" },
+                },
+                {
+                    dataset_item_id: "item-2",
+                    label_json: { language: "Tamil" },
+                },
+                {
+                    dataset_item_id: "item-3",
+                    label_json: { language: " hindi " },
+                },
+            ],
+            [{ id: "run-1" }],
+            [{ id: "run-model-1" }],
+            [],
+            [],
+        ]);
+
+        await createRunFromSelectionPayload(
+            db,
+            {
+                teamId: "team-1",
+                projectId: "project-1",
+                datasetId: "dataset-1",
+                maxTokens: 500,
+                judgeModelId: "gpt-5.4-mini",
+                modelIds: [],
+                promptAssignments: [],
+                reasoningConfigs: [],
+                fieldConfigs: [],
+                createdBy: "user-1",
+                sttConfig: { modelId: "gpt-4o-mini-transcribe" },
+                audioRunMode: "stt_metrics",
+                itemFilter: { path: "$.language", equals: "hindi" },
+            },
+            testConfig(),
+        );
+
+        const calls = vi.mocked(db.query).mock.calls;
+        expect(String(calls[3]?.[0])).toContain("from labels");
+        expect(calls[4]?.[1]).toContainEqual(
+            expect.objectContaining({
+                audioRunMode: "stt_metrics",
+                itemFilter: { path: "$.language", equals: "hindi" },
+            }),
+        );
+        const cells = calls.find(([sql]) =>
+            String(sql).includes("insert into run_cells"),
+        )!;
+        expect(
+            (cells[1] as unknown[]).filter(
+                (value) =>
+                    typeof value === "string" && value.startsWith("item-"),
+            ),
+        ).toEqual(["item-1", "item-3"]);
+    });
+
+    it("keeps the pilot size on an STT metrics run created from a selection", async () => {
+        const audioItem = (id: string) => ({
+            id,
+            input_text: null,
+            storage_key: `audio/${id}.wav`,
+        });
+        const db = dbWithRows([
+            [
+                {
+                    id: "dataset-1",
+                    team_id: "team-1",
+                    archived_at: null,
+                    purpose: "golden",
+                    modality: "audio",
+                },
+            ],
+            [
+                {
+                    id: "dataset-1",
+                    team_id: "team-1",
+                    archived_at: null,
+                    modality: "audio",
+                },
+            ],
+            [audioItem("item-1"), audioItem("item-2"), audioItem("item-3")],
+            [{ id: "run-1" }],
+            [{ id: "run-model-1" }],
+            [],
+            [],
+        ]);
+
+        await createRunFromSelectionPayload(
+            db,
+            {
+                teamId: "team-1",
+                projectId: "project-1",
+                datasetId: "dataset-1",
+                maxTokens: 500,
+                judgeModelId: "gpt-5.4-mini",
+                modelIds: [],
+                promptAssignments: [],
+                reasoningConfigs: [],
+                fieldConfigs: [],
+                createdBy: "user-1",
+                sttConfig: { modelId: "gpt-4o-mini-transcribe" },
+                audioRunMode: "stt_metrics",
+                itemLimit: 1,
+            },
+            testConfig(),
+        );
+
+        const calls = vi.mocked(db.query).mock.calls;
+        const runInsert = calls.find(([sql]) =>
+            String(sql).includes("insert into runs"),
+        )!;
+        expect(runInsert[1]).toContainEqual(
+            expect.objectContaining({
+                audioRunMode: "stt_metrics",
+                itemLimit: 1,
+            }),
+        );
+        const cells = calls.find(([sql]) =>
+            String(sql).includes("insert into run_cells"),
+        )!;
+        expect(
+            (cells[1] as unknown[]).filter(
+                (value) =>
+                    typeof value === "string" && value.startsWith("item-"),
+            ),
+        ).toEqual(["item-1"]);
+    });
+
+    it("refuses a task-based filter on an STT metrics run, which has no tasks", async () => {
+        const db = dbWithRows([
+            [
+                {
+                    id: "dataset-1",
+                    team_id: "team-1",
+                    archived_at: null,
+                    purpose: "golden",
+                    modality: "audio",
+                },
+            ],
+            [
+                {
+                    id: "dataset-1",
+                    team_id: "team-1",
+                    archived_at: null,
+                    modality: "audio",
+                },
+            ],
+            [{ id: "item-1", input_text: null, storage_key: "audio/1.wav" }],
+        ]);
+
+        await expect(
+            createRunFromSelectionPayload(
+                db,
+                {
+                    teamId: "team-1",
+                    projectId: "project-1",
+                    datasetId: "dataset-1",
+                    maxTokens: 500,
+                    judgeModelId: "gpt-5.4-mini",
+                    modelIds: [],
+                    promptAssignments: [],
+                    reasoningConfigs: [],
+                    fieldConfigs: [],
+                    createdBy: "user-1",
+                    sttConfig: { modelId: "gpt-4o-mini-transcribe" },
+                    audioRunMode: "stt_metrics",
+                    itemFilter: { taskKey: "language", equals: "hindi" },
+                },
+                testConfig(),
+            ),
+        ).rejects.toThrow(
+            "Speech-to-text metrics runs have no benchmark tasks: filter them with itemFilter.path",
+        );
     });
 
     it("fans explicit STT variants into distinct models, cells, and snapshot configs", async () => {
@@ -2709,6 +3212,96 @@ describe("deleteRunPayload", () => {
     });
 });
 
+describe("cancelRunPayload", () => {
+    const input = {
+        teamId: "team-1",
+        projectId: "project-1",
+        runId: "run-1",
+    };
+
+    it("cancels a pending run no worker has started at once", async () => {
+        const db = dbWithRows([
+            [{ status: "pending", stopReason: null, executing: false }],
+            [],
+        ]);
+        await expect(cancelRunPayload(db, input)).resolves.toEqual({
+            runId: "run-1",
+            status: "cancelled",
+            stopReason: "cancelled",
+        });
+        expect(db.query).toHaveBeenNthCalledWith(
+            1,
+            expect.stringContaining("for update"),
+            ["run-1", "team-1", "project-1"],
+        );
+        expect(db.query).toHaveBeenLastCalledWith(
+            expect.stringContaining("cancel_requested_at=coalesce"),
+            ["run-1", "cancelled"],
+        );
+    });
+
+    it("asks a running run to stop and leaves its status to the worker", async () => {
+        const db = dbWithRows([
+            [{ status: "running", stopReason: null, executing: true }],
+            [],
+        ]);
+        await expect(cancelRunPayload(db, input)).resolves.toEqual({
+            runId: "run-1",
+            status: "running",
+            stopReason: "cancelled",
+        });
+        expect(db.query).toHaveBeenLastCalledWith(
+            expect.stringContaining(
+                "stop_reason=coalesce(stop_reason, 'cancelled')",
+            ),
+            ["run-1", "running"],
+        );
+    });
+
+    it("counts only a fresh lease as a worker holding the run", async () => {
+        const db = dbWithRows([
+            [{ status: "pending", stopReason: null, executing: false }],
+            [],
+        ]);
+        await cancelRunPayload(db, input);
+        expect(db.query).toHaveBeenNthCalledWith(
+            1,
+            expect.stringContaining(
+                "coalesce(execution_lease_at > now() - coalesce(execution_lease_stale_ms, 900000) * interval '1 millisecond', false)",
+            ),
+            ["run-1", "team-1", "project-1"],
+        );
+    });
+
+    it("leaves a pending run a worker already holds to that worker", async () => {
+        const db = dbWithRows([
+            [{ status: "pending", stopReason: null, executing: true }],
+            [],
+        ]);
+        await expect(cancelRunPayload(db, input)).resolves.toMatchObject({
+            status: "pending",
+        });
+    });
+
+    it("does not touch a run that already ended", async () => {
+        const db = dbWithRows([
+            [{ status: "completed", stopReason: null, executing: false }],
+        ]);
+        await expect(cancelRunPayload(db, input)).resolves.toEqual({
+            runId: "run-1",
+            status: "completed",
+        });
+        expect(db.query).toHaveBeenCalledTimes(1);
+    });
+
+    it("hides other teams' runs", async () => {
+        const db = dbWithRows([[]]);
+        await expect(cancelRunPayload(db, input)).rejects.toThrow(
+            ApiNotFoundError,
+        );
+    });
+});
+
 describe("retryRunPayload", () => {
     it("allows retrying a team-owned run", async () => {
         const db = dbWithRows([
@@ -2730,7 +3323,7 @@ describe("retryRunPayload", () => {
                 projectId: "project-1",
                 runId: "run-1",
             }),
-        ).resolves.toBeUndefined();
+        ).resolves.toEqual({ requeued: true });
         expect(db.query).toHaveBeenCalledWith(
             expect.stringContaining("from runs"),
             ["run-1", "team-1", "project-1"],
@@ -2760,7 +3353,9 @@ describe("retryRunPayload", () => {
             ["run-1"],
         );
         expect(db.query).toHaveBeenLastCalledWith(
-            expect.stringContaining("update runs set status='pending'"),
+            expect.stringContaining(
+                "update runs set status='pending', cancel_requested_at=null, stop_reason=null",
+            ),
             ["run-1"],
         );
     });
@@ -2771,11 +3366,13 @@ describe("retryRunPayload", () => {
             [{ status: "queued", jobId: "job-1" }],
             [{ id: "job-1" }],
         ]);
-        await retryRunPayload(db, {
-            teamId: "team-1",
-            projectId: "project-1",
-            runId: "run-1",
-        });
+        await expect(
+            retryRunPayload(db, {
+                teamId: "team-1",
+                projectId: "project-1",
+                runId: "run-1",
+            }),
+        ).resolves.toEqual({ requeued: false });
         expect(db.query).toHaveBeenCalledTimes(3);
         expect(db.query).toHaveBeenLastCalledWith(
             expect.stringContaining("state in ('created', 'retry', 'active')"),
@@ -2795,15 +3392,65 @@ describe("retryRunPayload", () => {
             [],
             [],
         ]);
-        await retryRunPayload(db, {
-            teamId: "team-1",
-            projectId: "project-1",
-            runId: "run-1",
-        });
+        await expect(
+            retryRunPayload(db, {
+                teamId: "team-1",
+                projectId: "project-1",
+                runId: "run-1",
+            }),
+        ).resolves.toEqual({ requeued: true });
+        expect(db.query).toHaveBeenLastCalledWith(
+            expect.stringContaining("error=null"),
+            ["run-1"],
+        );
         expect(db.query).toHaveBeenNthCalledWith(
             4,
             expect.stringContaining("job_id=gen_random_uuid()"),
             ["run-1"],
+        );
+    });
+
+    it("queues again a pending run whose active job belongs to a dead worker", async () => {
+        const db = dbWithRows([
+            [{ status: "pending", staleLease: true }],
+            [{ status: "queued", jobId: "job-dead" }],
+            [],
+            [],
+            [],
+        ]);
+        await expect(
+            retryRunPayload(db, {
+                teamId: "team-1",
+                projectId: "project-1",
+                runId: "run-1",
+            }),
+        ).resolves.toEqual({ requeued: true });
+        expect(db.query).toHaveBeenNthCalledWith(
+            3,
+            expect.stringContaining("state in ('created', 'retry') limit 1"),
+            ["job-dead"],
+        );
+    });
+
+    it("reads the stale-lease window the way the worker does", () => {
+        expect(runStaleClaimMs(undefined)).toBe(900_000);
+        expect(runStaleClaimMs("5000")).toBe(60_000);
+        expect(runStaleClaimMs("120000")).toBe(120_000);
+    });
+
+    it("refuses a retry once the team daily spend cap is reached", async () => {
+        const db = dbWithRows([[{ status: "failed" }], [], [{ spentUsd: 12 }]]);
+
+        await expect(
+            retryRunPayload(
+                db,
+                { teamId: "team-1", projectId: "project-1", runId: "run-1" },
+                { teamDailySpendCapUsd: 10 },
+            ),
+        ).rejects.toThrow("reaching its $10.00 daily cap");
+        expect(db.query).not.toHaveBeenCalledWith(
+            expect.stringContaining("insert into run_enqueue_outbox"),
+            expect.anything(),
         );
     });
 
@@ -2922,6 +3569,10 @@ describe("runSetupPayload", () => {
                     },
                 ],
                 reasoningConfig: { effort: "low" },
+                outputSchema: {
+                    type: "object",
+                    properties: { score: { type: "number" } },
+                },
             },
         ]);
         expect(payload.judgePrompts).toEqual([
@@ -2965,5 +3616,238 @@ describe("runSetupPayload", () => {
                     "Add SONIOX_API_KEY to use Soniox transcription.",
             }),
         );
+    });
+});
+
+describe("transliteration provider for an STT run", () => {
+    const transliteration = {
+        enabled: true,
+        targetScript: "latin" as const,
+        modelId: "google/gemini-3-flash",
+    };
+
+    function sttMetricsDb(): IDb {
+        return dbWithRows([
+            [
+                {
+                    id: "dataset-1",
+                    team_id: "team-1",
+                    archived_at: null,
+                    purpose: "golden",
+                    modality: "audio",
+                },
+            ],
+            // provider_keys: the team saved none.
+            [],
+            [
+                {
+                    id: "dataset-1",
+                    team_id: "team-1",
+                    archived_at: null,
+                    modality: "audio",
+                },
+            ],
+            [{ id: "item-1", input_text: null, storage_key: "audio/a.wav" }],
+            [{ id: "run-1" }],
+            [{ id: "run-model-1" }],
+            [],
+        ]);
+    }
+
+    function sttMetricsRequest(providerMode?: string) {
+        return {
+            teamId: "team-1",
+            projectId: "project-1",
+            datasetId: "dataset-1",
+            maxTokens: 500,
+            judgeModelId: "gpt-5.4-mini",
+            modelIds: [],
+            promptAssignments: [],
+            reasoningConfigs: [],
+            fieldConfigs: [],
+            createdBy: "user-1",
+            sttConfig: {
+                modelId: "gpt-4o-mini-transcribe",
+                transcriptVariant: "latin" as const,
+                transliteration: {
+                    ...transliteration,
+                    ...(providerMode ? { providerMode } : {}),
+                },
+            } as ISttRunConfig,
+            audioRunMode: "stt_metrics" as const,
+        };
+    }
+
+    it("keeps a requested gateway provider with no base URL", async () => {
+        const db = sttMetricsDb();
+        await expect(
+            createRunFromSelectionPayload(
+                db,
+                sttMetricsRequest("gateway"),
+                testConfig({
+                    flashEvalsLlmProvider: "bifrost",
+                    aiGatewayApiKey: "vck-test",
+                    bifrostApiKey: "bifrost-test",
+                    bifrostBaseUrl: "https://bifrost.example.com",
+                }),
+            ),
+        ).resolves.toEqual({
+            runId: "run-1",
+            enqueueStatus: "pending_enqueue",
+        });
+        const snapshot = vi.mocked(db.query).mock.calls[4]?.[1]?.[6] as {
+            sttConfig: ISttRunConfig;
+        };
+        expect(snapshot.sttConfig.transliteration).toEqual({
+            ...transliteration,
+            providerMode: "gateway",
+        });
+    });
+
+    it("records the OpenRouter base URL saved with the team's key, not .env's", async () => {
+        const saved = {
+            provider: "openrouter",
+            ...encryptSecret(
+                "team-openrouter-key",
+                { teamId: "team-1", provider: "openrouter" },
+                TEST_SECRETS_KEY,
+            ),
+            baseUrl: "https://team-openrouter.example.com/api/v1",
+        };
+        const db = dbWithRows([
+            [
+                {
+                    id: "dataset-1",
+                    team_id: "team-1",
+                    archived_at: null,
+                    purpose: "golden",
+                    modality: "audio",
+                },
+            ],
+            // provider_keys, read to check the transliteration key.
+            [saved],
+            [
+                {
+                    id: "dataset-1",
+                    team_id: "team-1",
+                    archived_at: null,
+                    modality: "audio",
+                },
+            ],
+            // provider_keys, read again for the recorded base URL.
+            [saved],
+            [{ id: "item-1", input_text: null, storage_key: "audio/a.wav" }],
+            [{ id: "run-1" }],
+            [{ id: "run-model-1" }],
+            [],
+        ]);
+        await expect(
+            createRunFromSelectionPayload(
+                db,
+                sttMetricsRequest("openrouter"),
+                testConfig({
+                    flashEvalsSecretsEncKey: TEST_SECRETS_KEY,
+                    openrouterBaseUrl: "https://env-proxy.example.com/api/v1",
+                }),
+            ),
+        ).resolves.toEqual({
+            runId: "run-1",
+            enqueueStatus: "pending_enqueue",
+        });
+        const insert = vi
+            .mocked(db.query)
+            .mock.calls.find(([sql]) =>
+                String(sql).includes("insert into runs"),
+            );
+        const snapshot = insert?.[1]?.[6] as { sttConfig: ISttRunConfig };
+        expect(snapshot.sttConfig.transliteration).toEqual({
+            ...transliteration,
+            providerMode: "openrouter",
+            providerBaseUrl: "https://team-openrouter.example.com/api/v1",
+        });
+    });
+
+    it("rejects a requested provider the team has no key for", async () => {
+        const db = sttMetricsDb();
+        await expect(
+            createRunFromSelectionPayload(
+                db,
+                sttMetricsRequest("vercel-ai-gateway"),
+                testConfig({
+                    flashEvalsLlmProvider: "bifrost",
+                    bifrostApiKey: "bifrost-test",
+                    bifrostBaseUrl: "https://bifrost.example.com",
+                }),
+            ),
+        ).rejects.toMatchObject({
+            status: 400,
+            message:
+                "transliteration: Add a Vercel AI Gateway key in Settings before running transliteration through Vercel AI Gateway.",
+        });
+        // Nothing is written.
+        expect(db.query).toHaveBeenCalledTimes(2);
+    });
+
+    it("rejects an unknown provider", () => {
+        expect(() =>
+            sttConfigForSnapshot(
+                sttMetricsRequest("carrier-pigeon").sttConfig,
+                testConfig(),
+            ),
+        ).toThrow("transliteration: Choose a valid provider");
+    });
+
+    it("gives a requested bifrost provider the server's Bifrost base URL", () => {
+        const config = sttConfigForSnapshot(
+            {
+                ...sttMetricsRequest("bifrost").sttConfig,
+                transliteration: {
+                    ...transliteration,
+                    providerMode: "bifrost",
+                    providerBaseUrl: "https://ignored.example.com",
+                },
+            },
+            testConfig({
+                flashEvalsLlmProvider: "gateway",
+                bifrostBaseUrl: "https://bifrost.example.com",
+                openrouterBaseUrl: "https://openrouter.example.com/api/v1",
+            }),
+        );
+        expect(config?.transliteration).toEqual({
+            ...transliteration,
+            providerMode: "bifrost",
+            providerBaseUrl: "https://bifrost.example.com",
+        });
+    });
+
+    it("gives a requested openrouter provider the server's OpenRouter base URL", () => {
+        const config = sttConfigForSnapshot(
+            sttMetricsRequest("openrouter").sttConfig,
+            testConfig({
+                flashEvalsLlmProvider: "bifrost",
+                bifrostBaseUrl: "https://bifrost.example.com",
+                openrouterBaseUrl: "https://openrouter.example.com/api/v1",
+            }),
+        );
+        expect(config?.transliteration).toEqual({
+            ...transliteration,
+            providerMode: "openrouter",
+            providerBaseUrl: "https://openrouter.example.com/api/v1",
+        });
+    });
+
+    it("uses the server default when the run names no provider", () => {
+        const config = sttConfigForSnapshot(
+            sttMetricsRequest().sttConfig,
+            testConfig({
+                flashEvalsLlmProvider: "bifrost",
+                bifrostBaseUrl: "https://bifrost.example.com",
+            }),
+        );
+        expect(config?.transliteration).toEqual({
+            ...transliteration,
+            providerMode: "bifrost",
+            providerBaseUrl: "https://bifrost.example.com",
+        });
     });
 });

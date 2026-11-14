@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+    cancelWorkflowRunPayload: vi.fn(),
+    retryWorkflowRunPayload: vi.fn(),
     createWorkflowPayload: vi.fn(),
     createWorkflowRunPayload: vi.fn(),
     deleteWorkflowPayload: vi.fn(),
@@ -128,6 +130,8 @@ describe("MCP workflow tools", () => {
             "list_workflow_run_cells",
             "save_workflow_run_note",
             "annotate_workflow_run_cell",
+            "cancel_workflow_run",
+            "retry_workflow_run",
             "get_workflow_run_progress",
         ]);
     });
@@ -459,6 +463,128 @@ describe("MCP workflow tools", () => {
             runtime.config,
             WORKFLOW_RUN_ID,
         );
+    });
+
+    it("passes a spend limit and data rules to workflow run creation", async () => {
+        const { tools, runtime } = registerTools();
+        mocks.createWorkflowRunPayload.mockResolvedValue({
+            workflowRunId: WORKFLOW_RUN_ID,
+            enqueueStatus: "pending_enqueue",
+        });
+        mocks.publishWorkflowRunEnqueue.mockResolvedValue({
+            workflowRunId: WORKFLOW_RUN_ID,
+            enqueueStatus: "queued",
+        });
+        const schema = tools.get("create_workflow_run")!.config.inputSchema!;
+        const input = {
+            projectId: PROJECT_ID,
+            workflowId: WORKFLOW_ID,
+            datasetId: DATASET_ID,
+            runTarget: "dataset",
+            idempotencyKey: "mcp-run-2",
+            maxCostUsd: 2.5,
+            dataPolicy: { onlyHosts: ["vertex"], zeroDataRetention: true },
+        };
+        expect(schema.safeParse(input).success).toBe(true);
+        expect(schema.safeParse({ ...input, maxCostUsd: 0 }).success).toBe(
+            false,
+        );
+        expect(
+            schema.safeParse({ ...input, dataPolicy: { anyHost: true } })
+                .success,
+        ).toBe(false);
+
+        await tools.get("create_workflow_run")!.handler(input);
+
+        expect(mocks.createWorkflowRunPayload).toHaveBeenCalledWith(
+            runtime.db,
+            expect.objectContaining({
+                maxCostUsd: 2.5,
+                dataPolicy: { onlyHosts: ["vertex"], zeroDataRetention: true },
+            }),
+            runtime.config,
+        );
+    });
+
+    it("passes the eval run to compare with to workflow run creation", async () => {
+        const { tools, runtime } = registerTools();
+        mocks.createWorkflowRunPayload.mockResolvedValue({
+            workflowRunId: WORKFLOW_RUN_ID,
+            enqueueStatus: "pending_enqueue",
+        });
+        mocks.publishWorkflowRunEnqueue.mockResolvedValue({
+            workflowRunId: WORKFLOW_RUN_ID,
+            enqueueStatus: "queued",
+        });
+        const schema = tools.get("create_workflow_run")!.config.inputSchema!;
+        const input = {
+            projectId: PROJECT_ID,
+            workflowId: WORKFLOW_ID,
+            datasetId: DATASET_ID,
+            runTarget: "dataset",
+            idempotencyKey: "mcp-run-3",
+            compareWithRunId: DATASET_ID,
+        };
+        expect(schema.safeParse(input).success).toBe(true);
+        expect(
+            schema.safeParse({ ...input, compareWithRunId: "run-1" }).success,
+        ).toBe(false);
+
+        await tools.get("create_workflow_run")!.handler(input);
+
+        expect(mocks.createWorkflowRunPayload).toHaveBeenCalledWith(
+            runtime.db,
+            expect.objectContaining({ compareWithRunId: DATASET_ID }),
+            runtime.config,
+        );
+    });
+
+    it("cancels a workflow run without enqueueing anything", async () => {
+        const { tools, runtime } = registerTools();
+        mocks.cancelWorkflowRunPayload.mockResolvedValue({
+            workflowRunId: WORKFLOW_RUN_ID,
+            status: "running",
+            stopReason: "cancelled",
+        });
+
+        const result = await tools.get("cancel_workflow_run")!.handler({
+            projectId: PROJECT_ID,
+            workflowId: WORKFLOW_ID,
+            workflowRunId: WORKFLOW_RUN_ID,
+        });
+
+        expect(mocks.cancelWorkflowRunPayload).toHaveBeenCalledWith(
+            runtime.db,
+            {
+                teamId: "team-1",
+                projectId: PROJECT_ID,
+                workflowId: WORKFLOW_ID,
+                workflowRunId: WORKFLOW_RUN_ID,
+            },
+        );
+        expect(mocks.publishWorkflowRunEnqueue).not.toHaveBeenCalled();
+        expect(JSON.stringify(result)).toContain("Cancel requested");
+    });
+
+    it("says when a retry had nothing to queue", async () => {
+        const { tools } = registerTools();
+        mocks.retryWorkflowRunPayload.mockResolvedValue({
+            retriedCellCount: 0,
+            requeued: false,
+        });
+        mocks.publishWorkflowRunEnqueue.mockResolvedValue({
+            workflowRunId: WORKFLOW_RUN_ID,
+            enqueueStatus: "queued",
+        });
+
+        const result = await tools.get("retry_workflow_run")!.handler({
+            projectId: PROJECT_ID,
+            workflowId: WORKFLOW_ID,
+            workflowRunId: WORKFLOW_RUN_ID,
+        });
+
+        expect(JSON.stringify(result)).toContain("Nothing to retry");
+        expect(JSON.stringify(result)).toContain('"requeued":false');
     });
 
     it("requires a stable idempotency key and an itemId for single-item runs", () => {

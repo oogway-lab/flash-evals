@@ -62,11 +62,11 @@ Have authorized access to the repository/GitHub Actions, a Cloudflare account an
 | Tool/dependency                | Documented baseline and evidence                                                                                                                                                                                   |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Node.js                        | `.nvmrc` and CI pin **24.21.0**. `engines.node` accepts `^22.23.4 \|\| ^24.0.0 \|\| >=26.0.0`; a local build can use another version within that range. Use the repo/CI pin for repeatable setup.                  |
-| pnpm                           | Root `packageManager` pins **12.6.0**, including its integrity suffix. Keep `pnpm-lock.yaml` and `pnpm-workspace.yaml`.                                                                                            |
+| Bun                            | Root `packageManager` pins **1.3.14**. Keep `bun.lock`, `bunfig.toml` (isolated installs) and the root `overrides`. Bun installs and runs scripts; the services run on Node, pinned in `railpack.json`.            |
 | Next.js                        | Exact **16.4.1** security baseline. Earlier 16.4 builds exposed an OpenNext `preview-props.json` manifest failure; require both build and Worker-runtime smoke checks before deployment.                           |
 | Astro                          | Marketing source pins **7.3.4**. It is packaged into the web release, not deployed as a second apex Worker.                                                                                                        |
 | OpenNext Cloudflare / Wrangler | Current source ranges `^1.20.13` / `^4.149.0`, installed from the reviewed lockfile; adapter 1.20.13 targets the patched Next baseline. Do not replace lockfile-resolved versions with unreviewed latest versions. |
-| PostgreSQL driver / queue      | Tracked `pg ^8.23.1`, `pg-boss ^12.38.0` (schema `pgboss_v12`; see the worker-operations cutover); restore and deploy the reviewed lockfile.                                                                                                                                 |
+| PostgreSQL driver / queue      | Tracked `pg ^8.23.1`, `pg-boss ^12.38.0` (schema `pgboss_v12`; see the worker-operations cutover); restore and deploy the reviewed lockfile.                                                                       |
 | Codex CLI                      | Help/version inspected here: **0.162.1**. OAuth options below were verified in its help, not newly used to log in during documentation.                                                                            |
 
 Clean checkout template (**changes local files; new clone template**):
@@ -77,13 +77,13 @@ cd flash-evals-release
 git checkout --detach "$RELEASE_SHA"
 nvm install
 nvm use
-pnpm --version
-pnpm install --frozen-lockfile
+bun --version
+bun install --frozen-lockfile
 git rev-parse HEAD
 git status --short
 ```
 
-`nvm` is optional; an equivalent Node manager can honor `.nvmrc`. If pnpm is absent, install the exact pinned version through your trusted package-manager setup. Do not use an old Nixpacks/Corepack build recipe: the deployed services use Railpack, which detects pnpm from `packageManager`. The Nixpacks/Corepack failure was addressed in [PR13](https://github.com/oogway-lab/flash-evals/pull/13). [Railpack Node documentation](https://railpack.com/languages/node)
+`nvm` is optional; an equivalent Node manager can honor `.nvmrc`. If Bun is absent, install the exact pinned version through your trusted package-manager setup. Do not use an old Nixpacks/Corepack build recipe: the deployed services use Railpack, which detects Bun from `packageManager`. The Nixpacks/Corepack failure was addressed in [PR13](https://github.com/oogway-lab/flash-evals/pull/13). [Railpack Node documentation](https://railpack.com/languages/node)
 
 Use interactive provider login on the operator's own machine if needed. Wrangler authentication is distinct from Clerk app authentication; Railway platform login is distinct from API/MCP OAuth. A human completes provider login in the browser. Use authorized credentials through their intended runtime or provider tool without displaying values.
 
@@ -157,13 +157,13 @@ After the human has supplied the correct `DATABASE_URL`, `FLASH_EVALS_DEFAULT_TE
 
 ```sh
 # Repository root; verified scripts; changes schema/data.
-pnpm run db:migrate
-pnpm run db:bootstrap-pilot-team
+bun run db:migrate
+bun run db:bootstrap-pilot-team
 ```
 
 Migrations load `apps/api/.env` then `apps/web/.env` if present; existing process variables take precedence. Bootstrap deliberately loads only `apps/api/.env`, so a conflicting web file cannot shadow the team ID/name. In the hosted Railway predeploy environment, variables are supplied by Railway. Avoid unintended env-file overrides in an operator checkout.
 
-Bootstrap creates the configured team only when the table is empty; the same ID/name is an idempotent no-op. It refuses another team or a conflicting name and does not run/reset migrations. The default name is `Oogway Labs`. Subsequent admitted sign-in creates/links the user/workspace through the principal resolver. Do not use `pnpm run seed` on a hosted database: it truncates application tables.
+Bootstrap creates the configured team only when the table is empty; the same ID/name is an idempotent no-op. It refuses another team or a conflicting name and does not run/reset migrations. The default name is `Oogway Labs`. Subsequent admitted sign-in creates/links the user/workspace through the principal resolver. Do not use `bun run seed` on a hosted database: it truncates application tables.
 
 ### Existing database
 
@@ -180,7 +180,7 @@ SELECT id, created_at FROM drizzle.__drizzle_migrations ORDER BY id;
 
 These are verification templates, not queries executed during this documentation task. If application data exists but migration history is missing/inconsistent, stop automated migrations and design a reviewed reconciliation on a recovery copy. Do not run the destructive historical migration or bootstrap as a repair tool. Bootstrap's refusal is protective; do not bypass it by deleting other teams.
 
-The deployment baseline API predeploy command is `pnpm run db:migrate && pnpm run db:bootstrap-pilot-team`. Its safe use on an existing database depends on retaining the migration journal and matching bootstrap state. Reusing that command on another database requires the fresh/existing checks above. The worker has **no predeploy migration/bootstrap**.
+The deployment baseline API predeploy command is `bun run db:migrate && bun run db:bootstrap-pilot-team`. Its safe use on an existing database depends on retaining the migration journal and matching bootstrap state. Reusing that command on another database requires the fresh/existing checks above. The worker has **no predeploy migration/bootstrap**.
 
 ## 6. Clerk web authentication and MCP OAuth
 
@@ -242,7 +242,7 @@ Repository-documented provisioning command (**source verified; changes Cloudflar
 
 ```sh
 cd apps/web
-pnpm exec wrangler cert upload certificate-authority \
+bunx wrangler cert upload certificate-authority \
   --ca-cert config/supabase-root-2021-ca.pem \
   --name flash-evals-supabase-ca
 ```
@@ -258,21 +258,21 @@ The API application pool is bounded at three connections; the Node worker applic
 Configure both services from the repository root so workspace packages/scripts and the lockfile are available. Select **Railpack**, not Nixpacks. Both use this source-verified, successfully deployed build command:
 
 ```sh
-pnpm --filter @flash-evals/api build
+bun run --filter @flash-evals/api build
 ```
 
 It builds shared object-storage/contracts/LLM/secrets packages before compiling the API. Keep dependencies needed by migrations and the TypeScript worker in the deployed image. Set `RAILPACK_PRUNE_DEPS=false` when development dependencies such as migration tooling must be retained. Verify the effective build output; do not assume a provider default preserves runtime or predeploy tooling. [Railpack package-manager/pruning documentation](https://railpack.com/languages/node)
 
-| Setting               | API                                                                                | Separate worker                                                                                   |
-| --------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Source root           | Repository root                                                                    | Repository root                                                                                   |
-| Builder/build command | Railpack / command above                                                           | Railpack / command above                                                                          |
-| Start command         | `pnpm --filter @flash-evals/api start:railway`                                     | `cd apps/web && exec node ../../scripts/node-with-supabase-ca.mjs --import tsx scripts/worker.ts` |
-| Production flag       | `NODE_ENV=production`, `FLASH_EVALS_API_START_WORKER=false`                        | `NODE_ENV=production`; worker runs directly                                                       |
-| Predeploy             | Reviewed `pnpm run db:migrate && pnpm run db:bootstrap-pilot-team` on the API only | None                                                                                              |
-| Health                | `/health`                                                                          | No HTTP healthcheck; logs/supervisor and private status command                                   |
-| Public networking     | API HTTPS domain; target port matches injected `PORT`                              | No public domain or TCP proxy                                                                     |
-| Shutdown              | Verify the service's graceful termination window                                   | 30-second graceful window; default application drain is 20 seconds plus five-second buffer        |
+| Setting               | API                                                                              | Separate worker                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Source root           | Repository root                                                                  | Repository root                                                                                   |
+| Builder/build command | Railpack / command above                                                         | Railpack / command above                                                                          |
+| Start command         | `bun run --filter @flash-evals/api start:railway`                                | `cd apps/web && exec node ../../scripts/node-with-supabase-ca.mjs --import tsx scripts/worker.ts` |
+| Production flag       | `NODE_ENV=production`, `FLASH_EVALS_API_START_WORKER=false`                      | `NODE_ENV=production`; worker runs directly                                                       |
+| Predeploy             | Reviewed `bun run db:migrate && bun run db:bootstrap-pilot-team` on the API only | None                                                                                              |
+| Health                | `/health`                                                                        | No HTTP healthcheck; logs/supervisor and private status command                                   |
+| Public networking     | API HTTPS domain; target port matches injected `PORT`                            | No public domain or TCP proxy                                                                     |
+| Shutdown              | Verify the service's graceful termination window                                 | 30-second graceful window; default application drain is 20 seconds plus five-second buffer        |
 
 The root `railpack.json` adds the Debian `ffmpeg` package to the deploy image. The worker uses FFmpeg and FFprobe to measure recordings and to compress or split audio that exceeds a provider's request budget. Both services build from the repo root, so the API image includes it too. Without FFmpeg, recordings already within budget still transcribe; oversized ones fail with an error that names the missing tool. Check `ffmpeg -version` in a worker shell after deploying.
 
@@ -312,7 +312,7 @@ NEXT_PUBLIC_CLERK_SIGN_IN_URL='/sign-in' \
 NEXT_PUBLIC_CLERK_SIGN_UP_URL='/sign-up' \
 FLASH_EVALS_CSP_STORAGE_ORIGIN='https://<BUCKET>.<ACCOUNT_ID>.r2.cloudflarestorage.com' \
 AUTH_DEV=false AUTH_DEV_ALLOW_INSECURE=0 \
-pnpm run web:build:cloudflare
+bun run web:build:cloudflare
 ```
 
 This builds marketing/shared packages and runs OpenNext's production build with Next's supported `next build --webpack` command. Retain the exact reviewed Next 16.4.1 security pin and require the Worker-runtime smoke below; a successful build alone is insufficient. The expected output is `apps/web/.open-next/worker.js` plus `.open-next/assets`. Build-time CSP decodes the Clerk publishable key and includes the API/storage origins. Runtime variables cannot repair a CSP or browser bundle already built with the wrong values; rebuild when they change. A fixture/test Clerk key is not production configuration. [Security-header source](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/apps/web/config/security-headers.mjs)
@@ -328,7 +328,7 @@ The OpenNext adapter deploy wrapper stopped **before upload** because it wanted 
 ```sh
 # Repository root; VERIFIED; changes the existing production Worker.
 # Run only after building/reviewing the exact approved release.
-OPEN_NEXT_DEPLOY=true pnpm --filter @flash-evals/web exec wrangler deploy \
+OPEN_NEXT_DEPLOY=true bun run --cwd apps/web wrangler deploy \
   --keep-vars \
   --message "Approved release; source $RELEASE_SHA"
 ```
@@ -343,7 +343,7 @@ Record the upload's version ID and independently inspect the active deployment/p
 
 ```sh
 # Repository root; VERIFIED read-only metadata check.
-pnpm --filter @flash-evals/web exec wrangler deployments list \
+bun run --cwd apps/web wrangler deployments list \
   --name flash-evals --json
 ```
 
@@ -453,31 +453,32 @@ R2 S3 credentials are used instead of a native R2 Worker binding. Do not add an 
 
 ### 12.4 Provider credentials, workflow contract, and worker controls
 
-| Exact name                                         | Component / classification                                             | Human source and destination                                                                                                                                                          |
-| -------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `FLASH_EVALS_SECRETS_ENC_KEY`                      | API and every worker / Secret; required for saved provider credentials | Generate once as base64 of **32 random bytes**, retain with protected backups; enter identical protected API/worker variables. Do not rotate without a key migration.                 |
-| `OPENAI_API_KEY`                                   | API/worker provider path / Secret optional                             | Selected OpenAI project/provider key; protected API/worker vars if using environment credentials. Alternative: team-managed key via authenticated app/admin MCP, encrypted in DB.     |
-| `AI_GATEWAY_API_KEY`                               | API/worker / Secret optional                                           | Vercel AI Gateway key from selected account/project; protected API/worker vars or supported stored credential.                                                                        |
-| `OPENROUTER_API_KEY`                               | API/worker / Secret optional                                           | OpenRouter account key; protected API/worker vars or stored credential.                                                                                                               |
-| `BIFROST_API_KEY`                                  | API/worker / Secret optional                                           | Chosen Bifrost deployment's credential; protected API/worker vars or stored credential.                                                                                               |
-| `SONIOX_API_KEY`                                   | API/worker STT / Secret optional                                       | Soniox account key; protected API/worker vars or supported stored credential.                                                                                                         |
-| `GEMINI_API_KEY`                                   | API/worker audio/STT / Secret optional                                 | Chosen Google/Gemini API project key; protected API/worker vars or supported stored credential. Route must also pass capability verification.                                         |
-| `OPENROUTER_BASE_URL`                              | API/worker / Internal optional endpoint                                | Owner-approved OpenRouter endpoint override; default `https://openrouter.ai/api/v1`; provider environment.                                                                            |
-| `BIFROST_BASE_URL`                                 | API/worker / Internal; required when that transport selected           | URL supplied by chosen Bifrost operator; provider environment. Validate destination before sending keys/inputs.                                                                       |
-| `FLASH_EVALS_LLM_PROVIDER`                         | API legacy/default setup path / Internal optional                      | Choose supported `auto`, `vercel-ai`, `openai`, `gateway`, `openrouter`, or `bifrost`; API variable. Explicit workflow route snapshots are authoritative. Not a mock-provider switch. |
-| `PROMPT_OPTIMIZER_MODEL`                           | API; web helper configuration / Internal optional                      | Select an available provider-compatible model for optimizer/schema/judge setup; keep intended API/web values aligned. Source fallback is `gpt-6-luna`, not a latest-model guarantee.  |
-| `FLASH_EVALS_STT_CAPABILITY_PROBES`                | API / Internal optional JSON                                           | Result mapping from deliberate live synthetic STT probes, or use stored probe results; API setting. Do not mark routes available based only on key presence.                          |
-| `FLASH_EVALS_GATEWAY_FALLBACK_MODELS`              | Provider factory / Internal optional                                   | Leave empty for evaluation accuracy: nonempty fallback lists are rejected until served-model provenance is supported. Do not enable to mask model errors.                             |
-| `FLASH_EVALS_GATEWAY_HTTP_REFERER`                 | Provider execution / Public attribution optional                       | Attribution URL sent to Vercel AI Gateway and OpenRouter ("App" column); default `https://flashevals.dev`. Must be printable ASCII. Enter where provider requests execute.            |
-| `FLASH_EVALS_GATEWAY_APP_TITLE`                    | Provider execution / Public attribution optional                       | App title for the same attribution; default `Flash Evals`. Must be printable ASCII; other values are ignored with a warning. No authentication role.                                  |
-| `FLASH_EVALS_PROVIDER_ATTRIBUTION`                 | Provider execution / Public attribution optional                       | Set to `off` to send no attribution headers (for example, self-hosted installs).                                                                                                      |
-| `FLASH_EVALS_WORKFLOW_LLM_WRITES_ENABLED`          | API / Internal rollout flag                                            | False until API/every worker are compatible, then explicit policy choice; API variable.                                                                                               |
-| `FLASH_EVALS_WORKFLOW_LLM_WORKER_CONTRACT_VERSION` | API / Internal rollout contract                                        | Worker-supported snapshot contract from shared source (1 on this baseline); API variable paired with compatible worker.                                                               |
-| `FLASH_EVALS_API_START_WORKER`                     | Railway API launcher / Internal; required false for split topology     | Literal `false`; API variable. Otherwise launcher also spawns a worker.                                                                                                               |
-| `EVAL_CONCURRENCY`                                 | Worker / Internal optional                                             | Operator-selected per-run cell concurrency; source defaults 5 eval / 4 workflow, minimum 1. Worker variable; review provider/DB budgets.                                              |
-| `RUN_STALE_CLAIM_MS`                               | Worker/status / Internal optional                                      | Operator-selected eval recovery lease; default 900000 ms, minimum 60000. Worker/operator status environment.                                                                          |
-| `WORKFLOW_STALE_CLAIM_MS`                          | Worker/status / Internal optional                                      | Same choice for workflow cells; same default/minimum.                                                                                                                                 |
-| `FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS`              | Worker / Internal optional                                             | Drain window default 20000 ms, accepted minimum 1000, capped 300000; worker variable. Coordinate service termination window.                                                          |
+| Exact name                                         | Component / classification                                             | Human source and destination                                                                                                                                                                                                              |
+| -------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FLASH_EVALS_SECRETS_ENC_KEY`                      | API and every worker / Secret; required for saved provider credentials | Generate once as base64 of **32 random bytes**, retain with protected backups; enter identical protected API/worker variables. Do not rotate without a key migration.                                                                     |
+| `OPENAI_API_KEY`                                   | API/worker provider path / Secret optional                             | Selected OpenAI project/provider key; protected API/worker vars if using environment credentials. Alternative: team-managed key via authenticated app/admin MCP, encrypted in DB.                                                         |
+| `AI_GATEWAY_API_KEY`                               | API/worker / Secret optional                                           | Vercel AI Gateway key from selected account/project; protected API/worker vars or supported stored credential.                                                                                                                            |
+| `OPENROUTER_API_KEY`                               | API/worker / Secret optional                                           | OpenRouter account key; protected API/worker vars or stored credential.                                                                                                                                                                   |
+| `BIFROST_API_KEY`                                  | API/worker / Secret optional                                           | Chosen Bifrost deployment's credential; protected API/worker vars or stored credential.                                                                                                                                                   |
+| `SONIOX_API_KEY`                                   | API/worker STT / Secret optional                                       | Soniox account key; protected API/worker vars or supported stored credential.                                                                                                                                                             |
+| `ELEVENLABS_API_KEY`                               | API/worker STT / Secret optional                                       | ElevenLabs account key (Scribe STT); protected API/worker vars or stored credential.                                                                                                                                                      |
+| `GEMINI_API_KEY`                                   | API/worker audio/STT / Secret optional                                 | Chosen Google/Gemini API project key; protected API/worker vars or supported stored credential. Route must also pass capability verification.                                                                                             |
+| `OPENROUTER_BASE_URL`                              | API/worker / Internal optional endpoint                                | Owner-approved OpenRouter endpoint override; default `https://openrouter.ai/api/v1`; provider environment.                                                                                                                                |
+| `BIFROST_BASE_URL`                                 | API/worker / Internal; required when that transport selected           | URL supplied by chosen Bifrost operator; provider environment. Validate destination before sending keys/inputs.                                                                                                                           |
+| `FLASH_EVALS_LLM_PROVIDER`                         | API legacy/default setup path / Internal optional                      | Choose supported `auto`, `vercel-ai-gateway`, `openrouter`, `openai`, or `bifrost` (`gateway` and `vercel-ai` are older names for Vercel); API variable. Explicit workflow route snapshots are authoritative. Not a mock-provider switch. |
+| `PROMPT_OPTIMIZER_MODEL`                           | API; web helper configuration / Internal optional                      | Select an available provider-compatible model for optimizer/schema/judge setup; keep intended API/web values aligned. Source fallback is `gpt-6-luna`, not a latest-model guarantee.                                                      |
+| `FLASH_EVALS_STT_CAPABILITY_PROBES`                | API / Internal optional JSON                                           | Result mapping from deliberate live synthetic STT probes, or use stored probe results; API setting. Do not mark routes available based only on key presence.                                                                              |
+| `FLASH_EVALS_GATEWAY_FALLBACK_MODELS`              | Provider factory / Internal optional                                   | Leave empty for evaluation accuracy: nonempty fallback lists are rejected until served-model provenance is supported. Do not enable to mask model errors.                                                                                 |
+| `FLASH_EVALS_GATEWAY_HTTP_REFERER`                 | Provider execution / Public attribution optional                       | Attribution URL sent to Vercel AI Gateway and OpenRouter ("App" column); default `https://flashevals.dev`. Must be printable ASCII. Enter where provider requests execute.                                                                |
+| `FLASH_EVALS_GATEWAY_APP_TITLE`                    | Provider execution / Public attribution optional                       | App title for the same attribution; default `Flash Evals`. Must be printable ASCII; other values are ignored with a warning. No authentication role.                                                                                      |
+| `FLASH_EVALS_PROVIDER_ATTRIBUTION`                 | Provider execution / Public attribution optional                       | Set to `off` to send no attribution headers (for example, self-hosted installs).                                                                                                                                                          |
+| `FLASH_EVALS_WORKFLOW_LLM_WRITES_ENABLED`          | API / Internal rollout flag                                            | False until API/every worker are compatible, then explicit policy choice; API variable.                                                                                                                                                   |
+| `FLASH_EVALS_WORKFLOW_LLM_WORKER_CONTRACT_VERSION` | API / Internal rollout contract                                        | Worker-supported snapshot contract from shared source (1 on this baseline); API variable paired with compatible worker.                                                                                                                   |
+| `FLASH_EVALS_API_START_WORKER`                     | Railway API launcher / Internal; required false for split topology     | Literal `false`; API variable. Otherwise launcher also spawns a worker.                                                                                                                                                                   |
+| `EVAL_CONCURRENCY`                                 | Worker / Internal optional                                             | Operator-selected per-run cell concurrency; source defaults 5 eval / 4 workflow, minimum 1. Worker variable; review provider/DB budgets.                                                                                                  |
+| `RUN_STALE_CLAIM_MS`                               | Worker/status / Internal optional                                      | Operator-selected eval recovery lease; default 900000 ms, minimum 60000. Worker/operator status environment.                                                                                                                              |
+| `WORKFLOW_STALE_CLAIM_MS`                          | Worker/status / Internal optional                                      | Same choice for workflow cells; same default/minimum.                                                                                                                                                                                     |
+| `FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS`              | Worker / Internal optional                                             | Drain window default 20000 ms, accepted minimum 1000, capped 300000; worker variable. Coordinate service termination window.                                                                                                              |
 
 No real provider key is required to prove public routing or health. Current keyless synthetic checks are not a claim that paid provider execution passed. Do not put provider keys in `NEXT_PUBLIC_*` or copy them into a production web build to avoid a runtime error.
 
@@ -539,22 +540,22 @@ For new secrets, the human can generate random bytes within the approved secret 
 The following command forms are verified for this baseline; they change only local build/test output unless a configured test targets external services:
 
 ```sh
-pnpm run quality
-pnpm run typecheck
-pnpm run marketing:build
-pnpm exec playwright test tests/e2e/health.spec.ts
-pnpm exec playwright test --config playwright.marketing.config.ts
-pnpm run web:build:cloudflare
-pnpm run web:smoke:cloudflare
+bun run quality
+bun run typecheck
+bun run marketing:build
+bunx playwright test tests/e2e/health.spec.ts
+bunx playwright test --config playwright.marketing.config.ts
+bun run web:build:cloudflare
+bun run web:smoke:cloudflare
 ```
 
 Run browser/Worker fixture tests only with their documented isolated test setup. Fixture authentication/mock backends are useful regressions, not real Clerk verification. Production build needs real **public** configuration before it is treated as deployable. `web:smoke:cloudflare` starts a local Wrangler Worker; it is not a live production login test. Repository CI also includes migration checks on a fresh disposable DB, package/web tests, static/dependency checks, and secret/SAST scans. Inspect CI on the **exact** release SHA.
 
 ### Readiness-script limits
 
-`pnpm run deploy:check` is source verified and validates human-prepared local API/web config files without needing to print values; it does not inspect actual Railway start/health settings. The checked web config forbids production DB/provider keys. `pnpm run deploy:check:live` obtains full Railway variable values into private temporary files even though its result reports comparisons; **do not run it under a no-secret-read workflow**. Use masked provider settings/name-only service metadata and existing authorized runtime probes instead. Token equality can be checked by an authorized human/secret manager without showing either value.
+`bun run deploy:check` is source verified and validates human-prepared local API/web config files without needing to print values; it does not inspect actual Railway start/health settings. The checked web config forbids production DB/provider keys. `bun run deploy:check:live` obtains full Railway variable values into private temporary files even though its result reports comparisons; **do not run it under a no-secret-read workflow**. Use masked provider settings/name-only service metadata and existing authorized runtime probes instead. Token equality can be checked by an authorized human/secret manager without showing either value.
 
-`pnpm run smoke:split-health` has a stale internal assertion that detailed health `storage` is `supabase`. With a valid internal token on this R2 deployment, it can fail that assertion despite healthy R2. Do not change the storage adapter to satisfy it. Public-only health usage avoids that assertion; a revised R2-aware detailed check is a follow-up code improvement, not a change made by this guide.
+`bun run smoke:split-health` has a stale internal assertion that detailed health `storage` is `supabase`. With a valid internal token on this R2 deployment, it can fail that assertion despite healthy R2. Do not change the storage adapter to satisfy it. Public-only health usage avoids that assertion; a revised R2-aware detailed check is a follow-up code improvement, not a change made by this guide.
 
 ### Anonymous health/routing
 
@@ -583,7 +584,7 @@ Use a synthetic dataset with reference labels for keyless workflow evaluation an
 Source-verified read-only private status command from repository root, with the correct protected `DATABASE_URL` already injected:
 
 ```sh
-pnpm run worker:status
+bun run worker:status
 ```
 
 It reports queue/database readiness, queue ages/counts, run states and persisted cost estimates without reading/printing prompt/output/key content. Confirm process liveness and `worker.ready` separately in Railway. In an authorized protected runtime, a detailed health call using the already-injected internal token can check `storage=r2`, DB/storage checks and no-volume status without exposing the token. Do not put a token value into a curl command line or log a full variable set.
@@ -600,7 +601,7 @@ Use the previously recorded compatible Worker version. Command form below is sou
 
 ```sh
 # Repository root; TEMPLATE; changes active web deployment.
-pnpm --filter @flash-evals/web exec wrangler rollback '<KNOWN_GOOD_VERSION_ID>' \
+bun run --cwd apps/web wrangler rollback '<KNOWN_GOOD_VERSION_ID>' \
   --name flash-evals \
   --message 'Rollback after acceptance regression'
 ```
@@ -678,7 +679,7 @@ All code links here are pinned to the documented web/API baseline so subsequent 
 
 | Evidence                                     | Source                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Package scripts, pnpm and Node policy        | [Root package.json](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/package.json), [.nvmrc](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/.nvmrc), [CI](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/.github/workflows/ci.yml)                                                                                                                                                                                                                                                                                                   |
+| Package scripts, Bun and Node policy         | [Root package.json](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/package.json), [.nvmrc](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/.nvmrc), [CI](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/.github/workflows/ci.yml)                                                                                                                                                                                                                                                                                                   |
 | Web/API exact script definitions             | [Web package](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/apps/web/package.json), [API package](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/apps/api/package.json)                                                                                                                                                                                                                                                                                                                                                                                                    |
 | API core/OAuth/limit env readers             | [config.ts](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/apps/api/src/config.ts), [featureFlags.ts](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/apps/api/src/featureFlags.ts)                                                                                                                                                                                                                                                                                                                                                                                          |
 | API/worker launches and CA wrapper           | [railway.json](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/railway.json), [railway.worker.json](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/railway.worker.json), [Node CA launcher](https://github.com/oogway-lab/flash-evals/blob/0c315fa74edd9a0a72776060d63a01a162903b79/scripts/node-with-supabase-ca.mjs)                                                                                                                                                                                                                                                       |

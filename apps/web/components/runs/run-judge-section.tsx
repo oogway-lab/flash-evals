@@ -16,7 +16,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { transportLabel } from "@/lib/transport";
+import { ProviderSelect } from "./provider-select";
 import type { usePromptEvalRunController } from "./use-prompt-eval-run-controller";
 import { REASONING_EFFORT_LABELS } from "@/lib/labels";
 
@@ -136,42 +136,20 @@ export function RunJudgeSection({
                     name="judgeTransport"
                     value={controller.judgeTransport ?? ""}
                 />
-                {(judgeModels.find(
-                    (model) => model.id === controller.judgeModelId,
-                )?.transports.length ?? 0) > 1 && (
-                    <div className="flex flex-col gap-2">
-                        <Label htmlFor="judgeTransport">Judge transport</Label>
-                        <Select
-                            value={controller.judgeTransport}
-                            onValueChange={(value) =>
-                                controller.setJudgeTransport(
-                                    value as typeof controller.judgeTransport,
-                                )
-                            }
-                            disabled={controller.usingSavedJudge}
-                        >
-                            <SelectTrigger id="judgeTransport">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {judgeModels
-                                    .find(
-                                        (model) =>
-                                            model.id ===
-                                            controller.judgeModelId,
-                                    )
-                                    ?.transports.map((transport) => (
-                                        <SelectItem
-                                            key={transport}
-                                            value={transport}
-                                        >
-                                            {transportLabel(transport)}
-                                        </SelectItem>
-                                    ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                )}
+                <div className="flex flex-col gap-2">
+                    <Label htmlFor="judgeTransport">
+                        Judge provider (price in / out per 1M tokens)
+                    </Label>
+                    <ProviderSelect
+                        id="judgeTransport"
+                        model={judgeModels.find(
+                            (model) => model.id === controller.judgeModelId,
+                        )}
+                        value={controller.judgeTransport}
+                        onChange={controller.setJudgeTransport}
+                        disabled={controller.usingSavedJudge}
+                    />
+                </div>
                 <input
                     type="hidden"
                     name="judgeReasoningEffort"

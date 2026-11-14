@@ -1,13 +1,9 @@
 import { eq, inArray } from "drizzle-orm";
 import { db } from "../db/client";
-import {
-    runs,
-    runCells,
-    runNotes,
-    runCellAnnotations,
-} from "../db/schema";
+import { runs, runCells, runNotes, runCellAnnotations } from "../db/schema";
 
-export type ReviewVerdict = "unreviewed" | "approved" | "needs_review" | "issue";
+export type ReviewVerdict =
+    "unreviewed" | "approved" | "needs_review" | "issue";
 
 export interface IRunNote {
     body: string;

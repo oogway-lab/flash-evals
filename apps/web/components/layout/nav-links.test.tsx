@@ -79,6 +79,7 @@ describe("NavLinks", () => {
             "Prompts",
             "Pipelines",
             "Runs",
+            "Models",
             "Settings",
         ]);
         expect(links[0]).toHaveAttribute("href", "/dashboard");

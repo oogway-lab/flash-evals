@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
     isProviderKeyProvider,
+    isWorkflowLlmTransport,
     FlashEvalsApiError,
     type IWorkflowLlmRouteCandidatesResponse,
     type IWorkflowLlmRouteConfig,
@@ -23,6 +24,22 @@ export interface IProviderKeyActionState {
     message?: string;
     error?: string;
     resetKey?: number;
+}
+
+export interface IRefreshModelPricesState {
+    ok?: boolean;
+    error?: string;
+}
+
+/** Ask the worker to fetch the Vercel and OpenRouter price lists now. */
+export async function refreshModelPricesAction(): Promise<IRefreshModelPricesState> {
+    await requirePrincipal();
+    try {
+        await serverApiClient().refreshModelPrices();
+        return { ok: true };
+    } catch (error) {
+        return { error: clientErrorMessage(error) };
+    }
 }
 
 export interface ISttRouteProbeActionState {
@@ -285,6 +302,7 @@ export async function clearWorkflowLlmDefaultAction(
 
 function revalidateProviderSetupPaths(): void {
     revalidatePath("/settings");
+    revalidatePath("/models");
     revalidatePath("/runs/new");
     revalidatePath("/multiworkflow", "layout");
     revalidatePath("/prompts", "layout");
@@ -300,12 +318,7 @@ function providerFrom(formData: FormData): ProviderKeyProvider {
 
 function transportFrom(formData: FormData): WorkflowLlmTransport {
     const value = required(formData, "transport");
-    if (
-        value !== "openai" &&
-        value !== "gateway" &&
-        value !== "openrouter" &&
-        value !== "bifrost"
-    )
+    if (!isWorkflowLlmTransport(value))
         throw new UserFacingError("Choose a supported LLM transport.");
     return value;
 }
@@ -347,12 +360,15 @@ function routeConfigForNode(
                           transport: "bifrost",
                           upstreamPolicy: { mode: "bifrost_default" },
                       }
-                    : {
-                          transport: "openrouter",
-                          upstreamPolicy: { mode: "auto" },
-                          requireParameters: true,
-                          responseCache: "allow",
-                      },
+                    : input.transport === "anthropic" ||
+                        input.transport === "google"
+                      ? { transport: input.transport }
+                      : {
+                            transport: "openrouter",
+                            upstreamPolicy: { mode: "auto" },
+                            requireParameters: true,
+                            responseCache: "allow",
+                        },
         generation,
         structuredOutput: { mode: "text" },
         retry:
@@ -433,7 +449,12 @@ function transportConfigFrom(
     formData: FormData,
     transport: WorkflowLlmTransport,
 ): IWorkflowLlmRouteConfig["transportConfig"] {
-    if (transport === "openai") return { transport };
+    if (
+        transport === "openai" ||
+        transport === "anthropic" ||
+        transport === "google"
+    )
+        return { transport };
     if (transport === "gateway")
         return {
             transport,

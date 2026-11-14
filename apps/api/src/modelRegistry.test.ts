@@ -45,6 +45,71 @@ describe("availableModelOptions", () => {
         },
     );
 
+    it("makes direct maker models available with only the maker's key", async () => {
+        vi.mocked(listAvailableModelMetadata).mockImplementation(
+            async (_keys, options) =>
+                options?.provider === "anthropic"
+                    ? [{ id: "claude-haiku-5-5" }]
+                    : [],
+        );
+        try {
+            const result = await availableModelOptions({
+                anthropic: "test-anthropic",
+            });
+            expect(
+                result.models.find(
+                    (model) => model.id === "anthropic/claude-haiku-5.5",
+                ),
+            ).toMatchObject({ available: true, transports: ["anthropic"] });
+            expect(listAvailableModelMetadata).toHaveBeenCalledWith(
+                { anthropic: "test-anthropic" },
+                { provider: "anthropic" },
+            );
+        } finally {
+            vi.mocked(listAvailableModelMetadata).mockReset();
+        }
+    });
+
+    it("lists models a provider without a key carries, with the missing key named", async () => {
+        const result = await availableModelOptions({
+            gateway: "stored-gateway",
+        });
+        const openRouterOnly = result.models.find(
+            (model) =>
+                model.providers?.length === 1 &&
+                model.providers[0]?.transport === "openrouter",
+        );
+        expect(openRouterOnly).toMatchObject({
+            available: false,
+            transports: [],
+            disabledReason: "No key for OpenRouter.",
+        });
+        const both = result.models.find(
+            (model) => model.id === "anthropic/claude-sonnet-4.5",
+        );
+        expect(both?.providers?.map((offer) => offer.transport)).toEqual([
+            "gateway",
+            "openrouter",
+        ]);
+        expect(both?.providers?.map((offer) => offer.keySaved)).toEqual([
+            true,
+            false,
+        ]);
+    });
+
+    it("starts from the preferred provider when it has a key", async () => {
+        const keys = { gateway: "stored-gateway", openrouter: "stored-or" };
+        const plain = await availableModelOptions(keys);
+        const preferred = await availableModelOptions(keys, {
+            preferredProvider: "openrouter",
+        });
+        const sonnet = (models: typeof plain.models) =>
+            models.find((model) => model.id === "anthropic/claude-sonnet-4.5")
+                ?.transports;
+        expect(sonnet(plain.models)).toEqual(["gateway", "openrouter"]);
+        expect(sonnet(preferred.models)).toEqual(["openrouter", "gateway"]);
+    });
+
     it("unions models and transports enabled by effective provider keys", async () => {
         const result = await availableModelOptions({
             openai: "env-openai",

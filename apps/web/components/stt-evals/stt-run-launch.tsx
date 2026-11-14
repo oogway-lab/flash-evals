@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import type {
+    IPipelineComparisonRunOption,
     IPromptWorkflow,
     IRunSetupDatasetOption,
 } from "@flash-evals/api-contract";
@@ -23,6 +24,14 @@ import {
     workflowNodeKeyFromErrorPath,
 } from "./workflow-node-repair";
 import { Hint } from "@/components/ui/hint";
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { SpendLimitField } from "@/components/runs/spend-limit-field";
+import { DataRules } from "@/components/runs/data-rules";
+import { CompareRunField } from "./compare-run-field";
 
 // eslint-disable-next-line complexity -- launch validation maps multiple user-facing error states.
 export function SttRunLaunch({
@@ -31,10 +40,13 @@ export function SttRunLaunch({
     initialDatasetId,
     action,
     disabled,
+    comparisonRuns = [],
 }: {
     workflow: IPromptWorkflow;
     datasets: IRunSetupDatasetOption[];
     initialDatasetId?: string;
+    /** Finished eval runs with a Task Map the run can be compared with. */
+    comparisonRuns?: IPipelineComparisonRunOption[];
     action: (state: IActionState, data: FormData) => Promise<IActionState>;
     disabled?: boolean;
 }) {
@@ -50,6 +62,8 @@ export function SttRunLaunch({
         inputConfigs.map((config) => config.modality),
     );
     const isMulti = workflow.kind === "multi";
+    // A prompt pipeline's first steps read the item text: any text dataset.
+    const isPrompt = workflow.kind === "prompt";
     const unresolvedNodes = workflow.nodes.filter((node) =>
         isWorkflowModelBackedNodeType(node.nodeType ?? "prompt")
             ? !node.llmExecutionSelection
@@ -71,7 +85,9 @@ export function SttRunLaunch({
                   dataset.id === inputDatasetId &&
                   dataset.modality === inputModality,
           )
-        : datasets.filter((dataset) => dataset.modality === "audio");
+        : datasets.filter(
+              (dataset) => dataset.modality === (isPrompt ? "text" : "audio"),
+          );
     const [datasetId, setDatasetId] = useState(
         isMulti
             ? (eligibleDatasets[0]?.id ?? "")
@@ -83,6 +99,12 @@ export function SttRunLaunch({
     );
     const [state, formAction, pending] = useActionState(action, {});
     const [idempotencyKey] = useState(() => crypto.randomUUID());
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const spendLimitError = state.fieldErrors?.maxCostUsd?.[0];
+    // A rejected spend limit opens the settings so the field shows its error.
+    useEffect(() => {
+        if (spendLimitError) setSettingsOpen(true);
+    }, [spendLimitError]);
     useEffect(() => {
         const path = Object.keys(state.fieldErrors ?? {}).find((key) =>
             key.endsWith(".llmExecutionSelection"),
@@ -114,7 +136,9 @@ export function SttRunLaunch({
                             <Label htmlFor="run-dataset">
                                 {isMulti
                                     ? `${inputModality ? `${inputModality[0]?.toUpperCase()}${inputModality.slice(1)}` : "Input"} dataset`
-                                    : "Audio dataset"}
+                                    : isPrompt
+                                      ? "Text dataset"
+                                      : "Audio dataset"}
                             </Label>
                             <Select
                                 value={datasetId}
@@ -170,6 +194,32 @@ export function SttRunLaunch({
                             {disabled ? "Save before running" : "Run flow"}
                         </Button>
                     </div>
+                    <CompareRunField
+                        runs={comparisonRuns}
+                        datasetId={datasetId}
+                        hasFinalAnswer={Boolean(
+                            workflow.finalAnswer?.fields.length,
+                        )}
+                    />
+                    <Collapsible
+                        open={settingsOpen}
+                        onOpenChange={setSettingsOpen}
+                        className="flex flex-col gap-3"
+                    >
+                        <CollapsibleTrigger className="self-start">
+                            Spend limit and data rules
+                        </CollapsibleTrigger>
+                        {/* Kept mounted so the fields submit while closed. */}
+                        <CollapsibleContent keepMounted>
+                            <div className="flex flex-col gap-6 pt-1">
+                                <SpendLimitField
+                                    id="pipelineMaxCostUsd"
+                                    error={spendLimitError}
+                                />
+                                <DataRules variant="pipeline" />
+                            </div>
+                        </CollapsibleContent>
+                    </Collapsible>
                     {state.formError ? (
                         <p
                             id="run-launch-form-error"

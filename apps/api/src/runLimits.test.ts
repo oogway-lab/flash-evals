@@ -74,15 +74,14 @@ describe("assertTeamSpendUnderCap", () => {
         );
     });
 
-    it("counts eval cells, workflow cells, and workflow STT spend", async () => {
+    it("counts the spend ledger by when each amount was paid", async () => {
         const db = dbWithSpend(0);
 
         await assertTeamSpendUnderCap(db, "team-1", 10);
 
         const sql = vi.mocked(db.query).mock.calls[0]![0] as string;
-        expect(sql).toContain("from run_cells");
-        expect(sql).toContain("from workflow_run_cells");
-        expect(sql).toContain("incurred_cost_usd");
+        expect(sql).toContain("from spend_ledger");
+        expect(sql).toContain("paid_at > now() - interval '24 hours'");
     });
 });
 

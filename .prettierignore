@@ -1,5 +1,5 @@
 src-tauri/gen
-pnpm-lock.yaml
+bun.lock
 .github
 apps/web/generated/
 apps/web/public/marketing/

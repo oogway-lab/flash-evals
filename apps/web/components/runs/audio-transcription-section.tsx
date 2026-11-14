@@ -2,6 +2,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import {
+    STT_LEVEL_VOLUME_FIELD,
     sttModelSupportsLanguage,
     type IRunSetupSttModelOption,
     type ISttRunConfig,
@@ -11,7 +12,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { SttConfigFields, configForSttSnapshot } from "./stt-config-fields";
+import {
+    ConfigField,
+    SttConfigFields,
+    configForSttSnapshot,
+} from "./stt-config-fields";
 import {
     Select,
     SelectContent,
@@ -31,6 +36,9 @@ interface IAudioTranscriptionSectionProps {
     setSttLanguage: Dispatch<SetStateAction<string>>;
     sttConfig: Record<string, unknown>;
     setSttConfig: Dispatch<SetStateAction<Record<string, unknown>>>;
+    /** Level volume first (ISttRunConfig.levelVolume). */
+    sttLevelVolume: boolean;
+    setSttLevelVolume: Dispatch<SetStateAction<boolean>>;
     transliterationEnabled: boolean;
     setTransliterationEnabled: Dispatch<SetStateAction<boolean>>;
     transliterationModelId: string;
@@ -63,6 +71,8 @@ export function AudioTranscriptionSection({
     setSttLanguage,
     sttConfig,
     setSttConfig,
+    sttLevelVolume,
+    setSttLevelVolume,
     transliterationEnabled,
     setTransliterationEnabled,
     transliterationModelId,
@@ -90,6 +100,7 @@ export function AudioTranscriptionSection({
         modelId: sttModelId,
         language: supportsLanguage ? sttLanguage : "",
         config: sttConfig,
+        levelVolume: sttLevelVolume,
         transliteration: {
             enabled: transliterationEnabled,
             modelId: transliterationModelId,
@@ -147,6 +158,11 @@ export function AudioTranscriptionSection({
                         config={sttConfig}
                         onLanguageChange={setSttLanguage}
                         onConfigChange={setSttConfig}
+                    />
+                    <ConfigField
+                        field={STT_LEVEL_VOLUME_FIELD}
+                        value={sttLevelVolume}
+                        onChange={(value) => setSttLevelVolume(value === true)}
                     />
                     <TransliterationSettings
                         enabled={transliterationEnabled}
@@ -455,6 +471,7 @@ export function sttRunConfig({
     modelId,
     language,
     config,
+    levelVolume = false,
     transliteration,
     evaluator,
 }: {
@@ -462,6 +479,8 @@ export function sttRunConfig({
     modelId: string;
     language: string;
     config: Record<string, unknown>;
+    /** Sent only when on, so unlevelled configs keep their cache key. */
+    levelVolume?: boolean;
     transliteration: {
         enabled: boolean;
         modelId: string;
@@ -484,6 +503,7 @@ export function sttRunConfig({
         ...(model?.routeId ? { routeId: model.routeId } : {}),
         ...(language.trim() ? { language: language.trim() } : {}),
         ...(Object.keys(filtered).length > 0 ? { config: filtered } : {}),
+        ...(levelVolume ? { levelVolume: true } : {}),
         ...transliterationConfigForSnapshot(transliteration),
         ...evaluatorConfigForSnapshot(evaluator),
     };

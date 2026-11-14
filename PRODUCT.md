@@ -23,19 +23,19 @@ Flash Evals is a self-hosted evaluation workbench. A team brings a dataset of it
 - Your examples, not benchmarks: comparisons run on the application's own data.
 - Quality, latency, and cost recorded side by side for every dataset item × model cell, with a per-model leaderboard.
 - One workbench for text, image, and speech-to-text, including transcript accuracy and (where supported) speaker diarization.
-- Agent-native: an MCP server exposes the same datasets, prompts, runs, and review notes (88 tools) to MCP-compatible agents.
+- Agent-native: an MCP server exposes the same datasets, prompts, runs, and review notes (89 tools) to MCP-compatible agents.
 - Self-hosted and open source (AGPL-3.0-only); data goes only to the providers the team selects.
 
 ## Operating Context
 
-Engineers clone the repo, run `pnpm run setup:local`, start PostgreSQL with Docker Compose, migrate, seed synthetic examples, and run `pnpm run dev` (web :3000, API :3001, worker). Real model calls need a provider key, by default `OPENROUTER_API_KEY`. Core vocabulary: dataset, prompt, run (Eval Run), run cell, leaderboard, judge, workflow, STT metrics run, config variants.
+Engineers clone the repo, run `bun run setup:local`, start PostgreSQL with Docker Compose, migrate, seed synthetic examples, and run `bun run dev` (web :3000, API :3001, worker). Real model calls need a provider key, by default `OPENROUTER_API_KEY`. Core vocabulary: dataset, prompt, run (Eval Run), run cell, leaderboard, judge, workflow, STT metrics run, config variants.
 
 ## Capabilities and Constraints
 
 - Structured-output scoring against reference labels with field-level diffs; LLM-as-judge against a rubric.
 - Prompt workflows: directed graphs of prompt steps; STT canvas with STT, LLM text, transliteration, judge, and metric nodes.
 - STT metrics runs compare 1–6 config variants (model, language hint, keyword boost, diarization).
-- Providers: OpenRouter, OpenAI, Vercel AI Gateway, Soniox (STT). Result reuse avoids repaying for identical calls.
+- Providers: OpenRouter, OpenAI, Vercel AI Gateway, Soniox and ElevenLabs (STT). Result reuse avoids repaying for identical calls.
 - Review: per-result notes and annotations.
 - Cost figures are estimates; spending limits use recorded usage.
 - Early-stage alpha with breaking changes; not a managed service. No hosted offering exists.

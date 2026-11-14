@@ -1,8 +1,10 @@
 import {
     getBareModelName,
     type ApiKeys,
+    type ICostPricing,
     type EvalProviderTransport,
     type ReasoningEffort,
+    type ICompletionDataPolicy,
 } from "@flash-evals/llm-core";
 import { scoreFieldDiff } from "./fieldDiff";
 import { judgeFields, type JudgeFn } from "./judgeFields";
@@ -36,6 +38,12 @@ export interface IScoreOutputArgs {
     apiKeys: ApiKeys;
     maxTokens: number;
     judgePrompt?: IJudgePromptScoringConfig;
+    /** The run's data rules, applied to judge calls too. */
+    dataPolicy?: ICompletionDataPolicy;
+    /** Prices for generative-field judge models, to record their cost. */
+    fieldJudgePricingFor?: (
+        modelId: string,
+    ) => Promise<ICostPricing | undefined>;
 }
 
 export interface IScoreOutputResult {
@@ -44,6 +52,8 @@ export interface IScoreOutputResult {
         score: number | null;
         details?: IJudgeDetails;
         rationale?: string;
+        /** What the judge calls cost, when known. */
+        costUsd?: number;
     };
 }
 
@@ -53,6 +63,8 @@ export interface IJudgePromptScoringConfig {
     rubricPrompt: string;
     declaredInputs: JudgeDeclaredInput[];
     reasoningEffort?: ReasoningEffort;
+    /** The judge model's prices, so the call's cost can be recorded. */
+    pricing?: ICostPricing;
 }
 
 export async function scoreOutput(
@@ -107,7 +119,18 @@ export async function scoreOutput(
         }
     }
 
-    // Generative-field judges and run-level judge prompts are mutually exclusive.
+    const judged = await judgeOutput(args, generative, judge);
+    if (judged) result.judge = judged;
+
+    return result;
+}
+
+/** Generative-field judges and run-level judge prompts are mutually exclusive. */
+async function judgeOutput(
+    args: IScoreOutputArgs,
+    generative: IPipelineFieldConfig[],
+    judge: JudgeFn | undefined,
+): Promise<IScoreOutputResult["judge"]> {
     if (generative.length > 0) {
         const judged = await judgeFields(
             {
@@ -119,11 +142,22 @@ export async function scoreOutput(
                 reference: args.reference,
                 apiKeys: args.apiKeys,
                 maxTokens: args.maxTokens,
+                ...(args.dataPolicy ? { dataPolicy: args.dataPolicy } : {}),
+                ...(args.fieldJudgePricingFor
+                    ? { pricingFor: args.fieldJudgePricingFor }
+                    : {}),
             },
             judge,
         );
-        result.judge = { score: judged.score, details: judged.details };
-    } else if (args.judgePrompt) {
+        return {
+            score: judged.score,
+            details: judged.details,
+            ...(judged.costUsd !== undefined
+                ? { costUsd: judged.costUsd }
+                : {}),
+        };
+    }
+    if (args.judgePrompt) {
         const verdict = await (judge ?? runJudge)({
             judgeModelId: getBareModelName(args.judgePrompt.modelId),
             rubricPrompt: args.judgePrompt.rubricPrompt,
@@ -136,13 +170,22 @@ export async function scoreOutput(
             declaredInputs: args.judgePrompt.declaredInputs,
             reasoningEffort: args.judgePrompt.reasoningEffort,
             transport: args.judgePrompt.transport,
+            ...(args.dataPolicy ? { dataPolicy: args.dataPolicy } : {}),
+            ...(args.judgePrompt.pricing
+                ? { pricing: args.judgePrompt.pricing }
+                : {}),
         });
-        result.judge = verdict.ok
-            ? { score: verdict.score, rationale: verdict.rationale }
-            : { score: null, rationale: `judge error: ${verdict.error}` };
+        const cost =
+            verdict.costUsd !== undefined ? { costUsd: verdict.costUsd } : {};
+        return verdict.ok
+            ? { score: verdict.score, rationale: verdict.rationale, ...cost }
+            : {
+                  score: null,
+                  rationale: `judge error: ${verdict.error}`,
+                  ...cost,
+              };
     }
-
-    return result;
+    return undefined;
 }
 
 function inferNestedFieldSet(label: LabelJson): Set<string> {

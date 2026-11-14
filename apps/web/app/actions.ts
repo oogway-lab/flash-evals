@@ -10,7 +10,10 @@ import { loadWorkflowLlmRouteCandidatesAction } from "./actions/settings";
 import { actionErrorState } from "./actions/shared";
 import { revalidatePath } from "next/cache";
 import { requireActiveProject } from "@/server/projects/activeProject";
-import type { ReviewVerdict } from "@flash-evals/api-contract";
+import type {
+    IRunDisagreementsResponse,
+    ReviewVerdict,
+} from "@flash-evals/api-contract";
 import { serverApiClient } from "@/server/api/client";
 import type {
     IActionState,
@@ -38,6 +41,7 @@ export const createSttEvalAction = sttEvalActions.createSttEvalAction;
 export const saveSttEvalAction = sttEvalActions.saveSttEvalAction;
 export const createSttEvalRunAction = sttEvalActions.createSttEvalRunAction;
 export const retryWorkflowRunAction = sttEvalActions.retryWorkflowRunAction;
+export const cancelWorkflowRunAction = sttEvalActions.cancelWorkflowRunAction;
 export async function createWorkflowLlmRouteForNode(
     input: Parameters<typeof createWorkflowLlmRoute>[0],
 ): Promise<Awaited<ReturnType<typeof createWorkflowLlmRoute>>> {
@@ -45,7 +49,7 @@ export async function createWorkflowLlmRouteForNode(
 }
 
 export async function loadWorkflowLlmModelsForNode(
-    transport: "openai" | "gateway" | "openrouter" | "bifrost",
+    transport: Parameters<typeof loadWorkflowLlmRouteCandidatesAction>[1],
 ) {
     const principal = await requireActiveProject();
     const result = await loadWorkflowLlmRouteCandidatesAction(
@@ -258,11 +262,35 @@ export async function createRunAction(
     return runActions.createRunAction(stateOrFormData, submittedFormData);
 }
 
+export async function createSetupComparisonAction(
+    stateOrFormData: IActionState | FormData,
+    submittedFormData?: FormData,
+): Promise<IActionState> {
+    return runActions.createSetupComparisonAction(
+        stateOrFormData,
+        submittedFormData,
+    );
+}
+
+export async function cancelSetupComparisonAction(
+    prevState: IActionState,
+    formData: FormData,
+): Promise<IActionState> {
+    return runActions.cancelSetupComparisonAction(prevState, formData);
+}
+
 export async function retryRunAction(
     prevState: IActionState,
     formData: FormData,
 ) {
     return runActions.retryRunAction(prevState, formData);
+}
+
+export async function cancelRunAction(
+    prevState: IActionState,
+    formData: FormData,
+): Promise<IActionState> {
+    return runActions.cancelRunAction(prevState, formData);
 }
 
 export async function deleteRunAction(
@@ -277,6 +305,18 @@ export async function generateJudgeForRunAction(
     datasetId: string,
 ) {
     return runActions.generateJudgeForRunAction(promptVersionId, datasetId);
+}
+
+export async function countItemFilterMatchesAction(
+    datasetId: string,
+    path: string,
+    equals: string,
+) {
+    return runActions.countItemFilterMatchesAction(datasetId, path, equals);
+}
+
+export async function proposeBenchmarkTaskMapAction(promptVersionId: string) {
+    return runActions.proposeBenchmarkTaskMapAction(promptVersionId);
 }
 
 const REVIEW_VERDICTS = new Set<string>([
@@ -310,6 +350,69 @@ export async function saveRunNoteAction(
     }
     revalidatePath(`/runs/${runId}`);
     return { ok: true };
+}
+
+export type IDisagreementsResult =
+    | { ok: true; data: IRunDisagreementsResponse }
+    | { ok: false; error: string };
+
+/** The transcripts where one model and its yardstick differ on one task. */
+export async function loadDisagreementsAction(input: {
+    runId: string;
+    runModelId: string;
+    taskKey: string;
+}): Promise<IDisagreementsResult> {
+    const p = await requireActiveProject();
+    try {
+        return {
+            ok: true,
+            data: await serverApiClient().listRunDisagreements({
+                teamId: p.teamId,
+                projectId: p.projectId,
+                ...input,
+            }),
+        };
+    } catch (err) {
+        return {
+            ok: false,
+            error:
+                actionErrorState(err).formError ??
+                "Could not load the transcripts.",
+        };
+    }
+}
+
+export type IDecideResult =
+    { ok: true; newValue: unknown } | { ok: false; error: string };
+
+/**
+ * Record who was right on one field. The chosen answer becomes the
+ * transcript's stored answer in the dataset; the change is logged.
+ */
+export async function decideDisagreementAction(input: {
+    runId: string;
+    cellId: string;
+    taskKey: string;
+    path: string;
+    choice: "candidate" | "benchmark";
+}): Promise<IDecideResult> {
+    const p = await requireActiveProject();
+    try {
+        const result = await serverApiClient().decideDisagreement({
+            teamId: p.teamId,
+            projectId: p.projectId,
+            decidedBy: p.userId,
+            ...input,
+        });
+        return { ok: true, newValue: result.newValue };
+    } catch (err) {
+        return {
+            ok: false,
+            error:
+                actionErrorState(err).formError ??
+                "Could not save the decision.",
+        };
+    }
 }
 
 /**

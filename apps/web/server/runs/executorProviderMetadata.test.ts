@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { IRunDataPolicy } from "@flash-evals/api-contract";
+import type * as RunStopModule from "./runStop";
 
 type UpdatePayload = {
     providerMetadata?: Record<string, unknown>;
@@ -12,6 +14,8 @@ const mocks = vi.hoisted(() => ({
     findCachedCell: vi.fn(),
     executeCell: vi.fn(),
     transport: undefined as "openai" | "gateway" | "openrouter" | undefined,
+    temperature: null as number | null,
+    dataPolicy: undefined as IRunDataPolicy | undefined,
 }));
 
 vi.mock("../db/client", () => {
@@ -43,6 +47,7 @@ vi.mock("../db/client", () => {
             transaction: vi.fn(
                 async (fn: (tx: TransactionMock) => Promise<unknown>) =>
                     fn({
+                        update,
                         delete: vi.fn(() => ({
                             where: vi.fn(async () => undefined),
                         })),
@@ -55,9 +60,20 @@ vi.mock("../db/client", () => {
     };
 });
 
+vi.mock("./runStop", async (importOriginal) => {
+    const actual = await importOriginal<typeof RunStopModule>();
+    return {
+        ...actual,
+        createRunStopGuard: (runId: string) =>
+            actual.createRunStopGuard(runId, {
+                read: async () => ({ cancelRequested: false }),
+            }),
+    };
+});
 vi.mock("./service", () => ({
     getRun: vi.fn(async () => ({
         id: "run-1",
+        status: "pending",
         datasetId: "dataset-1",
         pipelineId: "pipeline-1",
         judgeConfigId: null,
@@ -65,6 +81,7 @@ vi.mock("./service", () => ({
         configSnapshot: {
             maxTokens: 100,
             fieldConfigs: [],
+            ...(mocks.dataPolicy ? { dataPolicy: mocks.dataPolicy } : {}),
             models: [
                 {
                     modelId: "gpt-4o",
@@ -83,11 +100,13 @@ vi.mock("./service", () => ({
             schemaVersionId: null,
             promptSnapshot: null,
             reasoningConfig: null,
+            temperature: mocks.temperature,
             isReference: true,
         },
     ]),
     getRunCells: mocks.getRunCells,
     getScoredRunCellIds: vi.fn(async () => new Set<string>()),
+    getBenchmarkDetailsToRetry: vi.fn(async () => new Map()),
     findCachedCell: mocks.findCachedCell,
     claimRunCells: vi.fn(async () => [
         {
@@ -103,6 +122,7 @@ vi.mock("./service", () => ({
 }));
 
 interface TransactionMock {
+    update: ReturnType<typeof vi.fn>;
     delete: ReturnType<typeof vi.fn>;
     insert: ReturnType<typeof vi.fn>;
 }
@@ -163,6 +183,7 @@ vi.mock("../judges/service", () => ({
 }));
 
 import { executeRun } from "./executor";
+import { sameDataPolicy } from "./dataPolicyReuse";
 import { scoreOutput } from "../scoring/scoreOutput";
 import { getLabelsForItems } from "../datasets/service";
 import { getPipeline } from "../pipelines/service";
@@ -175,6 +196,7 @@ describe("executeRun provider metadata persistence", () => {
         mocks.findCachedCell.mockReset();
         mocks.executeCell.mockReset();
         mocks.transport = undefined;
+        mocks.temperature = null;
     });
 
     it("persists provider metadata returned by a fresh model execution", async () => {
@@ -192,10 +214,76 @@ describe("executeRun provider metadata persistence", () => {
 
         await executeRun("run-1");
 
+        // An "auto" run records the provider auto picked (the OpenAI key).
         expect(metadataUpdate()).toEqual(
             expect.objectContaining({
                 status: "succeeded",
-                providerMetadata,
+                providerMetadata: { ...providerMetadata, transport: "openai" },
+            }),
+        );
+    });
+
+    it("keys an auto run's saved answers by the provider auto picks", async () => {
+        mocks.findCachedCell.mockResolvedValue(undefined);
+        mocks.executeCell.mockResolvedValue({
+            outputText: '{"answer":"yes"}',
+            parsed: { answer: "yes" },
+            schemaViolation: false,
+            usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+            latencyMs: 123,
+            costSource: "unavailable",
+        });
+
+        await executeRun("run-1");
+
+        expect(mocks.findCachedCell.mock.calls[0]![6]).toEqual({
+            transport: undefined,
+            resolvedTransport: "openai",
+        });
+    });
+
+    it("records the provider an auto run's data rules route the call over", async () => {
+        mocks.dataPolicy = { zeroDataRetention: true };
+        mocks.findCachedCell.mockResolvedValue(undefined);
+        mocks.executeCell.mockResolvedValue({
+            outputText: '{"answer":"yes"}',
+            parsed: { answer: "yes" },
+            schemaViolation: false,
+            usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+            latencyMs: 123,
+            costSource: "unavailable",
+        });
+
+        await executeRun("run-1");
+        mocks.dataPolicy = undefined;
+
+        // OpenAI refuses data rules, so the call goes via Gateway.
+        expect(mocks.findCachedCell.mock.calls[0]![6]).toEqual({
+            transport: undefined,
+            resolvedTransport: "gateway",
+        });
+        expect(metadataUpdate()).toEqual(
+            expect.objectContaining({
+                providerMetadata: { transport: "gateway" },
+            }),
+        );
+    });
+
+    it("fails a cell cut off by the output limit once, without retrying it", async () => {
+        mocks.findCachedCell.mockResolvedValue(undefined);
+        mocks.executeCell.mockRejectedValue(
+            new Error(
+                "OpenRouter reached the output token limit for gpt-4o. Increase max output tokens and try again.",
+            ),
+        );
+
+        await executeRun("run-1");
+
+        expect(mocks.executeCell).toHaveBeenCalledOnce();
+        expect(mocks.updatePayloads).toContainEqual(
+            expect.objectContaining({
+                status: "failed",
+                error: expect.stringContaining("output token limit"),
             }),
         );
     });
@@ -233,9 +321,9 @@ describe("executeRun provider metadata persistence", () => {
                 _maxTokens,
                 _fingerprint,
                 _schemaHash,
-                transport,
+                route: { transport?: string },
             ) =>
-                transport === "openai"
+                route.transport === "openai"
                     ? { outputJson: { answer: "from OpenAI" } }
                     : undefined,
         );
@@ -257,7 +345,10 @@ describe("executeRun provider metadata persistence", () => {
             100,
             "fingerprint:hello:",
             undefined,
-            "openrouter",
+            { transport: "openrouter" },
+            undefined,
+            undefined,
+            undefined,
         );
         expect(mocks.executeCell).toHaveBeenCalledWith(
             "gpt-4o",
@@ -265,7 +356,193 @@ describe("executeRun provider metadata persistence", () => {
             expect.anything(),
             undefined,
             "openrouter",
+            undefined,
         );
+    });
+});
+
+describe("executeRun temperature", () => {
+    beforeEach(() => {
+        mocks.updatePayloads.length = 0;
+        mocks.getRunCells.mockReset();
+        mocks.getRunCells.mockResolvedValue([]);
+        mocks.findCachedCell.mockReset();
+        mocks.executeCell.mockReset();
+        mocks.transport = "openrouter";
+        mocks.temperature = null;
+        mocks.executeCell.mockResolvedValue({
+            outputText: '{"answer":"yes"}',
+            parsed: { answer: "yes" },
+            schemaViolation: false,
+            usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+            latencyMs: 123,
+            costSource: "unavailable",
+        });
+    });
+
+    function cachedAt(temperature: number | undefined) {
+        // Cached answers exist only for calls sent at `temperature`.
+        mocks.findCachedCell.mockImplementation(async (...args: unknown[]) =>
+            args[8] === temperature
+                ? {
+                      outputJson: { answer: "cached" },
+                      providerMetadata: null,
+                  }
+                : undefined,
+        );
+    }
+
+    it("sends the run model's temperature with every call", async () => {
+        mocks.temperature = 0.4;
+        mocks.findCachedCell.mockResolvedValue(undefined);
+
+        await executeRun("run-1");
+
+        expect(mocks.executeCell).toHaveBeenCalledWith(
+            "gpt-4o",
+            expect.objectContaining({ temperature: 0.4 }),
+            expect.anything(),
+            undefined,
+            "openrouter",
+            undefined,
+        );
+    });
+
+    it("sends no temperature when the run set none", async () => {
+        mocks.findCachedCell.mockResolvedValue(undefined);
+
+        await executeRun("run-1");
+
+        const request = mocks.executeCell.mock.calls[0]?.[1] as Record<
+            string,
+            unknown
+        >;
+        expect(request).not.toHaveProperty("temperature");
+    });
+
+    it("keys the answer cache by temperature", async () => {
+        mocks.temperature = 0.4;
+        mocks.findCachedCell.mockResolvedValue(undefined);
+
+        await executeRun("run-1");
+
+        expect(mocks.findCachedCell).toHaveBeenCalledWith(
+            "item-1",
+            "gpt-4o",
+            "prompt-version-1",
+            100,
+            "fingerprint:hello:",
+            undefined,
+            { transport: "openrouter" },
+            undefined,
+            0.4,
+            undefined,
+        );
+    });
+
+    it("doesn't reuse an answer sent at another temperature", async () => {
+        mocks.temperature = 0.4;
+        cachedAt(undefined);
+
+        await executeRun("run-1");
+
+        expect(mocks.executeCell).toHaveBeenCalledOnce();
+    });
+
+    it("reuses an answer sent at the same temperature", async () => {
+        mocks.temperature = 0.4;
+        cachedAt(0.4);
+
+        await executeRun("run-1");
+
+        expect(mocks.executeCell).not.toHaveBeenCalled();
+        expect(mocks.updatePayloads).toContainEqual(
+            expect.objectContaining({ status: "cached" }),
+        );
+    });
+});
+
+describe("executeRun data rules and saved answers", () => {
+    beforeEach(() => {
+        mocks.updatePayloads.length = 0;
+        mocks.getRunCells.mockReset();
+        mocks.getRunCells.mockResolvedValue([]);
+        mocks.findCachedCell.mockReset();
+        mocks.executeCell.mockReset();
+        mocks.transport = "openrouter";
+        mocks.temperature = null;
+        mocks.dataPolicy = undefined;
+        mocks.executeCell.mockResolvedValue({
+            outputText: '{"answer":"fresh"}',
+            parsed: { answer: "fresh" },
+            schemaViolation: false,
+            usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+            latencyMs: 123,
+            costSource: "unavailable",
+        });
+    });
+
+    /** A saved answer from a run made under `saved` (as findCachedCell matches). */
+    function savedUnder(saved: IRunDataPolicy | undefined) {
+        mocks.findCachedCell.mockImplementation(async (...args: unknown[]) => {
+            const policy = args[9] as IRunDataPolicy | undefined;
+            const matches = policy ? sameDataPolicy(policy, saved) : true;
+            return matches
+                ? { outputJson: { answer: "saved" }, providerMetadata: null }
+                : undefined;
+        });
+    }
+
+    it("looks up saved answers with the run's data rules", async () => {
+        mocks.dataPolicy = { onlyHosts: ["vertex"], zeroDataRetention: true };
+        mocks.findCachedCell.mockResolvedValue(undefined);
+
+        await executeRun("run-1");
+
+        expect(mocks.findCachedCell).toHaveBeenCalledOnce();
+        expect(mocks.findCachedCell.mock.calls[0]![9]).toEqual({
+            onlyHosts: ["vertex"],
+            zeroDataRetention: true,
+        });
+    });
+
+    it("reuses an answer saved under the same rules, hosts in any order", async () => {
+        mocks.dataPolicy = { onlyHosts: ["vertex", "bedrock"] };
+        savedUnder({ onlyHosts: ["bedrock", "vertex"] });
+
+        await executeRun("run-1");
+
+        expect(mocks.executeCell).not.toHaveBeenCalled();
+        expect(mocks.updatePayloads).toContainEqual(
+            expect.objectContaining({ status: "cached" }),
+        );
+    });
+
+    it("answers afresh when the saved answer had other hosts", async () => {
+        mocks.dataPolicy = { onlyHosts: ["vertex"] };
+        savedUnder({ onlyHosts: ["vertex", "openai"] });
+
+        await executeRun("run-1");
+
+        expect(mocks.executeCell).toHaveBeenCalledOnce();
+    });
+
+    it("answers afresh when the saved answer was made without rules", async () => {
+        mocks.dataPolicy = { zeroDataRetention: true };
+        savedUnder(undefined);
+
+        await executeRun("run-1");
+
+        expect(mocks.executeCell).toHaveBeenCalledOnce();
+    });
+
+    it("still reuses any saved answer when the run has no rules", async () => {
+        savedUnder({ onlyHosts: ["vertex"] });
+
+        await executeRun("run-1");
+
+        expect(mocks.findCachedCell.mock.calls[0]![9]).toBeUndefined();
+        expect(mocks.executeCell).not.toHaveBeenCalled();
     });
 });
 
