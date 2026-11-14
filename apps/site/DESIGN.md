@@ -40,9 +40,29 @@ typography:
         lineHeight: 1.65
         letterSpacing: "0.08em"
         fontVariation: "'wdth' 112.5"
+    headline-narrow:
+        fontFamily: "Martian Mono Variable, ui-monospace, monospace"
+        fontSize: "11.5px"
+        fontWeight: 760
+        lineHeight: 1.65
+        letterSpacing: "0.08em"
+        fontVariation: "'wdth' 112.5"
     body:
         fontFamily: "Martian Mono Variable, ui-monospace, monospace"
         fontSize: "14px"
+        fontWeight: 400
+        lineHeight: 1.65
+        fontFeature: "'tnum'"
+        fontVariation: "'wdth' 87.5"
+    pitch:
+        fontFamily: "Martian Mono Variable, ui-monospace, monospace"
+        fontSize: "clamp(15px, 2vw, 16.5px)"
+        fontWeight: 400
+        lineHeight: 1.7
+        fontVariation: "'wdth' 87.5"
+    total:
+        fontFamily: "Martian Mono Variable, ui-monospace, monospace"
+        fontSize: "clamp(17px, 3vw, 22px)"
         fontWeight: 400
         lineHeight: 1.65
         fontFeature: "'tnum'"
@@ -58,6 +78,13 @@ typography:
         fontSize: "13px"
         fontWeight: 650
         lineHeight: 1
+        letterSpacing: "0.06em"
+        fontVariation: "'wdth' 87.5"
+    caption:
+        fontFamily: "Martian Mono Variable, ui-monospace, monospace"
+        fontSize: "10.5px"
+        fontWeight: 400
+        lineHeight: 1.4
         letterSpacing: "0.06em"
         fontVariation: "'wdth' 87.5"
     note:
@@ -195,9 +222,15 @@ A warm yellow ground against a cool violet-black print system, with one stamp vi
 - **Display** (780, clamp(31px, 6.6vw, 58px), 1.04, -0.035em, uppercase, balanced): the one printed headline in the masthead.
 - **Masthead** (760, clamp(20px, 5vw, 30px), double width): the printed name FLASH EVALS, standing in for a logo that does not exist.
 - **Headline** (760, 15px, 0.08em, uppercase, wdth 112.5): section titles, whose lead text prints in double width with a soft right-aligned qualifier on the same line (for example "illustrative run").
-- **Body** (400, 14px, 1.65, tabular figures, wdth 87.5): every line on the roll, prose included. Ledes run 14.5px/1.7 at 58ch; the pitch runs to 52ch.
-- **Label** (650–760, 12.5–13px, 0.04–0.08em, uppercase): buttons, links under the clone command, nav, table headers, the LCD.
-- **Note** (Geist 400, 15px, 1.5): margin notes on the counter, and the footer's legal line.
+- **Pitch** (400, clamp(15px, 2vw, 16.5px), 1.7, to 52ch): the one paragraph under the masthead headline.
+- **Body** (400, 14px, 1.65, tabular figures, wdth 87.5): every line on the roll, prose included. Ledes run 14.5px/1.7 at 58ch.
+- **Total** (clamp(17px, 3vw, 22px), tabular figures, under the 3px double rule): the grand-total line at the end of the roll.
+- **Label** (650–760, 12.5–13px, 0.04–0.08em, uppercase): buttons, links under the clone command, nav, table headers, stamps below 1200px, the LCD. Section titles step down to 13px at ≤420px.
+- **Headline Narrow** (760, 11.5px): section titles at ≤340px, the largest size at which the widest double-width title (2× its character count in ch) still fits a 320px roll. Do not round it up.
+- **Caption** (400, 10.5px, 0.06em): the input photo's filename, the per-cell metric labels in the ≤560px leaderboard, and stamps at ≤400px. The smallest step any reader sees.
+- **Note** (Geist 400, 15px, 1.5): margin notes on the counter, and the footer's legal line. It is also the counter's base size.
+
+The print on the illustrated slip inside the input photo (7.5px, with a 9px store name and total) is part of the picture, not a type step; never use those sizes for text a visitor reads.
 
 ### Named Rules
 
@@ -215,7 +248,7 @@ Responsive behaviour:
 
 - **≥1360px:** margin notes sit absolutely on the counter, 248px wide, 52px plus the roll padding outside the roll, alternating left and right, each with a 26px connector rule pointing at the paper.
 - **<1360px:** notes become slips stacked inside the segment flow: counter-yellow, 14px 16px padding, rotated -0.6deg, a soft drop shadow.
-- **<1200px:** stamps shrink to 12px with a 2.5px border.
+- **<1200px:** stamps shrink to 12.5px with a 2.5px border.
 - **≤760px:** the nav keeps only Self-host and GitHub.
 - **≤600px:** the clone command wraps; response latency drops to its own line.
 - **≤560px:** the leaderboard becomes a grid per row (2.4em code, model across, three labelled metric cells, the verdict stamp pinned top-right); the printer hides its LCD and the feed key fills the panel; the input photo stacks above the reference.
