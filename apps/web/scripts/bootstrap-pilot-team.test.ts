@@ -42,7 +42,10 @@ describe("bootstrapPilotTeam", () => {
             try {
                 const apiEnv = path.join(directory, "api.env");
                 const webEnv = path.join(directory, "web.env");
-                await writeFile(apiEnv, `FLASH_EVALS_DEFAULT_TEAM_ID=${teamId}\n`);
+                await writeFile(
+                    apiEnv,
+                    `FLASH_EVALS_DEFAULT_TEAM_ID=${teamId}\n`,
+                );
                 await writeFile(
                     webEnv,
                     `FLASH_EVALS_DEFAULT_TEAM_ID=${webTeamId}\n`,

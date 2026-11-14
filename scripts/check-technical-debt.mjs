@@ -1,7 +1,7 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { extname, join, relative } from "node:path";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { extname } from "node:path";
 
-const root = process.cwd();
 const debtPattern = /\b(TODO|FIXME|HACK|XXX)\b/;
 const sourceExtensions = new Set([
     ".cjs",
@@ -32,13 +32,12 @@ const ignoredPathSegments = new Set([
     "node_modules",
 ]);
 
-const findings = walk(root).flatMap((file) => {
-    const path = relative(root, file);
+const findings = listRepositoryFiles().flatMap((path) => {
     if (isIgnored(path) || !sourceExtensions.has(extname(path))) {
         return [];
     }
 
-    return readFileSync(file, "utf8")
+    return readFileSync(path, "utf8")
         .split("\n")
         .flatMap((line, index) =>
             debtPattern.test(line) ? [`${path}:${index + 1}:${line}`] : [],
@@ -58,22 +57,27 @@ for (const finding of findings) {
 }
 process.exit(1);
 
-function walk(dir) {
-    return readdirSync(dir).flatMap((entry) => {
-        const path = join(dir, entry);
-        const relativePath = relative(root, path);
-        if (isIgnored(relativePath)) {
-            return [];
-        }
-
-        const stats = statSync(path);
-        return stats.isDirectory() ? walk(path) : [path];
-    });
+// Tracked plus untracked-but-not-ignored files, so local build and test
+// output covered by .gitignore (.next-playwright, test-results, ...) never
+// counts as debt. Paths are relative to the repository root.
+function listRepositoryFiles() {
+    const repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+        encoding: "utf8",
+    }).trim();
+    process.chdir(repoRoot);
+    return execFileSync(
+        "git",
+        ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+    )
+        .split("\0")
+        .filter((path) => path !== "" && existsSync(path));
 }
 
 function isIgnored(path) {
     return (
-        ignoredPaths.has(path) ||
-        path.split("/").some((segment) => ignoredPathSegments.has(segment))
+        [...ignoredPaths].some(
+            (ignored) => path === ignored || path.startsWith(`${ignored}/`),
+        ) || path.split("/").some((segment) => ignoredPathSegments.has(segment))
     );
 }

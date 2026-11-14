@@ -23,7 +23,9 @@ const validJsonSchema = {
 describe("resolveAnswerSchema", () => {
     it("returns an open import schema for evaluation datasets", async () => {
         vi.mocked(getDatasetSchema).mockResolvedValue(
-            undefined as unknown as Awaited<ReturnType<typeof getDatasetSchema>>,
+            undefined as unknown as Awaited<
+                ReturnType<typeof getDatasetSchema>
+            >,
         );
 
         const result = await resolveAnswerSchema("ds-1", {
@@ -44,7 +46,9 @@ describe("resolveAnswerSchema", () => {
 
     it("returns an open import schema for independent golden datasets", async () => {
         vi.mocked(getDatasetSchema).mockResolvedValue(
-            undefined as unknown as Awaited<ReturnType<typeof getDatasetSchema>>,
+            undefined as unknown as Awaited<
+                ReturnType<typeof getDatasetSchema>
+            >,
         );
 
         const result = await resolveAnswerSchema("ds-1", {
@@ -64,7 +68,9 @@ describe("resolveAnswerSchema", () => {
 
     it("derives the answer schema from the pipeline when one is attached", async () => {
         vi.mocked(getDatasetSchema).mockResolvedValue(
-            undefined as unknown as Awaited<ReturnType<typeof getDatasetSchema>>,
+            undefined as unknown as Awaited<
+                ReturnType<typeof getDatasetSchema>
+            >,
         );
         vi.mocked(getPipeline).mockResolvedValue({
             outputSchema: validJsonSchema,
@@ -89,7 +95,9 @@ describe("resolveAnswerSchema", () => {
 
     it("fails when the attached pipeline no longer exists", async () => {
         vi.mocked(getDatasetSchema).mockResolvedValue(
-            undefined as unknown as Awaited<ReturnType<typeof getDatasetSchema>>,
+            undefined as unknown as Awaited<
+                ReturnType<typeof getDatasetSchema>
+            >,
         );
         vi.mocked(getPipeline).mockResolvedValue(
             undefined as unknown as Awaited<ReturnType<typeof getPipeline>>,

@@ -8,7 +8,10 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { RunComparison } from "./run-comparison";
-import type { IComparableRun, IModelComparison } from "@flash-evals/api-contract";
+import type {
+    IComparableRun,
+    IModelComparison,
+} from "@flash-evals/api-contract";
 
 afterEach(cleanup);
 

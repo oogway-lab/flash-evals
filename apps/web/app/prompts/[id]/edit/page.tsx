@@ -25,7 +25,8 @@ export default async function EditPromptPage({
     const setup = await serverApiClient()
         .getEditPromptWorkbench(p.teamId, p.projectId, id)
         .catch((err: unknown) => {
-            if (err instanceof FlashEvalsApiError && err.status === 404) notFound();
+            if (err instanceof FlashEvalsApiError && err.status === 404)
+                notFound();
             throw err;
         });
     const prompt = setup.initialPrompt;

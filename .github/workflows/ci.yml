@@ -213,6 +213,10 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      # Run `bun run format` locally to fix a failure here.
+      - name: Formatting
+        run: bun run format:check
+
       - name: Architecture boundaries
         run: bun run lint:boundaries
 

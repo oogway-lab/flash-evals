@@ -14,13 +14,17 @@ const failures = [];
 
 for (const file of files) {
     const source = readFileSync(join(root, file), "utf8");
-    const imports = source.matchAll(/import\s+([^;]*?)\s+from\s+["'](@\/server\/[^"']+)["'];?/g);
+    const imports = source.matchAll(
+        /import\s+([^;]*?)\s+from\s+["'](@\/server\/[^"']+)["'];?/g,
+    );
     for (const match of imports) {
         const clause = match[1]?.trim() ?? "";
         const moduleName = match[2] ?? "";
         if (!clause.startsWith("type ")) {
             const line = source.slice(0, match.index).split("\n").length;
-            failures.push(`${file}:${line} imports ${moduleName} as a runtime value`);
+            failures.push(
+                `${file}:${line} imports ${moduleName} as a runtime value`,
+            );
         }
     }
 }

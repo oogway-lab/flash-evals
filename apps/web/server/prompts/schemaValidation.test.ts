@@ -47,10 +47,7 @@ describe("validatePromptSchema", () => {
 
     it("keeps locally valid root anyOf schemas separate from OpenAI compatibility", () => {
         const result = validatePromptSchema({
-            anyOf: [
-                { type: "string" },
-                { type: "number" },
-            ],
+            anyOf: [{ type: "string" }, { type: "number" }],
         });
 
         expect(result.localValid).toBe(true);
@@ -90,7 +87,10 @@ describe("validatePromptSchema", () => {
 
         expect(result.openaiCompatible).toBe(false);
         expect(result.errors).toContainEqual(
-            expect.objectContaining({ path: "$.__proto__", code: "reserved_key" }),
+            expect.objectContaining({
+                path: "$.__proto__",
+                code: "reserved_key",
+            }),
         );
     });
 });
@@ -133,7 +133,11 @@ describe("extractSchemaPaths", () => {
             expect.arrayContaining([
                 { path: "$.title", type: "string", required: true },
                 { path: "$.nutrition", type: "object", required: true },
-                { path: "$.nutrition.calories", type: "number", required: true },
+                {
+                    path: "$.nutrition.calories",
+                    type: "number",
+                    required: true,
+                },
             ]),
         );
     });

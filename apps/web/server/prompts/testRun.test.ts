@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as LlmCore from "@flash-evals/llm-core";
-import type { CompletionRequest, CompletionResult } from "@flash-evals/llm-core";
+import type {
+    CompletionRequest,
+    CompletionResult,
+} from "@flash-evals/llm-core";
 import {
     getEvalProvider,
     listAvailableModelMetadata,

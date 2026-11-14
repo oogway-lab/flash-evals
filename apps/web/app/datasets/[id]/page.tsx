@@ -39,7 +39,8 @@ export default async function DatasetPage({
     const detail = await serverApiClient()
         .getDatasetDetail(p.teamId, p.projectId, id)
         .catch((err: unknown) => {
-            if (err instanceof FlashEvalsApiError && err.status === 404) notFound();
+            if (err instanceof FlashEvalsApiError && err.status === 404)
+                notFound();
             throw err;
         });
 

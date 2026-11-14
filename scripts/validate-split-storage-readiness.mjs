@@ -22,7 +22,8 @@ function rejectLegacyVolumes(env, label) {
         "RAILWAY_VOLUME_MOUNT_PATH",
         "RAILWAY_VOLUME_NAME",
     ]) {
-        if (env[key] !== undefined) errors.push(`${label} must not set ${key}.`);
+        if (env[key] !== undefined)
+            errors.push(`${label} must not set ${key}.`);
     }
 }
 
@@ -30,7 +31,9 @@ function readRailwayFile(filePath, label) {
     try {
         return parseRailwayVariables(fs.readFileSync(filePath, "utf8"), label);
     } catch (error) {
-        errors.push(error instanceof Error ? error.message : `${label} is unreadable.`);
+        errors.push(
+            error instanceof Error ? error.message : `${label} is unreadable.`,
+        );
         return undefined;
     }
 }
@@ -88,7 +91,9 @@ if (mode === "local") {
     const worker = workerVariablesPath
         ? readRailwayFile(workerVariablesPath, "Railway worker service")
         : undefined;
-    const web = webPath ? readEnvOptional(webPath, "Cloudflare web environment") : undefined;
+    const web = webPath
+        ? readEnvOptional(webPath, "Cloudflare web environment")
+        : undefined;
 
     if (api) {
         requireValues(api, "Railway API service", [
@@ -128,15 +133,27 @@ if (mode === "local") {
     }
 
     const services = [];
-    if (api) services.push({ label: "Railway API service", kind: "api", env: api });
-    if (worker) services.push({ label: "Railway worker service", kind: "worker", env: worker });
-    if (web) services.push({ label: "Cloudflare web environment", kind: "web", env: web });
+    if (api)
+        services.push({ label: "Railway API service", kind: "api", env: api });
+    if (worker)
+        services.push({
+            label: "Railway worker service",
+            kind: "worker",
+            env: worker,
+        });
+    if (web)
+        services.push({
+            label: "Cloudflare web environment",
+            kind: "web",
+            env: web,
+        });
     errors.push(...validateSplitStorage(services));
 } else {
     errors.push("Usage: validate-split-storage-readiness.mjs <local|live> ...");
 }
 
 if (errors.length > 0) {
-    for (const message of [...new Set(errors)]) console.error(`SPLIT STORAGE: ${message}`);
+    for (const message of [...new Set(errors)])
+        console.error(`SPLIT STORAGE: ${message}`);
     process.exitCode = 1;
 }

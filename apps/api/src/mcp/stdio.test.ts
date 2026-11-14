@@ -403,7 +403,9 @@ describe("MCP stdio transport", () => {
             await harness.client.listResourceTemplates();
         expect(resourceTemplates).toEqual(
             expect.arrayContaining([
-                expect.objectContaining({ name: "flash-evals-dataset-summary" }),
+                expect.objectContaining({
+                    name: "flash-evals-dataset-summary",
+                }),
                 expect.objectContaining({ name: "flash-evals-dataset-items" }),
                 expect.objectContaining({ name: "flash-evals-run-summary" }),
                 expect.objectContaining({ name: "flash-evals-run-cells" }),

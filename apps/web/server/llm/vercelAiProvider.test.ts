@@ -6,9 +6,7 @@ import {
 } from "ai";
 import { VercelAIEvalProvider } from "@flash-evals/llm-core";
 
-function usage(
-    override: Partial<LanguageModelUsage> = {},
-): LanguageModelUsage {
+function usage(override: Partial<LanguageModelUsage> = {}): LanguageModelUsage {
     return {
         inputTokens: 11,
         inputTokenDetails: {

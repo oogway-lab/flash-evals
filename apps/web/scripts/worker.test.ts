@@ -87,7 +87,8 @@ describe("worker process shutdown", () => {
         if (previousDrainTimeout === undefined) {
             delete process.env.FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS;
         } else {
-            process.env.FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS = previousDrainTimeout;
+            process.env.FLASH_EVALS_WORKER_DRAIN_TIMEOUT_MS =
+                previousDrainTimeout;
         }
         process.exitCode = previousExitCode;
         vi.clearAllTimers();

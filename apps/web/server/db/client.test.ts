@@ -112,7 +112,8 @@ describe("web database client", () => {
     });
 
     it("fails closed when a Worker request has no database binding", async () => {
-        process.env.FLASH_EVALS_WEB_DATABASE_URL = "postgres://must-not-fallback";
+        process.env.FLASH_EVALS_WEB_DATABASE_URL =
+            "postgres://must-not-fallback";
         process.env.DATABASE_URL = "postgres://must-not-fallback";
         useCloudflareContext(undefined);
         await expect(import("./client")).rejects.toThrow(

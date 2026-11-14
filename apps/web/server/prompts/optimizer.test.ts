@@ -22,12 +22,15 @@ describe("guidanceForModel", () => {
     });
 
     it("uses provider-specific guidance for Claude, Gemini, and Mistral", () => {
-        expect(guidanceForModel("anthropic/claude-sonnet-4.5").source.title)
-            .toContain("Anthropic Claude");
-        expect(guidanceForModel("google/gemini-3-pro-preview").source.title)
-            .toContain("Gemini");
-        expect(guidanceForModel("mistral/mistral-large-3").source.title)
-            .toContain("Mistral");
+        expect(
+            guidanceForModel("anthropic/claude-sonnet-4.5").source.title,
+        ).toContain("Anthropic Claude");
+        expect(
+            guidanceForModel("google/gemini-3-pro-preview").source.title,
+        ).toContain("Gemini");
+        expect(
+            guidanceForModel("mistral/mistral-large-3").source.title,
+        ).toContain("Mistral");
     });
 
     it("uses generic guidance for providers without verified sources", () => {
@@ -36,7 +39,9 @@ describe("guidanceForModel", () => {
         expect(guidance.source.title).toBe(
             "Flash Evals generic prompt optimization guidance",
         );
-        expect(guidance.source.url).toBe("internal://flash-evals/prompt-optimization");
+        expect(guidance.source.url).toBe(
+            "internal://flash-evals/prompt-optimization",
+        );
     });
 });
 

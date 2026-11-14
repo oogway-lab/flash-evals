@@ -28,7 +28,12 @@ describe("audioReferenceFromLabel", () => {
                     referenceKind: "prod_reference",
                     expectedTranscriptLatin: "kya haal hai",
                     expectedSpeakerTurns: [
-                        { speaker: "S1", text: "kya haal", startMs: 0, endMs: 500 },
+                        {
+                            speaker: "S1",
+                            text: "kya haal",
+                            startMs: 0,
+                            endMs: 500,
+                        },
                     ],
                 },
             }),

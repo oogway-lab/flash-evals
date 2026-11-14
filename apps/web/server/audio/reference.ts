@@ -24,12 +24,16 @@ export function audioReferenceFromLabel(
             "latinTranscript",
         ]),
         expectedLanguage: stringValue(source.expectedLanguage),
-        audioDurationMs: numberValue(source.audioDurationMs ?? source.audioDuration),
+        audioDurationMs: numberValue(
+            source.audioDurationMs ?? source.audioDuration,
+        ),
         expectedSpeakerTurns: speakerTurnsValue(source.expectedSpeakerTurns),
         domainTerms: stringArrayValue(
             source.domainTerms ?? source.expectedDomainTerms,
         ),
-        expectedNumbers: numberArrayValue(source.expectedNumbers ?? source.numbers),
+        expectedNumbers: numberArrayValue(
+            source.expectedNumbers ?? source.numbers,
+        ),
         latencySlaMs: numberValue(source.latencySlaMs),
         costOutlierUsd: numberValue(source.costOutlierUsd),
     });
@@ -139,7 +143,9 @@ function stringValue(value: unknown): string | undefined {
 }
 
 function numberValue(value: unknown): number | undefined {
-    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+    return typeof value === "number" && Number.isFinite(value)
+        ? value
+        : undefined;
 }
 
 function stringArrayValue(value: unknown): string[] | undefined {
@@ -147,7 +153,9 @@ function stringArrayValue(value: unknown): string[] | undefined {
     const strings = value
         .map((item) => stringValue(item))
         .filter((item): item is string => item !== undefined);
-    return strings.length === value.length && strings.length > 0 ? strings : undefined;
+    return strings.length === value.length && strings.length > 0
+        ? strings
+        : undefined;
 }
 
 function numberArrayValue(value: unknown): number[] | undefined {
@@ -155,5 +163,7 @@ function numberArrayValue(value: unknown): number[] | undefined {
     const numbers = value
         .map((item) => numberValue(item))
         .filter((item): item is number => item !== undefined);
-    return numbers.length === value.length && numbers.length > 0 ? numbers : undefined;
+    return numbers.length === value.length && numbers.length > 0
+        ? numbers
+        : undefined;
 }

@@ -130,9 +130,9 @@ describe("LlmRoutingForm", () => {
         ).toBeInTheDocument();
         expect(screen.getByLabelText("Temperature")).toBeInTheDocument();
         expect(screen.queryByLabelText("Top P")).not.toBeInTheDocument();
-        expect(screen.getByLabelText("Flash Evals result reuse")).toHaveTextContent(
-            "Always call provider",
-        );
+        expect(
+            screen.getByLabelText("Flash Evals result reuse"),
+        ).toHaveTextContent("Always call provider");
         expect(
             screen.getByRole("button", { name: "Create route" }),
         ).toBeInTheDocument();

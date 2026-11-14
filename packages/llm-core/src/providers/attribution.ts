@@ -29,9 +29,11 @@ function attributionHeaders(env: Env): Record<string, string> {
     }
     return {
         "http-referer":
-            headerValue(env, "FLASH_EVALS_GATEWAY_HTTP_REFERER") ?? DEFAULT_APP_URL,
+            headerValue(env, "FLASH_EVALS_GATEWAY_HTTP_REFERER") ??
+            DEFAULT_APP_URL,
         "x-title":
-            headerValue(env, "FLASH_EVALS_GATEWAY_APP_TITLE") ?? DEFAULT_APP_TITLE,
+            headerValue(env, "FLASH_EVALS_GATEWAY_APP_TITLE") ??
+            DEFAULT_APP_TITLE,
     };
 }
 

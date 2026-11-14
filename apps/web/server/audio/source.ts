@@ -18,7 +18,8 @@ export const SUPPORTED_AUDIO_MIME_TYPES = [
     "audio/flac",
 ] as const;
 
-export type SupportedAudioMimeType = (typeof SUPPORTED_AUDIO_MIME_TYPES)[number];
+export type SupportedAudioMimeType =
+    (typeof SUPPORTED_AUDIO_MIME_TYPES)[number];
 
 export interface IStoredAudio {
     storageKey: string;
@@ -40,7 +41,12 @@ export async function putAudio(
     mimeType: string,
     options: { upsert?: boolean } = {},
 ): Promise<void> {
-    await putObject(storageKey, bytes, normalizeAudioMimeType(mimeType), options);
+    await putObject(
+        storageKey,
+        bytes,
+        normalizeAudioMimeType(mimeType),
+        options,
+    );
 }
 
 export async function deleteAudio(storageKey: string): Promise<void> {
@@ -67,7 +73,9 @@ export function isSupportedAudioMimeType(
     );
 }
 
-export function normalizeAudioMimeType(mimeType: string): SupportedAudioMimeType {
+export function normalizeAudioMimeType(
+    mimeType: string,
+): SupportedAudioMimeType {
     const normalized = mimeType.trim().toLowerCase();
     if (isSupportedAudioMimeType(normalized)) return normalized;
     throw new Error(`Unsupported audio type: ${mimeType}`);

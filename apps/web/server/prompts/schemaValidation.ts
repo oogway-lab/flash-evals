@@ -1,5 +1,8 @@
 import { createHash } from "crypto";
-import Ajv2020, { type ErrorObject, type ValidateFunction } from "ajv/dist/2020";
+import Ajv2020, {
+    type ErrorObject,
+    type ValidateFunction,
+} from "ajv/dist/2020";
 import addFormats from "ajv-formats";
 import type {
     ISchemaCompatibilityIssue,
@@ -42,9 +45,7 @@ export interface ISchemaPathDescriptor {
 }
 
 export function schemaHash(schema: unknown): string {
-    return createHash("sha256")
-        .update(stableStringify(schema))
-        .digest("hex");
+    return createHash("sha256").update(stableStringify(schema)).digest("hex");
 }
 
 export function validatePromptSchema(schema: unknown): ISchemaValidationResult {
@@ -131,7 +132,9 @@ function collectSchemaPaths(
     if (!isRecord(schema.properties)) return;
     const requiredFields = new Set(
         Array.isArray(schema.required)
-            ? schema.required.filter((field): field is string => typeof field === "string")
+            ? schema.required.filter(
+                  (field): field is string => typeof field === "string",
+              )
             : [],
     );
 
@@ -153,14 +156,16 @@ function openAICompatibilityIssues(schema: Record<string, unknown>) {
         issues.push({
             path: "$",
             code: "openai_root_object",
-            message: 'OpenAI Structured Outputs require the root schema to have type "object".',
+            message:
+                'OpenAI Structured Outputs require the root schema to have type "object".',
         });
     }
     if (hasOwn(schema, "anyOf")) {
         issues.push({
             path: "$",
             code: "openai_root_anyof",
-            message: "OpenAI Structured Outputs do not support a root anyOf schema.",
+            message:
+                "OpenAI Structured Outputs do not support a root anyOf schema.",
         });
     }
 
@@ -192,8 +197,7 @@ function visitSchema(
 
     const type = schema.type;
     const isObject =
-        type === "object" ||
-        (Array.isArray(type) && type.includes("object"));
+        type === "object" || (Array.isArray(type) && type.includes("object"));
 
     if (isObject) {
         if (schema.additionalProperties !== false) {
@@ -207,7 +211,9 @@ function visitSchema(
         if (isRecord(schema.properties)) {
             const propertyNames = Object.keys(schema.properties);
             const required = Array.isArray(schema.required)
-                ? schema.required.filter((field): field is string => typeof field === "string")
+                ? schema.required.filter(
+                      (field): field is string => typeof field === "string",
+                  )
                 : [];
             const requiredSet = new Set(required);
             for (const property of propertyNames) {
@@ -232,7 +238,8 @@ function visitSchema(
                     message: `Schema property "${property}" is reserved and cannot be used.`,
                 });
             }
-            if (isRecord(value)) visitSchema(value, `${path}.${property}`, issues);
+            if (isRecord(value))
+                visitSchema(value, `${path}.${property}`, issues);
         }
     }
 
@@ -257,7 +264,9 @@ function visitSchema(
 
 function formatAjvErrors(errors: ErrorObject[]): ISchemaCompatibilityIssue[] {
     return errors.map((error) => ({
-        path: error.instancePath ? `$.${error.instancePath.slice(1).replace(/\//g, ".")}` : "$",
+        path: error.instancePath
+            ? `$.${error.instancePath.slice(1).replace(/\//g, ".")}`
+            : "$",
         code: error.keyword,
         message: error.message ?? "Schema validation failed.",
     }));
@@ -280,7 +289,10 @@ function stableStringify(value: unknown): string {
     if (isRecord(value)) {
         return `{${Object.keys(value)
             .sort()
-            .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+            .map(
+                (key) =>
+                    `${JSON.stringify(key)}:${stableStringify(value[key])}`,
+            )
             .join(",")}}`;
     }
     return JSON.stringify(value);

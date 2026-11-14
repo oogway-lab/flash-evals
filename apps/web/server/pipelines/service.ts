@@ -24,7 +24,9 @@ export function specFromRule(rule: FieldRule): FieldMatcherSpec {
     return { matcher: "exact" };
 }
 
-export function ruleFromConfig(config: IPipelineFieldConfig): FieldRule | undefined {
+export function ruleFromConfig(
+    config: IPipelineFieldConfig,
+): FieldRule | undefined {
     if (config.kind !== "factual" || !config.spec) return undefined;
     const spec = config.spec;
     if (spec.matcher === "numeric_tolerance") {
@@ -96,8 +98,7 @@ export function pipelineFactualDescriptors(
 }
 
 export type PipelineFieldValidation =
-    | { ok: true }
-    | { ok: false; error: string };
+    { ok: true } | { ok: false; error: string };
 
 const MAX_RUBRIC_LENGTH = 4000;
 const MAX_MODEL_ID_LENGTH = 100;
@@ -119,7 +120,9 @@ function isValidMatcherSpec(spec: unknown): boolean {
 export function mergeRunFieldConfigs(
     pipelineConfigs: IPipelineFieldConfig[],
     submittedConfigs: IPipelineFieldConfig[],
-): { ok: true; fieldConfigs: IPipelineFieldConfig[] } | { ok: false; error: string } {
+):
+    | { ok: true; fieldConfigs: IPipelineFieldConfig[] }
+    | { ok: false; error: string } {
     if (submittedConfigs.length !== pipelineConfigs.length) {
         return {
             ok: false,
@@ -271,7 +274,10 @@ export async function getPipelineForDataset(datasetId: string) {
     return row?.pipeline;
 }
 
-export async function setDatasetPipeline(datasetId: string, pipelineId: string) {
+export async function setDatasetPipeline(
+    datasetId: string,
+    pipelineId: string,
+) {
     await db
         .update(datasets)
         .set({ pipelineId })

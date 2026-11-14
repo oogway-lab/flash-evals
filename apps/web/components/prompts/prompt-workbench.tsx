@@ -1,6 +1,9 @@
 "use client";
 
-import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_BYTES } from "@flash-evals/api-contract";
+import {
+    ALLOWED_IMAGE_TYPES,
+    MAX_IMAGE_BYTES,
+} from "@flash-evals/api-contract";
 
 import { KeepFieldsOnReset } from "@/components/ui/keep-fields-on-reset";
 import { PendingFieldset } from "@/components/ui/pending-fieldset";

@@ -44,9 +44,17 @@ describe("parseAndValidateLabelForDataset", () => {
     });
 
     it("propagates a schema-resolution failure as a formError", async () => {
-        mockResolved({ ok: false, mode: "pipeline", error: "Pipeline not found." });
+        mockResolved({
+            ok: false,
+            mode: "pipeline",
+            error: "Pipeline not found.",
+        });
 
-        const result = await parseAndValidateLabelForDataset("ds-1", golden, "{}");
+        const result = await parseAndValidateLabelForDataset(
+            "ds-1",
+            golden,
+            "{}",
+        );
 
         expect(result.ok).toBe(false);
         if (result.ok) return;

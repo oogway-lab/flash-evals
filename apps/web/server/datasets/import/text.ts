@@ -79,7 +79,9 @@ function prepareJsonlImport(
     content: string,
     schema: IParsedSchemaDescriptor,
 ): IPreparedTextImport {
-    const jsonl = parseJsonlLines(content, (parsed) => normalizeJsonlRow(parsed));
+    const jsonl = parseJsonlLines(content, (parsed) =>
+        normalizeJsonlRow(parsed),
+    );
     if (jsonl.rejected) {
         return rejectImport(jsonl.failures[0]?.reason ?? "Import rejected.", {
             rows: [],
@@ -106,9 +108,12 @@ function prepareCsvImport(
     schema: IParsedSchemaDescriptor,
 ): IPreparedTextImport {
     if (schema.fields.some((field) => field.type === "string[]")) {
-        return rejectImport("CSV import does not support array fields; use JSONL.", {
-            rows: [],
-        });
+        return rejectImport(
+            "CSV import does not support array fields; use JSONL.",
+            {
+                rows: [],
+            },
+        );
     }
 
     const parsed = Papa.parse<Record<string, string>>(content, {
@@ -131,7 +136,9 @@ function prepareCsvImport(
         reason: error.message,
     }));
 
-    const fieldByName = new Map(schema.fields.map((field) => [field.name, field]));
+    const fieldByName = new Map(
+        schema.fields.map((field) => [field.name, field]),
+    );
 
     dataRows.forEach((row, index) => {
         const label: LabelJson = {};
