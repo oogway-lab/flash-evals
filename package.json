@@ -86,7 +86,7 @@
         "eslint-plugin-react-hooks": "^7.0.1",
         "husky": "^9.1.7",
         "jscpd": "^4.3.0",
-        "knip": "^6.44.1",
+        "knip": "^6.45.1",
         "lint-staged": "^17.6.0",
         "prettier": "^3.9.10",
         "railway": "3.16.0",
