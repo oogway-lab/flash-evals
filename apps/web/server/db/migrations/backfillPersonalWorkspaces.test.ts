@@ -20,6 +20,8 @@ describe("personal workspace reset migration", () => {
         expect(sql).toContain("no production users or");
         expect(sql).toContain("personal-workspace + Default-project flow");
         expect(sql).not.toMatch(/DROP\s+(?:TABLE|SCHEMA|DATABASE)/i);
-        expect(sql).not.toMatch(/TRUNCATE\s+TABLE\s+(?:users|projects|datasets)/i);
+        expect(sql).not.toMatch(
+            /TRUNCATE\s+TABLE\s+(?:users|projects|datasets)/i,
+        );
     });
 });

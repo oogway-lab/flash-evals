@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-    resolveLabelMode,
-    usesFreeformLabel,
-} from "./labelPolicy";
+import { resolveLabelMode, usesFreeformLabel } from "./labelPolicy";
 
 describe("resolveLabelMode", () => {
     it("returns evaluation for evaluation datasets", () => {

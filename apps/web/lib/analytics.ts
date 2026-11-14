@@ -23,7 +23,8 @@ export const WEB_FEATURE_FLAGS = {
 // literal even though WEB_FEATURE_FLAGS documents the same env names above.
 const analyticsKey = process.env.NEXT_PUBLIC_FLASH_EVALS_ANALYTICS_KEY;
 const errorTrackingDsn = process.env.NEXT_PUBLIC_FLASH_EVALS_ERROR_TRACKING_DSN;
-const debugEnabled = process.env.NEXT_PUBLIC_FLASH_EVALS_ANALYTICS_DEBUG === "true";
+const debugEnabled =
+    process.env.NEXT_PUBLIC_FLASH_EVALS_ANALYTICS_DEBUG === "true";
 const analyticsEnabled = publicFlag(
     process.env.NEXT_PUBLIC_FLASH_EVALS_FLAG_ANALYTICS_EVENTS,
 );

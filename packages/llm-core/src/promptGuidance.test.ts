@@ -3,8 +3,12 @@ import { guidanceForModel } from "./promptGuidance.js";
 
 describe("guidanceForModel", () => {
     it("keeps GPT-5 family guidance for registered and matching variants", () => {
-        expect(guidanceForModel("gpt-5.4-mini").source.title).toContain("GPT-5");
-        expect(guidanceForModel("gpt-5.5-mini").source.title).toContain("GPT-5");
+        expect(guidanceForModel("gpt-5.4-mini").source.title).toContain(
+            "GPT-5",
+        );
+        expect(guidanceForModel("gpt-5.5-mini").source.title).toContain(
+            "GPT-5",
+        );
     });
 
     it("keeps GPT-4.1 family guidance", () => {
@@ -40,9 +44,9 @@ describe("guidanceForModel", () => {
         expect(guidanceForModel("openai/gpt-5.6-mini").source.title).toContain(
             "GPT-5",
         );
-        expect(guidanceForModel("openai/gpt-4.1-future").source.title).toContain(
-            "GPT-4.1",
-        );
+        expect(
+            guidanceForModel("openai/gpt-4.1-future").source.title,
+        ).toContain("GPT-4.1");
         expect(guidanceForModel("google/gemini-new").source.title).toContain(
             "Gemini",
         );
@@ -65,7 +69,9 @@ describe("guidanceForModel", () => {
         expect(guidance.source.title).toBe(
             "Flash Evals generic prompt optimization guidance",
         );
-        expect(guidance.source.url).toBe("internal://flash-evals/prompt-optimization");
+        expect(guidance.source.url).toBe(
+            "internal://flash-evals/prompt-optimization",
+        );
         expect(guidance.text).toContain("provider-neutral");
     });
 
@@ -75,6 +81,8 @@ describe("guidanceForModel", () => {
         expect(guidance.source.title).toBe(
             "Flash Evals generic prompt optimization guidance",
         );
-        expect(guidance.source.url).toBe("internal://flash-evals/prompt-optimization");
+        expect(guidance.source.url).toBe(
+            "internal://flash-evals/prompt-optimization",
+        );
     });
 });

@@ -79,7 +79,9 @@ function parseLabels(yaml) {
 
     if (current) parsed.push(current);
 
-    return parsed.filter((label) => label.name && label.color && label.description);
+    return parsed.filter(
+        (label) => label.name && label.color && label.description,
+    );
 }
 
 function unquote(value) {

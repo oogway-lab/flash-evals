@@ -46,7 +46,14 @@ export async function importImageItems(
         seenValidNames.add(file.name);
         try {
             const bytes = Buffer.from(await file.arrayBuffer());
-            await addImageItem(datasetId, bytes, file.type, undefined, undefined, file.name);
+            await addImageItem(
+                datasetId,
+                bytes,
+                file.type,
+                undefined,
+                undefined,
+                file.name,
+            );
             importedCount++;
         } catch (err) {
             failures.push({

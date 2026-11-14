@@ -20,9 +20,8 @@ export function parseEnvFile(contents) {
     for (const originalLine of contents.replace(/^\uFEFF/, "").split(/\r?\n/)) {
         const line = originalLine.trim();
         if (!line || line.startsWith("#")) continue;
-        const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(
-            line,
-        );
+        const match =
+            /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
         if (!match) continue;
         env[match[1]] = parseEnvValue(match[2]);
     }
@@ -30,7 +29,7 @@ export function parseEnvFile(contents) {
 }
 
 function parseEnvValue(raw) {
-    if (raw.startsWith("\"") || raw.startsWith("'")) {
+    if (raw.startsWith('"') || raw.startsWith("'")) {
         const quote = raw[0];
         const end = raw.lastIndexOf(quote);
         if (end > 0) return raw.slice(1, end);
@@ -43,7 +42,10 @@ export function readEnvFile(filePath) {
 }
 
 /** Read `railway variable list --json` without printing any variable values. */
-export function parseRailwayVariables(contents, serviceLabel = "Railway service") {
+export function parseRailwayVariables(
+    contents,
+    serviceLabel = "Railway service",
+) {
     let raw;
     try {
         raw = JSON.parse(contents);
@@ -57,14 +59,19 @@ export function parseRailwayVariables(contents, serviceLabel = "Railway service"
           ? Object.entries(raw).map(([name, value]) => ({ name, value }))
           : null;
     if (!entries) {
-        throw new Error(`${serviceLabel} returned an unsupported variable JSON shape.`);
+        throw new Error(
+            `${serviceLabel} returned an unsupported variable JSON shape.`,
+        );
     }
 
     const env = Object.create(null);
     for (const entry of entries) {
         if (!entry || typeof entry !== "object") continue;
         const name = entry.name || entry.key;
-        if (typeof name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+        if (
+            typeof name !== "string" ||
+            !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)
+        ) {
             continue;
         }
         if (Object.hasOwn(entry, "value")) {
@@ -78,7 +85,10 @@ export function parseRailwayVariables(contents, serviceLabel = "Railway service"
  * Validate effective production storage settings for API, worker, and web.
  * Diagnostics intentionally identify keys and services only, never values.
  */
-export function validateSplitStorage(services, { requireCspOrigin = true } = {}) {
+export function validateSplitStorage(
+    services,
+    { requireCspOrigin = true } = {},
+) {
     const errors = [];
     const resolved = [];
 
@@ -105,9 +115,14 @@ export function validateSplitStorage(services, { requireCspOrigin = true } = {})
         const adapter = comparable[0].adapter;
         const prefixKey =
             adapter === "r2" ? "R2_STORAGE_PREFIX" : "SUPABASE_STORAGE_PREFIX";
-        const expectedPrefix = prefixValue(comparable[0].env[prefixKey], adapter);
+        const expectedPrefix = prefixValue(
+            comparable[0].env[prefixKey],
+            adapter,
+        );
         for (const service of comparable.slice(1)) {
-            if (prefixValue(service.env[prefixKey], adapter) !== expectedPrefix) {
+            if (
+                prefixValue(service.env[prefixKey], adapter) !== expectedPrefix
+            ) {
                 errors.push(
                     `${service.label} ${prefixKey} does not match ${comparable[0].label}.`,
                 );
@@ -134,19 +149,25 @@ export function validateSplitStorage(services, { requireCspOrigin = true } = {})
     if (web) {
         const expectedOrigin = storageOrigin(web);
         if (expectedOrigin && requireCspOrigin) {
-            const configuredOrigin = web.env.FLASH_EVALS_CSP_STORAGE_ORIGIN?.trim();
+            const configuredOrigin =
+                web.env.FLASH_EVALS_CSP_STORAGE_ORIGIN?.trim();
             if (!configuredOrigin) {
                 errors.push(
                     `${web.label} is missing FLASH_EVALS_CSP_STORAGE_ORIGIN for the Cloudflare build CSP.`,
                 );
-            } else if (!isOrigin(configuredOrigin) || configuredOrigin !== expectedOrigin) {
+            } else if (
+                !isOrigin(configuredOrigin) ||
+                configuredOrigin !== expectedOrigin
+            ) {
                 errors.push(
                     `${web.label} FLASH_EVALS_CSP_STORAGE_ORIGIN does not match the selected storage endpoint.`,
                 );
             } else {
                 const connectSrc = contentSecurityPolicy(web.env)
                     .split(";")
-                    .find((directive) => directive.trim().startsWith("connect-src "));
+                    .find((directive) =>
+                        directive.trim().startsWith("connect-src "),
+                    );
                 if (!connectSrc?.split(/\s+/).includes(expectedOrigin)) {
                     errors.push(
                         `${web.label} generated CSP connect-src does not allow the selected storage endpoint.`,
@@ -164,12 +185,19 @@ function validateServiceStorage(service, errors) {
     if (!env) return undefined;
 
     if (env.NODE_ENV?.trim() && env.NODE_ENV.trim() !== "production") {
-        errors.push(`${label} NODE_ENV must be production for split deployment.`);
+        errors.push(
+            `${label} NODE_ENV must be production for split deployment.`,
+        );
     }
     if (isTruthy(env.FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS)) {
-        errors.push(`${label} must not enable FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS.`);
+        errors.push(
+            `${label} must not enable FLASH_EVALS_ALLOW_INSECURE_DEV_DEFAULTS.`,
+        );
     }
-    if (kind === "web" && (isTruthy(env.AUTH_DEV) || isTruthy(env.AUTH_DEV_ALLOW_INSECURE))) {
+    if (
+        kind === "web" &&
+        (isTruthy(env.AUTH_DEV) || isTruthy(env.AUTH_DEV_ALLOW_INSECURE))
+    ) {
         errors.push(`${label} must not enable local AUTH_DEV bypass settings.`);
     }
     if (nonEmpty(env.R2_ENDPOINT)) {
@@ -177,7 +205,9 @@ function validateServiceStorage(service, errors) {
     }
 
     const requestedValue =
-        env.FLASH_EVALS_STORAGE_ADAPTER ?? env.FLASH_EVALS_IMAGE_STORAGE_ADAPTER ?? "";
+        env.FLASH_EVALS_STORAGE_ADAPTER ??
+        env.FLASH_EVALS_IMAGE_STORAGE_ADAPTER ??
+        "";
     const requested = requestedValue.trim().toLowerCase();
     const hasR2Settings = R2_KEYS.some((key) => nonEmpty(env[key]));
     let adapter = requested;
@@ -200,11 +230,15 @@ function validateServiceStorage(service, errors) {
     }
 
     if (adapter === "local") {
-        errors.push(`${label} must not use the local storage adapter in split deployment.`);
+        errors.push(
+            `${label} must not use the local storage adapter in split deployment.`,
+        );
         return { ...service, adapter };
     }
     if (adapter !== "r2" && adapter !== "supabase") {
-        errors.push(`${label} has an unsupported FLASH_EVALS_STORAGE_ADAPTER value.`);
+        errors.push(
+            `${label} has an unsupported FLASH_EVALS_STORAGE_ADAPTER value.`,
+        );
         return undefined;
     }
 
@@ -215,14 +249,20 @@ function validateServiceStorage(service, errors) {
 
     if (adapter === "r2" && nonEmpty(env.R2_ACCOUNT_ID)) {
         if (!/^[a-f0-9]{32}$/i.test(env.R2_ACCOUNT_ID.trim())) {
-            errors.push(`${label} R2_ACCOUNT_ID must be a 32-character Cloudflare account ID.`);
+            errors.push(
+                `${label} R2_ACCOUNT_ID must be a 32-character Cloudflare account ID.`,
+            );
         }
         const prefix = normalizePrefix(env.R2_STORAGE_PREFIX);
         if (
             prefix &&
-            prefix.split("/").some((part) => !/^[A-Za-z0-9_-]{1,128}$/.test(part))
+            prefix
+                .split("/")
+                .some((part) => !/^[A-Za-z0-9_-]{1,128}$/.test(part))
         ) {
-            errors.push(`${label} R2_STORAGE_PREFIX contains an invalid path segment.`);
+            errors.push(
+                `${label} R2_STORAGE_PREFIX contains an invalid path segment.`,
+            );
         }
     }
 
@@ -251,16 +291,29 @@ function validateServiceStorage(service, errors) {
         try {
             parsed = new URL(env.SUPABASE_URL.trim());
         } catch {
-            errors.push(`${label} SUPABASE_URL must be an HTTPS project origin.`);
-        }
-        if (parsed && (parsed.protocol !== "https:" || isLoopback(parsed.hostname))) {
-            errors.push(`${label} SUPABASE_URL must use HTTPS and a non-loopback host.`);
+            errors.push(
+                `${label} SUPABASE_URL must be an HTTPS project origin.`,
+            );
         }
         if (
             parsed &&
-            (parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash)
+            (parsed.protocol !== "https:" || isLoopback(parsed.hostname))
         ) {
-            errors.push(`${label} SUPABASE_URL must be a project origin without credentials, path, query, or fragment.`);
+            errors.push(
+                `${label} SUPABASE_URL must use HTTPS and a non-loopback host.`,
+            );
+        }
+        if (
+            parsed &&
+            (parsed.username ||
+                parsed.password ||
+                parsed.pathname !== "/" ||
+                parsed.search ||
+                parsed.hash)
+        ) {
+            errors.push(
+                `${label} SUPABASE_URL must be a project origin without credentials, path, query, or fragment.`,
+            );
         }
     }
 
@@ -330,5 +383,7 @@ function isOrigin(value) {
 }
 
 function isLoopback(hostname) {
-    return ["localhost", "127.0.0.1", "[::1]", "::1"].includes(hostname.toLowerCase());
+    return ["localhost", "127.0.0.1", "[::1]", "::1"].includes(
+        hostname.toLowerCase(),
+    );
 }

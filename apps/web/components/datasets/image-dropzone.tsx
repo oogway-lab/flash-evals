@@ -1,6 +1,9 @@
 "use client";
 
-import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_BYTES } from "@flash-evals/api-contract";
+import {
+    ALLOWED_IMAGE_TYPES,
+    MAX_IMAGE_BYTES,
+} from "@flash-evals/api-contract";
 import { MediaFileDropzone } from "./media-file-dropzone";
 
 // Same allowlist and limit the server enforces.

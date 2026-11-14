@@ -83,7 +83,8 @@ describe("GatewayEvalProvider", () => {
     });
 
     it("creates the Gateway client with the API key and attribution headers", async () => {
-        process.env.FLASH_EVALS_GATEWAY_HTTP_REFERER = "https://flash-evals.test";
+        process.env.FLASH_EVALS_GATEWAY_HTTP_REFERER =
+            "https://flash-evals.test";
         process.env.FLASH_EVALS_GATEWAY_APP_TITLE = "Flash Evals";
         const generateText = vi.fn(async () => ({
             text: "hello",

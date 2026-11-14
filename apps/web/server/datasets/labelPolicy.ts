@@ -1,10 +1,7 @@
 import type { DatasetPurpose } from "./service";
 
 export type DatasetLabelMode =
-    | "evaluation"
-    | "independent"
-    | "pipeline"
-    | "legacySchema";
+    "evaluation" | "independent" | "pipeline" | "legacySchema";
 
 export interface IDatasetLabelContext {
     purpose: DatasetPurpose;

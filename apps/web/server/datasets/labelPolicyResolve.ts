@@ -27,14 +27,20 @@ export async function parseAndValidateLabelForDataset(
 
     const trimmed = rawLabel.trim();
     if (!trimmed) {
-        return { ok: false, fieldErrors: { label: ["Invalid JSON in \"label\""] } };
+        return {
+            ok: false,
+            fieldErrors: { label: ['Invalid JSON in "label"'] },
+        };
     }
 
     let label: Record<string, unknown>;
     try {
         label = JSON.parse(trimmed) as Record<string, unknown>;
     } catch {
-        return { ok: false, fieldErrors: { label: ["Invalid JSON in \"label\""] } };
+        return {
+            ok: false,
+            fieldErrors: { label: ['Invalid JSON in "label"'] },
+        };
     }
 
     const schema = resolved.answerSchema ?? resolved.importSchema;
@@ -42,13 +48,16 @@ export async function parseAndValidateLabelForDataset(
     if (labelErrors.length > 0) {
         return {
             ok: false,
-            fieldErrors: labelErrors.reduce<Record<string, string[]>>((acc, error) => {
-                acc[error.field] = [
-                    ...(acc[error.field] ?? []),
-                    formatLabelError(error),
-                ];
-                return acc;
-            }, {}),
+            fieldErrors: labelErrors.reduce<Record<string, string[]>>(
+                (acc, error) => {
+                    acc[error.field] = [
+                        ...(acc[error.field] ?? []),
+                        formatLabelError(error),
+                    ];
+                    return acc;
+                },
+                {},
+            ),
         };
     }
 

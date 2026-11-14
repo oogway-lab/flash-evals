@@ -55,7 +55,9 @@ describe("local audio storage", () => {
 
         await deleteAudio(stored.storageKey);
 
-        await expect(readFile(audioFilePath(stored.storageKey))).rejects.toThrow();
+        await expect(
+            readFile(audioFilePath(stored.storageKey)),
+        ).rejects.toThrow();
     });
 
     it("resolves relative upload directories from the app workspace root", () => {

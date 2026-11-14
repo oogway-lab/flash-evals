@@ -1,7 +1,4 @@
-import {
-    getPipeline,
-    pipelineFactualDescriptors,
-} from "../pipelines/service";
+import { getPipeline, pipelineFactualDescriptors } from "../pipelines/service";
 import type { IParsedSchemaDescriptor } from "../db/jsonTypes";
 import { getDatasetSchema } from "./service";
 import { parseSchema } from "./schemaForm";

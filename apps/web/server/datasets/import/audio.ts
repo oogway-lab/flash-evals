@@ -48,7 +48,14 @@ export async function importAudioItems(
         seenValidNames.add(file.name);
         try {
             const bytes = Buffer.from(await file.arrayBuffer());
-            await addAudioItem(datasetId, bytes, file.type, undefined, undefined, file.name);
+            await addAudioItem(
+                datasetId,
+                bytes,
+                file.type,
+                undefined,
+                undefined,
+                file.name,
+            );
             importedCount++;
         } catch (err) {
             failures.push({

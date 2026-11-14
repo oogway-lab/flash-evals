@@ -2,7 +2,10 @@ import { AccessDeniedSignOutButton } from "./sign-out-button";
 import { Page } from "@/components/layout/page";
 import { PageHeader } from "@/components/layout/page-header";
 import { isDevAuthEnabled } from "@/server/auth/mode";
-import { allowedEmailDomain, flashEvalsTenancyMode } from "@/server/auth/session";
+import {
+    allowedEmailDomain,
+    flashEvalsTenancyMode,
+} from "@/server/auth/session";
 
 export default function AccessDeniedPage() {
     const authEnabled = !isDevAuthEnabled();

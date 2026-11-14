@@ -30,7 +30,12 @@ const foodSchema: JsonSchemaObject = {
 const foodRules: FieldRule[] = [
     { field: "dish", matcher: "exact" },
     { field: "items", matcher: "set_overlap" },
-    { field: "calories", matcher: "numeric_tolerance", tolerance: 0.25, relative: true },
+    {
+        field: "calories",
+        matcher: "numeric_tolerance",
+        tolerance: 0.25,
+        relative: true,
+    },
 ];
 
 describe("fieldConfigsFromSchema", () => {
@@ -38,11 +43,19 @@ describe("fieldConfigsFromSchema", () => {
         const configs = fieldConfigsFromSchema(foodSchema, foodRules);
         expect(configs).toEqual([
             { field: "dish", kind: "factual", spec: { matcher: "exact" } },
-            { field: "items", kind: "factual", spec: { matcher: "set_overlap" } },
+            {
+                field: "items",
+                kind: "factual",
+                spec: { matcher: "set_overlap" },
+            },
             {
                 field: "calories",
                 kind: "factual",
-                spec: { matcher: "numeric_tolerance", tolerance: 0.25, relative: true },
+                spec: {
+                    matcher: "numeric_tolerance",
+                    tolerance: 0.25,
+                    relative: true,
+                },
             },
         ]);
     });
@@ -66,7 +79,11 @@ describe("ruleFromConfig", () => {
         const config: IPipelineFieldConfig = {
             field: "calories",
             kind: "factual",
-            spec: { matcher: "numeric_tolerance", tolerance: 0.25, relative: true },
+            spec: {
+                matcher: "numeric_tolerance",
+                tolerance: 0.25,
+                relative: true,
+            },
         };
         expect(ruleFromConfig(config)).toEqual({
             field: "calories",
@@ -77,9 +94,7 @@ describe("ruleFromConfig", () => {
     });
 
     it("returns undefined for a generative or unscored field", () => {
-        expect(
-            ruleFromConfig({ field: "x", kind: "factual" }),
-        ).toBeUndefined();
+        expect(ruleFromConfig({ field: "x", kind: "factual" })).toBeUndefined();
         expect(
             ruleFromConfig({
                 field: "tip",
@@ -95,7 +110,12 @@ describe("splitPipelineFields", () => {
     it("separates factual and generative configs", () => {
         const configs: IPipelineFieldConfig[] = [
             { field: "dish", kind: "factual", spec: { matcher: "exact" } },
-            { field: "tip", kind: "generative", rubric: "kind?", modelId: "gpt-4o" },
+            {
+                field: "tip",
+                kind: "generative",
+                rubric: "kind?",
+                modelId: "gpt-4o",
+            },
         ];
         const split = splitPipelineFields(configs);
         expect(split.factual.map((c) => c.field)).toEqual(["dish"]);
@@ -108,11 +128,21 @@ describe("pipelineFactualDescriptors", () => {
         const configs: IPipelineFieldConfig[] = [
             { field: "dish", kind: "factual", spec: { matcher: "exact" } },
             { field: "calories", kind: "factual", spec: { matcher: "exact" } },
-            { field: "items", kind: "generative", rubric: "ok?", modelId: "gpt-4o" },
+            {
+                field: "items",
+                kind: "generative",
+                rubric: "ok?",
+                modelId: "gpt-4o",
+            },
         ];
         const descriptors = pipelineFactualDescriptors(foodSchema, configs);
-        expect(descriptors.map((d) => d.name).sort()).toEqual(["calories", "dish"]);
-        expect(descriptors.find((d) => d.name === "calories")?.type).toBe("number");
+        expect(descriptors.map((d) => d.name).sort()).toEqual([
+            "calories",
+            "dish",
+        ]);
+        expect(descriptors.find((d) => d.name === "calories")?.type).toBe(
+            "number",
+        );
     });
 });
 
@@ -120,11 +150,21 @@ describe("mergeRunFieldConfigs", () => {
     it("overlays matcher edits while preserving bundle field list", () => {
         const pipelineConfigs: IPipelineFieldConfig[] = [
             { field: "score", kind: "factual" },
-            { field: "tip", kind: "generative", rubric: "base", modelId: "gpt-4o-mini" },
+            {
+                field: "tip",
+                kind: "generative",
+                rubric: "base",
+                modelId: "gpt-4o-mini",
+            },
         ];
         const submitted: IPipelineFieldConfig[] = [
             { field: "score", kind: "factual", spec: { matcher: "exact" } },
-            { field: "tip", kind: "generative", rubric: "edited", modelId: "gpt-4o" },
+            {
+                field: "tip",
+                kind: "generative",
+                rubric: "edited",
+                modelId: "gpt-4o",
+            },
         ];
 
         expect(mergeRunFieldConfigs(pipelineConfigs, submitted)).toEqual({
@@ -150,7 +190,12 @@ describe("mergeRunFieldConfigs", () => {
         ];
         expect(
             mergeRunFieldConfigs(pipelineConfigs, [
-                { field: "score", kind: "generative", rubric: "x", modelId: "gpt-4o" },
+                {
+                    field: "score",
+                    kind: "generative",
+                    rubric: "x",
+                    modelId: "gpt-4o",
+                },
             ]),
         ).toMatchObject({ ok: false });
     });
@@ -172,16 +217,31 @@ describe("mergeRunFieldConfigs", () => {
 
     it("rejects an oversized rubric or empty judge model", () => {
         const pipelineConfigs: IPipelineFieldConfig[] = [
-            { field: "tip", kind: "generative", rubric: "base", modelId: "gpt-4o" },
+            {
+                field: "tip",
+                kind: "generative",
+                rubric: "base",
+                modelId: "gpt-4o",
+            },
         ];
         expect(
             mergeRunFieldConfigs(pipelineConfigs, [
-                { field: "tip", kind: "generative", rubric: "x".repeat(5000), modelId: "gpt-4o" },
+                {
+                    field: "tip",
+                    kind: "generative",
+                    rubric: "x".repeat(5000),
+                    modelId: "gpt-4o",
+                },
             ]),
         ).toMatchObject({ ok: false });
         expect(
             mergeRunFieldConfigs(pipelineConfigs, [
-                { field: "tip", kind: "generative", rubric: "ok", modelId: "  " },
+                {
+                    field: "tip",
+                    kind: "generative",
+                    rubric: "ok",
+                    modelId: "  ",
+                },
             ]),
         ).toMatchObject({ ok: false });
     });
@@ -190,7 +250,9 @@ describe("mergeRunFieldConfigs", () => {
 describe("validatePipelineFields", () => {
     it("accepts configs whose fields exist in the output structure", () => {
         const configs = fieldConfigsFromSchema(foodSchema, foodRules);
-        expect(validatePipelineFields(foodSchema, configs)).toEqual({ ok: true });
+        expect(validatePipelineFields(foodSchema, configs)).toEqual({
+            ok: true,
+        });
     });
 
     it("rejects a config naming a field absent from the structure", () => {
@@ -207,8 +269,17 @@ describe("validatePipelineFields", () => {
 describe("filterFieldConfigsForGoldenLabel", () => {
     it("AE3: keeps overlapping factual fields and all generative fields", () => {
         const configs: IPipelineFieldConfig[] = [
-            { field: "realFoodScore", kind: "factual", spec: { matcher: "exact" } },
-            { field: "keepGoingTip", kind: "generative", rubric: "?", modelId: "gpt-4o" },
+            {
+                field: "realFoodScore",
+                kind: "factual",
+                spec: { matcher: "exact" },
+            },
+            {
+                field: "keepGoingTip",
+                kind: "generative",
+                rubric: "?",
+                modelId: "gpt-4o",
+            },
             { field: "macros", kind: "factual", spec: { matcher: "exact" } },
         ];
         const filtered = filterFieldConfigsForGoldenLabel(

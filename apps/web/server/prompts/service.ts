@@ -23,10 +23,7 @@ import type {
     IReasoningConfig,
     JsonSchemaObject,
 } from "../db/jsonTypes";
-import {
-    schemaHash,
-    validatePromptSchema,
-} from "./schemaValidation";
+import { schemaHash, validatePromptSchema } from "./schemaValidation";
 
 export async function createPrompt(
     teamId: string,
@@ -130,7 +127,10 @@ export async function deletePrompt(promptId: string) {
                 .select({ id: promptValidationAttempts.id })
                 .from(promptValidationAttempts)
                 .where(
-                    inArray(promptValidationAttempts.promptVersionId, versionIds),
+                    inArray(
+                        promptValidationAttempts.promptVersionId,
+                        versionIds,
+                    ),
                 )) {
                 validationIds.add(row.id);
             }
@@ -139,7 +139,12 @@ export async function deletePrompt(promptId: string) {
             for (const row of await tx
                 .select({ id: promptValidationAttempts.id })
                 .from(promptValidationAttempts)
-                .where(inArray(promptValidationAttempts.schemaVersionId, schemaIds))) {
+                .where(
+                    inArray(
+                        promptValidationAttempts.schemaVersionId,
+                        schemaIds,
+                    ),
+                )) {
                 validationIds.add(row.id);
             }
         }
@@ -163,7 +168,10 @@ export async function deletePrompt(promptId: string) {
                 .update(promptValidationAttempts)
                 .set({ promptVersionId: null })
                 .where(
-                    inArray(promptValidationAttempts.promptVersionId, versionIds),
+                    inArray(
+                        promptValidationAttempts.promptVersionId,
+                        versionIds,
+                    ),
                 );
             await tx
                 .update(promptOptimizationAttempts)
@@ -176,7 +184,9 @@ export async function deletePrompt(promptId: string) {
                 );
             await tx
                 .delete(promptVersionFitTags)
-                .where(inArray(promptVersionFitTags.promptVersionId, versionIds));
+                .where(
+                    inArray(promptVersionFitTags.promptVersionId, versionIds),
+                );
         }
 
         if (schemaIds.length > 0) {
@@ -187,7 +197,12 @@ export async function deletePrompt(promptId: string) {
             await tx
                 .update(promptValidationAttempts)
                 .set({ schemaVersionId: null })
-                .where(inArray(promptValidationAttempts.schemaVersionId, schemaIds));
+                .where(
+                    inArray(
+                        promptValidationAttempts.schemaVersionId,
+                        schemaIds,
+                    ),
+                );
         }
 
         if (validationAttemptIds.length > 0) {
@@ -213,9 +228,13 @@ export async function deletePrompt(promptId: string) {
         if (validationAttemptIds.length > 0) {
             await tx
                 .delete(promptValidationAttempts)
-                .where(inArray(promptValidationAttempts.id, validationAttemptIds));
+                .where(
+                    inArray(promptValidationAttempts.id, validationAttemptIds),
+                );
         }
-        await tx.delete(promptDrafts).where(eq(promptDrafts.promptId, promptId));
+        await tx
+            .delete(promptDrafts)
+            .where(eq(promptDrafts.promptId, promptId));
         await tx
             .update(pipelines)
             .set({ promptId: null })

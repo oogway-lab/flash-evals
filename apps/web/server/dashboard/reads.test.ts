@@ -65,12 +65,7 @@ describe("dashboard reads", () => {
     });
 
     it("returns empty dashboard stats when the team has no data", async () => {
-        dbMock.selectResults = [
-            [{ count: 0 }],
-            [{ count: 0 }],
-            [],
-            [],
-        ];
+        dbMock.selectResults = [[{ count: 0 }], [{ count: 0 }], [], []];
 
         await expect(getDashboardStats("team-1")).resolves.toEqual({
             datasetCount: 0,
@@ -111,7 +106,8 @@ describe("dashboard reads", () => {
         const datasetCount = deferred<Array<{ count: number }>>();
         const promptCount = deferred<Array<{ count: number }>>();
         const schemaRows = deferred<Array<{ datasetId: string }>>();
-        const itemRows = deferred<Array<{ datasetId: string; count: number }>>();
+        const itemRows =
+            deferred<Array<{ datasetId: string; count: number }>>();
         const runCounts = deferred<{ total: number; active: number }>();
 
         dbMock.selectResults = [

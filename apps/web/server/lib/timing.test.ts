@@ -35,7 +35,9 @@ describe("timedSpan", () => {
             .mockReturnValueOnce(0)
             .mockReturnValueOnce(1000);
 
-        await expect(timedSpan("dashboard", async () => "ok")).resolves.toBe("ok");
+        await expect(timedSpan("dashboard", async () => "ok")).resolves.toBe(
+            "ok",
+        );
 
         expect(infoSpy).toHaveBeenCalledTimes(1);
         expect(infoSpy.mock.calls[0]?.[0]).toMatch(

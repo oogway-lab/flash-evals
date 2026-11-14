@@ -142,9 +142,9 @@ describe("validateLabel", () => {
         });
         if (!parsed.ok) throw new Error(parsed.error);
 
-        expect(validateLabel({ answer: "yes", notes: "ok" }, parsed.schema)).toEqual(
-            [],
-        );
+        expect(
+            validateLabel({ answer: "yes", notes: "ok" }, parsed.schema),
+        ).toEqual([]);
     });
 
     it("reports wrong field types by name", () => {

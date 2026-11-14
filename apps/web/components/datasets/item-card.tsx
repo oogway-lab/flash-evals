@@ -17,7 +17,10 @@ import { AudioDropzone } from "@/components/datasets/audio-dropzone";
 import { LabelForm } from "@/components/datasets/label-form";
 import { singleMediaField } from "@/lib/uploads/upload-form-media";
 import { JsonBlock } from "@/components/ui/json-block";
-import type { IParsedSchemaDescriptor, LabelJson } from "@flash-evals/api-contract";
+import type {
+    IParsedSchemaDescriptor,
+    LabelJson,
+} from "@flash-evals/api-contract";
 import type { IActionState } from "@/app/actions";
 import type { IGoldCoverage } from "./gold-coverage";
 import { shortId } from "@/lib/format";

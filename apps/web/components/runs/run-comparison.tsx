@@ -4,7 +4,10 @@ import { useState, useTransition } from "react";
 import type { Route } from "next";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import type { IComparableRun, IModelComparison } from "@flash-evals/api-contract";
+import type {
+    IComparableRun,
+    IModelComparison,
+} from "@flash-evals/api-contract";
 import { fmtDelta, fmtLatency, fmtScore, formatCostColumn } from "@/lib/format";
 import {
     Select,

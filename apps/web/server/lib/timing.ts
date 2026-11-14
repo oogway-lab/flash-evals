@@ -44,7 +44,9 @@ function formatTimingLog(
 
     for (const [key, value] of Object.entries(metadata)) {
         if (value === undefined) continue;
-        fields.push(`${sanitizeLogValue(key)}=${sanitizeLogValue(String(value))}`);
+        fields.push(
+            `${sanitizeLogValue(key)}=${sanitizeLogValue(String(value))}`,
+        );
     }
 
     return fields.join(" ");
@@ -53,4 +55,3 @@ function formatTimingLog(
 function sanitizeLogValue(value: string): string {
     return value.replace(/[^a-zA-Z0-9._:/-]/g, "_");
 }
-

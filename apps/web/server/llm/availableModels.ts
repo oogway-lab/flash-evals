@@ -26,11 +26,9 @@ interface ICacheEntry {
 const cache = new Map<string, ICacheEntry>();
 
 function cacheKeyFor(apiKeys: ApiKeys, provider: "openai" | "gateway"): string {
-    const raw = [
-        provider,
-        apiKeys.openai ?? "",
-        apiKeys.gateway ?? "",
-    ].join(":");
+    const raw = [provider, apiKeys.openai ?? "", apiKeys.gateway ?? ""].join(
+        ":",
+    );
     let hash = 0;
     for (let i = 0; i < raw.length; i += 1) {
         hash = (hash * 31 + raw.charCodeAt(i)) | 0;
@@ -49,24 +47,28 @@ function resolveAgainst(
     provider: "openai" | "gateway",
 ): IResolvedModel[] {
     const liveById = new Map(liveModels.map((model) => [model.id, model]));
-    return registryEntriesForProvider(provider, liveModels).map((entry) => ({
-        ...entry,
-        ...(entry.pricing
-            ? {}
-            : {
-                  pricing: liveById.get(modelIdForProvider(entry, provider))
-                      ?.pricing,
-              }),
-        available: liveById.has(modelIdForProvider(entry, provider)),
-    })).sort(orderAvailableFirst);
+    return registryEntriesForProvider(provider, liveModels)
+        .map((entry) => ({
+            ...entry,
+            ...(entry.pricing
+                ? {}
+                : {
+                      pricing: liveById.get(modelIdForProvider(entry, provider))
+                          ?.pricing,
+                  }),
+            available: liveById.has(modelIdForProvider(entry, provider)),
+        }))
+        .sort(orderAvailableFirst);
 }
 
 function degradedFallback(): IAvailableModelsResult {
     const provider = providerModeForAvailability();
-    const models = registryEntriesForProvider(provider).map((entry) => ({
-        ...entry,
-        available: true,
-    })).sort(orderAvailableFirst);
+    const models = registryEntriesForProvider(provider)
+        .map((entry) => ({
+            ...entry,
+            available: true,
+        }))
+        .sort(orderAvailableFirst);
     return { models, degraded: true };
 }
 
@@ -81,7 +83,9 @@ export async function getAvailableModels(
     }
 
     try {
-        const liveModels = await listAvailableModelMetadata(apiKeys, { provider });
+        const liveModels = await listAvailableModelMetadata(apiKeys, {
+            provider,
+        });
         const result: IAvailableModelsResult = {
             models: resolveAgainst(liveModels, provider),
             degraded: false,
