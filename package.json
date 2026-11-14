@@ -92,6 +92,7 @@
         "railway": "3.16.0",
         "syncpack": "^15.3.3",
         "typedoc": "^0.28.14",
+        "typescript": "~6.0.3",
         "typescript-eslint": "^8.72.1"
     },
     "lint-staged": {
