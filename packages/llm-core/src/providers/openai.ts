@@ -87,7 +87,7 @@ export class OpenAIEvalProvider implements IEvalCompletionProvider {
             : undefined;
     }
 
-    // eslint-disable-next-line complexity -- provider completion maps transport-specific response states.
+    // oxlint-disable-next-line complexity -- provider completion maps transport-specific response states.
     async complete(req: CompletionRequest): Promise<CompletionResult> {
         const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
             [];

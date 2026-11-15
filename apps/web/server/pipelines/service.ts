@@ -98,7 +98,8 @@ export function pipelineFactualDescriptors(
 }
 
 export type PipelineFieldValidation =
-    { ok: true } | { ok: false; error: string };
+    | { ok: true }
+    | { ok: false; error: string };
 
 const MAX_RUBRIC_LENGTH = 4000;
 const MAX_MODEL_ID_LENGTH = 100;

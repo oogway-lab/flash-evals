@@ -8,7 +8,12 @@ import {
 } from "@/server/runs/service";
 
 export type RunStatus =
-    "pending" | "running" | "completed" | "partial" | "failed" | "cancelled";
+    | "pending"
+    | "running"
+    | "completed"
+    | "partial"
+    | "failed"
+    | "cancelled";
 
 export interface RunListRow {
     id: string;

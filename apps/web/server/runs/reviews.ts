@@ -3,7 +3,10 @@ import { db } from "../db/client";
 import { runs, runCells, runNotes, runCellAnnotations } from "../db/schema";
 
 export type ReviewVerdict =
-    "unreviewed" | "approved" | "needs_review" | "issue";
+    | "unreviewed"
+    | "approved"
+    | "needs_review"
+    | "issue";
 
 export interface IRunNote {
     body: string;

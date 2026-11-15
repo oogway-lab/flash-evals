@@ -10,12 +10,23 @@ import { claudeRejectsSampling } from "./claudeLimits.js";
 import type { ICostPricing, ICostPricingTier } from "../cost.js";
 
 export type KnownModelProvider =
-    "openai" | "anthropic" | "google" | "xai" | "meta" | "mistral" | "alibaba";
+    | "openai"
+    | "anthropic"
+    | "google"
+    | "xai"
+    | "meta"
+    | "mistral"
+    | "alibaba";
 /** Live provider catalog identifiers are intentionally open-ended. */
 export type ModelProvider = KnownModelProvider | (string & {});
 
 export type EvalProviderTransport =
-    "openai" | "gateway" | "openrouter" | "bifrost" | "anthropic" | "google";
+    | "openai"
+    | "gateway"
+    | "openrouter"
+    | "bifrost"
+    | "anthropic"
+    | "google";
 
 /** Transports that call the model's maker directly with a key from Settings. */
 export type DirectMakerTransport = "anthropic" | "google";
@@ -47,7 +58,11 @@ export type ModelTransports = Readonly<
 >;
 
 export type ModelGenerationControl =
-    "maxOutputTokens" | "temperature" | "topP" | "seed" | "reasoningEffort";
+    | "maxOutputTokens"
+    | "temperature"
+    | "topP"
+    | "seed"
+    | "reasoningEffort";
 
 export type UpstreamRoutingMode = "none" | "auto" | "preference" | "exact";
 

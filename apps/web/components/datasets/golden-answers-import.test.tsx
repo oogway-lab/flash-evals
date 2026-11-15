@@ -154,9 +154,9 @@ describe("SttGoldenAnswersImport", () => {
         expect(
             JSON.parse(
                 String(
-                    (previewAction.mock.calls[1]?.[0] as FormData).get(
-                        "mapping",
-                    ),
+                    (
+                        previewAction.mock.calls[1]?.[0] as FormData | undefined
+                    )?.get("mapping"),
                 ),
             ),
         ).toMatchObject({
@@ -178,9 +178,9 @@ describe("SttGoldenAnswersImport", () => {
         expect(
             JSON.parse(
                 String(
-                    (previewAction.mock.calls[2]?.[0] as FormData).get(
-                        "mapping",
-                    ),
+                    (
+                        previewAction.mock.calls[2]?.[0] as FormData | undefined
+                    )?.get("mapping"),
                 ),
             ),
         ).toMatchObject({
@@ -294,7 +294,7 @@ describe("SttGoldenAnswersImport", () => {
         ).toBeInTheDocument();
         const submitted = JSON.parse(
             String(
-                (previewAction.mock.calls[0]?.[0] as FormData).get(
+                (previewAction.mock.calls[0]?.[0] as FormData | undefined)?.get(
                     "answerFiles",
                 ),
             ),

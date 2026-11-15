@@ -243,7 +243,9 @@ describe("PromptWorkbench test panel", () => {
         fireEvent.click(getByRole("button", { name: /Run test/ }));
         await waitFor(() => expect(testRunAction).toHaveBeenCalled());
         expect(
-            (testRunAction.mock.calls[0]?.[0] as FormData).get("transport"),
+            (testRunAction.mock.calls[0]?.[0] as FormData | undefined)?.get(
+                "transport",
+            ),
         ).toBe("openrouter");
     });
 
@@ -265,7 +267,9 @@ describe("PromptWorkbench test panel", () => {
         fireEvent.click(getByRole("button", { name: /Run test/ }));
         await waitFor(() => expect(testRunAction).toHaveBeenCalled());
         expect(
-            (testRunAction.mock.calls[0]?.[0] as FormData).get("transport"),
+            (testRunAction.mock.calls[0]?.[0] as FormData | undefined)?.get(
+                "transport",
+            ),
         ).toBe("openrouter");
     });
     it("runs a test and renders output, validation, tokens, latency, and cost", async () => {

@@ -3,7 +3,10 @@
 // cannot turn it on by accident, and it never runs with NODE_ENV=production.
 // Env vars are read by literal name so they also resolve in edge middleware.
 export type DevAuthState =
-    "off" | "on" | "missing_opt_in" | "blocked_in_production";
+    | "off"
+    | "on"
+    | "missing_opt_in"
+    | "blocked_in_production";
 
 export function devAuthState(): DevAuthState {
     if (process.env.AUTH_DEV !== "true") return "off";

@@ -33,7 +33,8 @@ import {
 import type { IActionState } from "./types";
 
 export type IGenerateJudgeResult =
-    { ok: true; rubricPrompt: string } | { ok: false; error: string };
+    | { ok: true; rubricPrompt: string }
+    | { ok: false; error: string };
 
 // Draft a run-scoped judge rubric from the dataset + prompt the user has
 // selected in New Run, before any output exists. The result is editable.
@@ -305,7 +306,8 @@ type ICreateRunBuildResult =
     | { ok: false; state: IActionState };
 
 type ISttConfigParseResult =
-    { ok: true; value?: ISttRunConfig } | { ok: false; state: IActionState };
+    | { ok: true; value?: ISttRunConfig }
+    | { ok: false; state: IActionState };
 
 type ISttVariantsParseResult =
     | {

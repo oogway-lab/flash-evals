@@ -129,7 +129,7 @@ export function LlmRoutingForm({
     );
 }
 
-// eslint-disable-next-line complexity -- the form conditionally renders transport capability controls.
+// oxlint-disable-next-line complexity -- the form conditionally renders transport capability controls.
 function RouteBuilder({
     projectId,
     keys,

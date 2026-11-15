@@ -383,7 +383,8 @@ export async function loadDisagreementsAction(input: {
 }
 
 export type IDecideResult =
-    { ok: true; newValue: unknown } | { ok: false; error: string };
+    | { ok: true; newValue: unknown }
+    | { ok: false; error: string };
 
 /**
  * Record who was right on one field. The chosen answer becomes the

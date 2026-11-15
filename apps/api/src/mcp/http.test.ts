@@ -66,7 +66,11 @@ function dbWithLinkedUser(): IDb {
 
 function dbForResourceFailure(
     failure:
-        "not_found" | "cross_tenant" | "forbidden" | "internal" | "bad_cursor",
+        | "not_found"
+        | "cross_tenant"
+        | "forbidden"
+        | "internal"
+        | "bad_cursor",
 ): IDb {
     return {
         query: vi.fn(async (sql: string) => {

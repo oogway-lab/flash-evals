@@ -35,7 +35,12 @@ export interface CellData {
     runModelId: string;
     /** Eval run cells are never "skipped"; that is for pipeline steps. */
     status:
-        "pending" | "running" | "succeeded" | "failed" | "cached" | "skipped";
+        | "pending"
+        | "running"
+        | "succeeded"
+        | "failed"
+        | "cached"
+        | "skipped";
     outputJson: OutputJson | null;
     latencyMs: number | null;
     costUsd: number | null;
@@ -55,7 +60,10 @@ export interface CellData {
 }
 
 export type ReviewVerdict =
-    "unreviewed" | "approved" | "needs_review" | "issue";
+    | "unreviewed"
+    | "approved"
+    | "needs_review"
+    | "issue";
 
 export interface CellAnnotation {
     verdict: ReviewVerdict;

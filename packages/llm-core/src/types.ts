@@ -66,10 +66,17 @@ export type CompletionCostSource =
  * list priced it, or the model registry's list price did.
  */
 export type CostBasis =
-    "reported" | "bifrost_list_price" | "registry_list_price";
+    | "reported"
+    | "bifrost_list_price"
+    | "registry_list_price";
 
 export type CompletionTransport =
-    "openai" | "gateway" | "openrouter" | "bifrost" | "anthropic" | "google";
+    | "openai"
+    | "gateway"
+    | "openrouter"
+    | "bifrost"
+    | "anthropic"
+    | "google";
 
 export type CompletionUpstreamPolicy =
     | { mode: "none" }

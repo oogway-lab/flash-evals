@@ -1,0 +1,15 @@
+{
+    "$schema": "./node_modules/oxfmt/configuration_schema.json",
+    "tabWidth": 4,
+    "printWidth": 80,
+    "sortPackageJson": false,
+    "ignorePatterns": [
+        "bun.lock",
+        ".github",
+        "apps/web/generated/",
+        "apps/web/public/marketing/",
+        ".dev.local/",
+        "apps/web/.next-playwright/",
+        "apps/web/server/db/migrations/meta/"
+    ]
+}

@@ -101,12 +101,7 @@ describe("errorMessage", () => {
         // How drizzle-orm wraps a failed query (DrizzleQueryError).
         const query =
             'select "transcript", "segments_json", "speakers_json", "provider_metadata", "warnings", "detected_language" from "audio_transcripts" where ("audio_transcripts"."dataset_item_id" = $1 and "audio_transcripts"."status" = $2) limit $3';
-        const params = [
-            "item-1",
-            "completed",
-            1,
-            "एक लंबा प्रतिलेख ".repeat(500),
-        ];
+        const params = ["item-1", "completed", 1, "एक लंबा प्रतिलेख ".repeat(500)];
         const err = Object.assign(
             new Error(`Failed query: ${query}\nparams: ${params.join(",")}`),
             {

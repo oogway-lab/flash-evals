@@ -1,4 +1,3 @@
-/* global AbortSignal, console, fetch, process */
 // Read-only MCP connection check. Run from the repository root with Node 24.
 // Supply a local development token through FLASH_EVALS_MCP_LOCAL_TOKEN, never a file
 // committed to Git. An optional first argument overrides the endpoint URL.

@@ -267,9 +267,7 @@ it.each([
 it("keeps the total cost unknown when repair billing is missing", async () => {
     const responses = [
         {
-            choices: [
-                { finish_reason: "stop", message: { content: "வணக்கம்" } },
-            ],
+            choices: [{ finish_reason: "stop", message: { content: "வணக்கம்" } }],
             usage: {
                 prompt_tokens: 10,
                 completion_tokens: 10,

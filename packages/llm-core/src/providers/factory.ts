@@ -22,7 +22,12 @@ import { OpenAIEvalProvider } from "./openai.js";
 import { VercelAIEvalProvider } from "./vercelAi.js";
 
 export type EvalProviderMode =
-    "auto" | "vercel-ai" | "openai" | "gateway" | "openrouter" | "bifrost";
+    | "auto"
+    | "vercel-ai"
+    | "openai"
+    | "gateway"
+    | "openrouter"
+    | "bifrost";
 
 export interface IEvalProviderOptions {
     provider?: EvalProviderMode;

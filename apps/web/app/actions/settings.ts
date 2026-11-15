@@ -467,7 +467,9 @@ function transportConfigFrom(
             upstreamPolicy: { mode: "bifrost_default" },
         };
     const upstreamMode = String(formData.get("upstreamMode") ?? "auto") as
-        "auto" | "exact" | "preference";
+        | "auto"
+        | "exact"
+        | "preference";
     const providers = String(formData.get("upstreamProviders") ?? "")
         .split(",")
         .map((value) => value.trim())

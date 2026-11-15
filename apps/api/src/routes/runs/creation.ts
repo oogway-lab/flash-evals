@@ -161,7 +161,8 @@ interface IVersionOptionRow {
     json_schema: Record<string, unknown>;
     field_configs: IPipelineFieldConfig[];
     reasoning_config:
-        IRunSetupResponse["versionOptions"][number]["reasoningConfig"] | null;
+        | IRunSetupResponse["versionOptions"][number]["reasoningConfig"]
+        | null;
     prompt_chars: number | string | null;
 }
 

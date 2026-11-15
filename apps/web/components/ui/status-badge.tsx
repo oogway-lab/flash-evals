@@ -161,7 +161,11 @@ export function TranscriptStatusBadge({ status }: { status: string }) {
 }
 
 export type BranchStatus =
-    "pending" | "running" | "completed" | "failed" | "stopped";
+    | "pending"
+    | "running"
+    | "completed"
+    | "failed"
+    | "stopped";
 
 const branchStatuses: Record<
     BranchStatus,

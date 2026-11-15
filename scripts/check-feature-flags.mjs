@@ -67,9 +67,9 @@ for (const file of sourceFiles) {
             continue;
         }
         // Only count reads outside the flag's own manifest declaration line.
-        if (!(
-            path === flag.sourceFile && isDeclarationLine(text, match.index)
-        )) {
+        if (
+            !(path === flag.sourceFile && isDeclarationLine(text, match.index))
+        ) {
             usageCounts.set(envName, usageCounts.get(envName) + 1);
         }
     }

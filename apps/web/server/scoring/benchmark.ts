@@ -140,7 +140,8 @@ export async function judgeHeadToHead(
         const { costUsd } = completionCostFields(result, input.pricing);
         const cost = costUsd !== undefined ? { costUsd } : {};
         const parsed = result.parsed as
-            { reasoning?: unknown; better?: unknown } | undefined;
+            | { reasoning?: unknown; better?: unknown }
+            | undefined;
         if (result.schemaViolation || !parsed)
             return {
                 ok: false,

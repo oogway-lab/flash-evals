@@ -68,7 +68,8 @@ real database and paid-provider checks are separate.
 | `bun run test:dev`                                             | Fresh local/private configuration, preservation of existing env files, worker draining, backup failure recovery.            |
 | `bun run test`                                                 | Package, API, site, and web unit suites; optional real-database suites skip without their explicit test URLs.               |
 | `bun run typecheck`                                            | TypeScript and Astro checks, including generated web route types.                                                           |
-| `bun run lint`                                                 | Repository lint rules.                                                                                                      |
+| `bun run lint`                                                 | Oxlint rules from `.oxlintrc.json`, including naming conventions; reports unused disable comments.                          |
+| `bun run format:check`                                         | Oxfmt formatting from `.oxfmtrc.json`; run `bun run format` to fix.                                                         |
 | `bun run build`                                                | API and web production compilation; builds the marketing assets too.                                                        |
 | `bun run test:e2e`                                             | Chromium application smoke/navigation tests against a synthetic API.                                                        |
 | `bunx playwright test --config playwright.marketing.config.ts` | Anonymous marketing and sign-in routing fixtures.                                                                           |

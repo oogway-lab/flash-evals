@@ -57,7 +57,8 @@ function promptTestSamplesFromForm(formData: FormData): IPromptSampleInput[] {
 }
 
 type ImageFromForm =
-    { ok: true; image?: IEvalImage } | { ok: false; error: string };
+    | { ok: true; image?: IEvalImage }
+    | { ok: false; error: string };
 
 const IMAGE_MAGIC: Array<{ mime: string; matches: (b: Buffer) => boolean }> = [
     {

@@ -42,9 +42,11 @@ import { ImportResultSummary } from "./import-result-summary";
 import type { IActionState } from "@/app/actions";
 
 type PreviewResult =
-    { ok: true; preview: IAnswerImportPreview } | { ok: false; error: string };
+    | { ok: true; preview: IAnswerImportPreview }
+    | { ok: false; error: string };
 type CommitResult =
-    { ok: true; result: IImportSummary } | { ok: false; error: string };
+    | { ok: true; result: IImportSummary }
+    | { ok: false; error: string };
 
 const TARGETS: Array<{ value: AnswerImportTargetField; label: string }> = [
     { value: "ignore", label: "Ignore" },

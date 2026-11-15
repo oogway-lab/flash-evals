@@ -153,7 +153,7 @@ export interface IWorkflowLlmInvocationResult {
     costUsd?: number;
 }
 
-// eslint-disable-next-line complexity -- invocation coordinates cache, retry, provider, and provenance states.
+// oxlint-disable-next-line complexity -- invocation coordinates cache, retry, provider, and provenance states.
 export async function executeWorkflowLlmInvocation(
     input: IWorkflowLlmInvocationInput,
     deps: IWorkflowLlmInvocationDeps = defaultDeps,

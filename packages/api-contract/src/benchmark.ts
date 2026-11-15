@@ -36,7 +36,10 @@ import {
 import { canonicalizePair } from "./textMatching.js";
 
 export type BenchmarkTaskMethod =
-    "agreement" | "head_to_head" | "rules" | "rubric";
+    | "agreement"
+    | "head_to_head"
+    | "rules"
+    | "rubric";
 
 /**
  * Where a task's yardstick comes from: "model" is the run's reference

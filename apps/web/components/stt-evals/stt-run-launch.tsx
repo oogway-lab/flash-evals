@@ -33,7 +33,7 @@ import { SpendLimitField } from "@/components/runs/spend-limit-field";
 import { DataRules } from "@/components/runs/data-rules";
 import { CompareRunField } from "./compare-run-field";
 
-// eslint-disable-next-line complexity -- launch validation maps multiple user-facing error states.
+// oxlint-disable-next-line complexity -- launch validation maps multiple user-facing error states.
 export function SttRunLaunch({
     workflow,
     datasets,

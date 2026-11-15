@@ -904,7 +904,10 @@ export async function workflowDetailPayload(
     const nodes = nodeRows.map(({ position, ...node }) => {
         const stored = node as typeof node & {
             llmSelectionMode?:
-                "simple" | "pinned_route" | "project_default" | null;
+                | "simple"
+                | "pinned_route"
+                | "project_default"
+                | null;
             llmTransport?: WorkflowLlmTransport | null;
             llmRouteVersionId?: string | null;
         };

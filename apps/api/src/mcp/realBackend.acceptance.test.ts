@@ -1860,7 +1860,7 @@ describe.skipIf(!databaseUrl)("MCP real-backend acceptance", () => {
         });
     });
 
-    // eslint-disable-next-line complexity -- Exercises protocol/resource paths, auth failures, and recovery using one real DB fixture graph.
+    // oxlint-disable-next-line complexity -- Exercises protocol/resource paths, auth failures, and recovery using one real DB fixture graph.
     it("roundtrips resources, the setup prompt, tool/resource HTTP 403, and resource 404 protocol errors", async () => {
         const { projectId } = fixture;
         const promptId = randomUUID();
@@ -2405,7 +2405,7 @@ interface McpRpcResponse {
 const UUID_PATTERN =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-// eslint-disable-next-line complexity -- routes every allowed stub endpoint and rejects any other network request.
+// oxlint-disable-next-line complexity -- routes every allowed stub endpoint and rejects any other network request.
 async function syntheticProviderFetch(
     input: RequestInfo | URL,
     init?: RequestInit,

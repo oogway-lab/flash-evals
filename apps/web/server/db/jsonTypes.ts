@@ -320,7 +320,9 @@ export interface IAudioTranscriptVariantMetadata {
 export type PromptKind = "eval" | "judge";
 
 export type JudgeDeclaredInput =
-    "task_input" | "candidate_output" | "reference";
+    | "task_input"
+    | "candidate_output"
+    | "reference";
 
 export interface IJudgeSpec {
     modelId: string;

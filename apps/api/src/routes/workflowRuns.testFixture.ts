@@ -106,7 +106,11 @@ export interface ICreateRunDbOptions {
     selection?: "simple" | "pinned_route" | "project_default" | "missing";
     /** The provider a Simple mode node calls. */
     simpleTransport?:
-        "gateway" | "openrouter" | "anthropic" | "google" | "bifrost";
+        | "gateway"
+        | "openrouter"
+        | "anthropic"
+        | "google"
+        | "bifrost";
     /** No key saved in Settings (a key may come from the server's .env). */
     noProviderKeys?: boolean;
     defaultMissing?: boolean;
@@ -141,7 +145,7 @@ export function createRunDb(options: ICreateRunDbOptions = {}) {
     let rolledBack = false;
     const selection = options.selection ?? "pinned_route";
     // This fixture intentionally models the full transaction/query state machine.
-    // eslint-disable-next-line complexity -- test double covers commit and rollback branches.
+    // oxlint-disable-next-line complexity -- test double covers commit and rollback branches.
     const query = vi.fn(async (text: string, values: unknown[] = []) => {
         const sql = text.replace(/\s+/g, " ").trim();
         if (/^(insert|update|delete) /i.test(sql)) {

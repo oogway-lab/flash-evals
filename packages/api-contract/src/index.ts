@@ -253,7 +253,12 @@ export interface IPromptDetailVersion {
 }
 
 export type RunStatus =
-    "pending" | "running" | "completed" | "partial" | "failed" | "cancelled";
+    | "pending"
+    | "running"
+    | "completed"
+    | "partial"
+    | "failed"
+    | "cancelled";
 
 /**
  * Why an eval or pipeline run stopped before running every cell: someone
@@ -270,7 +275,12 @@ export const MAX_RUN_COST_LIMIT_USD = 100_000;
  * follows one) for this item. It made no model call and cost nothing.
  */
 export type CellStatus =
-    "pending" | "running" | "succeeded" | "failed" | "cached" | "skipped";
+    | "pending"
+    | "running"
+    | "succeeded"
+    | "failed"
+    | "cached"
+    | "skipped";
 
 export {
     applyTemplateFilters,
@@ -452,7 +462,10 @@ export {
 } from "./workflows.js";
 
 export type ReviewVerdict =
-    "unreviewed" | "approved" | "needs_review" | "issue";
+    | "unreviewed"
+    | "approved"
+    | "needs_review"
+    | "issue";
 
 export interface IRunProgress {
     total: number;
@@ -485,7 +498,12 @@ export interface IRunListRow extends IDashboardRun {
 }
 
 export type ReasoningEffort =
-    "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+    | "none"
+    | "minimal"
+    | "low"
+    | "medium"
+    | "high"
+    | "xhigh";
 
 export interface IJsonSchemaObject {
     type?: unknown;
@@ -787,7 +805,12 @@ export interface ITemperatureAssignment {
 }
 
 export type ProviderTransport =
-    "openai" | "gateway" | "openrouter" | "bifrost" | "anthropic" | "google";
+    | "openai"
+    | "gateway"
+    | "openrouter"
+    | "bifrost"
+    | "anthropic"
+    | "google";
 
 /**
  * Who may serve a run's model and judge calls and what they may keep.
@@ -1116,7 +1139,11 @@ export type SttModelAvailabilityStatus =
     | "provider_error";
 
 export type SttModelConfigFieldKind =
-    "text" | "textarea" | "select" | "boolean" | "number";
+    | "text"
+    | "textarea"
+    | "select"
+    | "boolean"
+    | "number";
 
 export interface ISttModelConfigFieldOption {
     label: string;
@@ -1497,7 +1524,12 @@ export interface ISttTransliterationConfig {
 }
 
 export type EvalProviderMode =
-    "auto" | "vercel-ai" | "openai" | "gateway" | "openrouter" | "bifrost";
+    | "auto"
+    | "vercel-ai"
+    | "openai"
+    | "gateway"
+    | "openrouter"
+    | "bifrost";
 
 export interface ISttEvaluatorConfig {
     enabled: boolean;
@@ -1553,7 +1585,10 @@ export interface IParsedSchemaDescriptor {
 export type LabelJson = Record<string, unknown>;
 
 export type DatasetLabelMode =
-    "evaluation" | "independent" | "pipeline" | "legacySchema";
+    | "evaluation"
+    | "independent"
+    | "pipeline"
+    | "legacySchema";
 
 export interface IDatasetDetailResponse {
     dataset: {
@@ -2273,7 +2308,9 @@ export interface IValidateRunnablePromptResponse {
 }
 
 export type JudgeDeclaredInput =
-    "task_input" | "candidate_output" | "reference";
+    | "task_input"
+    | "candidate_output"
+    | "reference";
 
 export interface IJudgeSpec {
     modelId: string;
@@ -2982,7 +3019,8 @@ async function apiErrorFromResponse(
     response: Response,
 ): Promise<FlashEvalsApiError> {
     const payload = (await response.json().catch(() => undefined)) as
-        IApiErrorResponse | undefined;
+        | IApiErrorResponse
+        | undefined;
     const retryAfter = Number(response.headers.get("retry-after"));
     return new FlashEvalsApiError(
         payload?.message ??

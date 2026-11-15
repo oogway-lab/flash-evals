@@ -1,4 +1,3 @@
-/* global __dirname */
 // CommonJS also works with Playwright's configuration loader.
 const { existsSync, readFileSync } = require("node:fs");
 const path = require("node:path");

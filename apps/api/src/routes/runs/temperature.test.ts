@@ -136,7 +136,7 @@ describe("POST /api/runs with a temperature", () => {
         expect(insert?.[0]).toContain("temperature");
         expect(insert?.[1]).toContain(0.7);
         const run = queryCall(db, "insert into runs");
-        expect((run?.[1] as unknown[])[6]).toMatchObject({
+        expect((run?.[1] as unknown[] | undefined)?.[6]).toMatchObject({
             models: [expect.objectContaining({ temperature: 0.7 })],
         });
     });
@@ -281,7 +281,8 @@ function queryCall(db: IDb, text: string): [string, unknown[]] | undefined {
     return vi
         .mocked(db.query)
         .mock.calls.find(([sql]) => String(sql).includes(text)) as
-        [string, unknown[]] | undefined;
+        | [string, unknown[]]
+        | undefined;
 }
 
 function testConfig(): IApiConfig {

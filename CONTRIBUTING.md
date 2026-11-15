@@ -44,9 +44,10 @@ Values are `camelCase`; React components, error classes, and the schema values
 that stand in for types are `PascalCase`; constants are `UPPER_CASE`. Types,
 interfaces, classes, and type parameters are `PascalCase`; enum members may be
 `PascalCase` or `UPPER_CASE`. Prefix an intentionally unused binding with `_`.
-ESLint rejects `snake_case` and `kebab-case` names.
+Oxlint enforces these names with `flash-evals/naming-convention`, so
+`snake_case` and `kebab-case` names fail, and also enforces unused bindings.
 
-ESLint also warns when a TypeScript file exceeds 1,200 nonblank, noncomment
+Oxlint warns when a TypeScript file exceeds 1,200 nonblank, noncomment
 lines. Treat the warning as a prompt to split new code into focused modules;
 existing large modules should not grow further.
 
@@ -61,6 +62,7 @@ bun run build
 bun run test
 bun run test:e2e
 bun run lint
+bun run format:check
 bun run docs:check
 bun run docs:env
 bun run quality
@@ -77,15 +79,38 @@ click-through coverage of datasets, prompts, runs, or workflows. The optional AP
 health check is skipped unless `PLAYWRIGHT_API_BASE_URL` is set. Production Clerk
 sign-in and paid-provider behavior require separate integration testing.
 
+`bun run lint` runs `oxlint`, which applies `.oxlintrc.json` to TypeScript and
+JavaScript, including the script blocks of `.astro` files. Oxlint has no native
+naming-convention rule, so `scripts/oxlint/naming-convention.mjs`, an Oxlint JS
+plugin, runs typescript-eslint's `naming-convention` rule as
+`flash-evals/naming-convention` on `.ts`, `.tsx`, `.mts` and `.cts` files. It
+runs without type information, so its options cannot use the `types` modifier.
+`bun run format:check` verifies Oxfmt formatting with `.oxfmtrc.json`;
+`bun run format` fixes it. Oxfmt does not format `.astro` files. The pre-commit
+hook runs `oxlint --fix` and `oxfmt` on staged files through lint-staged.
+
+Only `oxlint-disable` comments suppress lint rules, including
+`flash-evals/naming-convention` (`respectEslintDisableDirectives` is off).
+Oxlint warns about stale ones; an `eslint-disable` comment suppresses nothing.
+
+The migration to Oxlint dropped a few rules of the old ESLint setup that Oxlint
+does not have. `no-octal` and `no-dupe-args` are covered by strict mode in
+modules and TypeScript, where they are syntax errors; sloppy-mode `.cjs` files
+still get no `no-octal` check, and a duplicate parameter there is reported only
+as `no-redeclare`. `react-hooks/config` and `react-hooks/gating` have no
+equivalent, because Oxlint runs the React Compiler rules with fixed compiler
+options.
+
 `bun run quality` combines type checks, builds, unit tests, lint, architecture,
 and documentation checks; it does not run Playwright or replace the security
 scans. `bun run security` reports if a local scanner is unavailable. GitHub
 Actions runs quality and security jobs plus a browser smoke job; none deploy the
 application.
 
-For a documentation-only change, run `docs:check`, `docs:env`, and Prettier on the
-changed files, and check local links and examples. The command checker verifies
-that named Bun scripts exist; it does not prove the commands ran successfully.
+For a documentation-only change, run `docs:check`, `docs:env`, and
+`bunx oxfmt --check <changed files>`, and check local links and examples. The
+command checker verifies that named Bun scripts exist; it does not prove the
+commands ran successfully.
 
 ### Real-database workflow concurrency tests
 

@@ -35,7 +35,10 @@ export interface IConfirmDialogProps {
      * dialog open and show it; anything else closes the dialog.
      */
     onConfirm: () =>
-        string | undefined | void | Promise<string | undefined | void>;
+        | string
+        | undefined
+        | void
+        | Promise<string | undefined | void>;
 }
 
 /**

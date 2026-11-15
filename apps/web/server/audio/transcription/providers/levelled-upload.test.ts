@@ -49,7 +49,7 @@ function stubFetch() {
 }
 
 function uploadedFile(init: RequestInit | undefined): File {
-    const file = (init?.body as FormData).get("file");
+    const file = (init?.body as FormData | undefined)?.get("file");
     if (!(file instanceof File)) throw new Error("no file part");
     return file;
 }

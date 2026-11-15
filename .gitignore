@@ -42,7 +42,6 @@ next-env.d.ts
 .wrangler/
 .turbo/
 *.tsbuildinfo
-.eslintcache
 docs/api/
 
 # Playwright output

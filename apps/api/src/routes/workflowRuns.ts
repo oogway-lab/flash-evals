@@ -366,7 +366,7 @@ export interface IWorkflowRunCreateOptions {
  * eval run, which has not finished yet (scoring waits for it), on that
  * run's items.
  */
-// eslint-disable-next-line complexity -- run creation coordinates validation, snapshotting, and enqueue atomicity.
+// oxlint-disable-next-line complexity -- run creation coordinates validation, snapshotting, and enqueue atomicity.
 export async function createWorkflowRunInTransaction(
     db: IDb,
     input: ICreateWorkflowRunRequest,
@@ -858,7 +858,7 @@ async function resolveWorkflowScoringConfigs(
     return configs;
 }
 
-// eslint-disable-next-line complexity -- route resolution applies independent capability and provenance guards.
+// oxlint-disable-next-line complexity -- route resolution applies independent capability and provenance guards.
 async function resolveWorkflowLlmExecutions(
     db: IDb,
     nodes: IWorkflowNode[],

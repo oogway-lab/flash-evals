@@ -205,7 +205,8 @@ export interface IWorkflowStepConditionGroup {
 
 /** A step's run condition: one condition, or several that must all hold. */
 export type WorkflowRunCondition =
-    IWorkflowStepCondition | IWorkflowStepConditionGroup;
+    | IWorkflowStepCondition
+    | IWorkflowStepConditionGroup;
 
 /** The conditions of a run condition, one or several; none when unset. */
 export function runConditionList(
@@ -352,7 +353,8 @@ export function stepSettingsErrors(settings: unknown, label: string): string[] {
  * other template is text, with a missing value written as nothing.
  */
 export type FinalAnswerFallback =
-    { value: WorkflowConditionValue } | { template: string };
+    | { value: WorkflowConditionValue }
+    | { template: string };
 
 /** Replace one exact value of a field, e.g. "" with "Customer". */
 export interface IFinalAnswerValueMapping {

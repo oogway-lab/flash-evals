@@ -91,7 +91,12 @@ export function SttNodeInspector({
         modelId: string;
         name: string;
         reasoningEffort?:
-            "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+            | "none"
+            | "minimal"
+            | "low"
+            | "medium"
+            | "high"
+            | "xhigh";
     }) => Promise<{ route?: IWorkflowLlmRoute; error?: string }>;
     onLoadLlmModels?: (
         transport: WorkflowLlmTransport,
@@ -231,7 +236,12 @@ function NodeConfigFields({
         modelId: string;
         name: string;
         reasoningEffort?:
-            "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+            | "none"
+            | "minimal"
+            | "low"
+            | "medium"
+            | "high"
+            | "xhigh";
     }) => Promise<{ route?: IWorkflowLlmRoute; error?: string }>;
     onLoadLlmModels?: (
         transport: WorkflowLlmTransport,
@@ -254,7 +264,9 @@ function NodeConfigFields({
                                 setConfig({
                                     type: "input",
                                     modality: modality as
-                                        "audio" | "image" | "text",
+                                        | "audio"
+                                        | "image"
+                                        | "text",
                                 })
                             }
                         >
@@ -525,7 +537,7 @@ function NodeConfigFields({
     }
 }
 
-// eslint-disable-next-line complexity -- inspector fields are gated by transport and capability state.
+// oxlint-disable-next-line complexity -- inspector fields are gated by transport and capability state.
 function LlmRouteFields({
     data,
     setup,
@@ -551,7 +563,12 @@ function LlmRouteFields({
             topP?: number;
             seed?: number;
             reasoningEffort?:
-                "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+                | "none"
+                | "minimal"
+                | "low"
+                | "medium"
+                | "high"
+                | "xhigh";
         };
         timeoutMs?: number;
         maxAttempts?: number;

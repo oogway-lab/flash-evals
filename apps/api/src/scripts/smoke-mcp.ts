@@ -19,7 +19,8 @@ async function call(name: string, args: Record<string, unknown> = {}) {
     const result = await client.callTool({ name, arguments: args });
     assert(!result.isError, `${name} returned an MCP tool error.`);
     const structured = result.structuredContent as
-        { data?: unknown } | undefined;
+        | { data?: unknown }
+        | undefined;
     return structured?.data;
 }
 

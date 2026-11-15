@@ -18,10 +18,12 @@ interface IWorkflowGraph {
 }
 
 type NodeKeyValidationResult =
-    { ok: true; keys: Set<string> } | { ok: false; error: string };
+    | { ok: true; keys: Set<string> }
+    | { ok: false; error: string };
 
 type GraphBuildResult =
-    { ok: true; graph: IWorkflowGraph } | { ok: false; error: string };
+    | { ok: true; graph: IWorkflowGraph }
+    | { ok: false; error: string };
 
 function validateNodeKeys(
     nodes: IWorkflowGraphNode[],

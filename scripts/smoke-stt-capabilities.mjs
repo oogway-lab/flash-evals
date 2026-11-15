@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/* global Blob, FormData, fetch */
 import { readFile } from "node:fs/promises";
 
 const DEFAULT_AUDIO_PATH = "/tmp/flash-evals-stt-smoke.wav";

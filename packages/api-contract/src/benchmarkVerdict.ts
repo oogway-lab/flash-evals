@@ -42,9 +42,16 @@ export type BenchmarkSampleSize = "insufficient" | "uncertain" | "sufficient";
  * comparison but never judged: it is what the candidates are measured against.
  */
 export type BenchmarkTaskVerdict =
-    "pass" | "uncertain" | "fail" | "insufficient" | "reference";
+    | "pass"
+    | "uncertain"
+    | "fail"
+    | "insufficient"
+    | "reference";
 export type BenchmarkModelVerdict =
-    "pass" | "conditional" | "fail" | "inconclusive";
+    | "pass"
+    | "conditional"
+    | "fail"
+    | "inconclusive";
 
 /** Fewer items than this is "insufficient": no verdict is drawn. */
 export const BENCHMARK_MIN_ITEMS = 5;

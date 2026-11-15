@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 // Production dependency audit: `bun audit`, limited to packages that ship.
 // Usage: bun scripts/audit-production.mjs [--audit-level=high]
-/* global Bun */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import {

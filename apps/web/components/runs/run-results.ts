@@ -65,7 +65,8 @@ export interface IModelResult {
 
 function servedByFor(
     servedBy:
-        Record<string, Array<{ host: string; answers: number }>> | undefined,
+        | Record<string, Array<{ host: string; answers: number }>>
+        | undefined,
     runModelId: string,
 ): Pick<IModelResult, "servedBy"> {
     const hosts = servedBy?.[runModelId];

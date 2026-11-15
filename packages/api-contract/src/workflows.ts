@@ -47,7 +47,8 @@ export function isWorkflowModelBackedNodeType(
     return WORKFLOW_MODEL_BACKED_NODE_TYPE_SET.has(nodeType);
 }
 export type WorkflowMetricReferenceField =
-    "expectedTranscript" | "expectedTranscriptLatin";
+    | "expectedTranscript"
+    | "expectedTranscriptLatin";
 
 export const WORKFLOW_LLM_EXECUTION_CONTRACT_VERSION = 1 as const;
 export const WORKFLOW_LLM_FINGERPRINT_VERSION = 1 as const;
@@ -119,7 +120,10 @@ export type IWorkflowLlmStructuredOutputConfig =
       };
 
 export type WorkflowLlmRetryableErrorClass =
-    "rate_limit" | "timeout" | "overloaded" | "upstream_unavailable";
+    | "rate_limit"
+    | "timeout"
+    | "overloaded"
+    | "upstream_unavailable";
 
 export type IWorkflowLlmRetryPolicy =
     | {
@@ -182,7 +186,11 @@ export interface IWorkflowLlmRouteConfig {
 }
 
 export type WorkflowLlmGenerationControl =
-    "maxOutputTokens" | "temperature" | "topP" | "seed" | "reasoningEffort";
+    | "maxOutputTokens"
+    | "temperature"
+    | "topP"
+    | "seed"
+    | "reasoningEffort";
 
 export interface IWorkflowLlmTransportCapability {
     transport: WorkflowLlmTransport;
@@ -854,7 +862,10 @@ export interface IWorkflowRunNote {
 
 export interface IWorkflowNodeScore {
     scorerType:
-        "field_diff" | "judge" | "transcript_metric" | "transcript_judge";
+        | "field_diff"
+        | "judge"
+        | "transcript_metric"
+        | "transcript_judge";
     score: number | null;
     rationale: string | null;
     detailsJson: unknown;
@@ -904,13 +915,23 @@ export interface IWorkflowSnapshot {
 
 export type WorkflowSttTranscriptVariant = "raw" | "latin";
 export type WorkflowSttPreparationStatus =
-    "pending" | "running" | "completed" | "error";
+    | "pending"
+    | "running"
+    | "completed"
+    | "error";
 export type WorkflowSttEvaluationStatus =
-    "pending" | "running" | "completed" | "partial" | "error" | "skipped";
+    | "pending"
+    | "running"
+    | "completed"
+    | "partial"
+    | "error"
+    | "skipped";
 export type WorkflowSttScoreStatus = "completed" | "skipped" | "error";
 export type WorkflowSttScorerType = "transcript_metric" | "transcript_judge";
 export type WorkflowSttReferenceKind =
-    "human_gold" | "silver" | "prod_reference";
+    | "human_gold"
+    | "silver"
+    | "prod_reference";
 
 export interface IWorkflowSttPreparation {
     id: string;

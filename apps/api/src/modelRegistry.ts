@@ -177,7 +177,8 @@ function optionForEntry(
     results: Array<{
         transport: EnabledTransport;
         models:
-            Awaited<ReturnType<typeof listAvailableModelMetadata>> | undefined;
+            | Awaited<ReturnType<typeof listAvailableModelMetadata>>
+            | undefined;
     }>,
     saved: readonly ProviderTransport[],
     preferred: ProviderTransport | undefined,

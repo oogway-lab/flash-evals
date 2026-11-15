@@ -2804,7 +2804,8 @@ async function createSignedUploadTarget(
         );
     }
     const body = (await response.json().catch(() => undefined)) as
-        { token?: string } | undefined;
+        | { token?: string }
+        | undefined;
     if (!body?.token) {
         throw new ApiBadRequestError(
             "Supabase did not return a signed upload token.",

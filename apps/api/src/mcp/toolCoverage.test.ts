@@ -825,7 +825,8 @@ describe("MCP complete tool call coverage over stdio", () => {
         expect(unavailable.length).toBeGreaterThan(0);
         for (const tool of unavailable) {
             const args = specimen(tool.inputSchema) as
-                Record<string, unknown> | undefined;
+                | Record<string, unknown>
+                | undefined;
             if (
                 args &&
                 [
@@ -843,7 +844,8 @@ describe("MCP complete tool call coverage over stdio", () => {
                 args.runTarget = "dataset";
             }
             let result:
-                Awaited<ReturnType<typeof harness.client.callTool>> | undefined;
+                | Awaited<ReturnType<typeof harness.client.callTool>>
+                | undefined;
             try {
                 result = await harness.client.callTool({
                     name: tool.name,
@@ -926,7 +928,8 @@ describe("MCP complete tool call coverage over HTTP", () => {
         const failedPositive: string[] = [];
         for (const tool of tools) {
             const args = specimen(tool.inputSchema) as
-                Record<string, unknown> | undefined;
+                | Record<string, unknown>
+                | undefined;
             if (
                 args &&
                 [
@@ -1058,7 +1061,8 @@ describe("MCP complete tool call coverage over HTTP", () => {
         for (const name of expectedReadTools) {
             const tool = allTools.find((candidate) => candidate.name === name)!;
             const args = specimen(tool.inputSchema) as
-                Record<string, unknown> | undefined;
+                | Record<string, unknown>
+                | undefined;
             const result = await callHttp(runtime, {
                 method: "tools/call",
                 params: { name, arguments: args ?? {} },
@@ -1136,7 +1140,8 @@ describe("MCP complete tool call coverage over HTTP", () => {
         );
         for (const tool of restricted) {
             const args = specimen(tool.inputSchema) as
-                Record<string, unknown> | undefined;
+                | Record<string, unknown>
+                | undefined;
             if (
                 args &&
                 [

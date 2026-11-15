@@ -143,9 +143,11 @@ export async function executeRun(
         ? await getPipeline(run.pipelineId)
         : await getPipelineForDataset(run.datasetId);
     let responseSchema:
-        { name: string; schema: Record<string, unknown> } | undefined;
+        | { name: string; schema: Record<string, unknown> }
+        | undefined;
     let datasetSchema:
-        { jsonSchema: JsonSchemaObject; fieldRules: FieldRule[] } | undefined;
+        | { jsonSchema: JsonSchemaObject; fieldRules: FieldRule[] }
+        | undefined;
     if (pipeline) {
         responseSchema = { name: "output", schema: pipeline.outputSchema };
     } else {
@@ -1751,7 +1753,12 @@ function transcriptEvaluatorForConfig(
                   modelId: string;
                   rubricPrompt: string;
                   reasoningEffort?:
-                      "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+                      | "none"
+                      | "minimal"
+                      | "low"
+                      | "medium"
+                      | "high"
+                      | "xhigh";
               };
           }
         | undefined,
