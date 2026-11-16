@@ -86,7 +86,7 @@
         "lint-staged": "^17.6.0",
         "oxfmt": "0.78.0",
         "oxlint": "~1.93.0",
-        "railway": "3.16.0",
+        "railway": "3.17.0",
         "syncpack": "^15.3.3",
         "typedoc": "^0.28.14",
         "typescript": "~6.0.3"
