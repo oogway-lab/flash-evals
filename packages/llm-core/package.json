@@ -39,12 +39,12 @@
         "test:coverage": "vitest run --coverage"
     },
     "dependencies": {
-        "@ai-sdk/anthropic": "^4.0.102",
-        "@ai-sdk/gateway": "^4.0.142",
-        "@ai-sdk/google": "^4.0.117",
-        "@ai-sdk/openai": "^4.0.114",
-        "ai": "^7.0.169",
-        "openai": "^7.53.0",
+        "@ai-sdk/anthropic": "^4.0.104",
+        "@ai-sdk/gateway": "^4.0.145",
+        "@ai-sdk/google": "^4.0.120",
+        "@ai-sdk/openai": "^4.0.117",
+        "ai": "^7.0.172",
+        "openai": "^7.56.0",
         "undici": "8.12.4"
     },
     "devDependencies": {
